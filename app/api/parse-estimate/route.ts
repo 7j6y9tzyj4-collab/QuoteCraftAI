@@ -416,12 +416,12 @@ export async function POST(request:NextRequest){
           note =
             "Separate drywall repair visit with patching, mudding, sanding, and localized touch-up.";
         } else if (
-          /large|великий|вирізати|замінити гіпсокартон|cut out|replace drywall/.test(normalized)
+          /невелик|маленьк|small|minor/.test(normalized)
         ) {
-          serviceId = "drywall_patch_addon_large";
-          description = "Large drywall repair add-on";
+          serviceId = "drywall_patch_addon_minor";
+          description = "Minor drywall patch add-on";
           note =
-            "Cut out and replace damaged drywall as part of the room painting project.";
+            "Small drywall patch completed as part of the room painting project.";
         } else if (
           /medium|середн|12 inch|12 inches|1 sq ft|2 sq ft/.test(normalized)
         ) {
@@ -429,6 +429,13 @@ export async function POST(request:NextRequest){
           description = "Medium drywall patch add-on";
           note =
             "Medium drywall patch completed as part of the room painting project.";
+        } else if (
+          /large|(?:^|\s)великий(?:\s|$)|вирізати|замінити гіпсокартон|cut out|replace drywall/.test(normalized)
+        ) {
+          serviceId = "drywall_patch_addon_large";
+          description = "Large drywall repair add-on";
+          note =
+            "Cut out and replace damaged drywall as part of the room painting project.";
         }
 
         verified.items.push({
