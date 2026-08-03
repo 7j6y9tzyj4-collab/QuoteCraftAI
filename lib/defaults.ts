@@ -1,6 +1,10 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"drywall_crack_linear_ft",name:"Repair drywall crack",aliases:["repair drywall crack","drywall crack","тріщина в гіпсокартоні","ремонт тріщини"],unit:"linear_ft",rate:12},
+{id:"drywall_tape_repair_each",name:"Repair loose drywall tape",aliases:["repair loose drywall tape","drywall tape repair","відклеївся tape","ремонт стрічки гіпсокартону","відклеїлась стрічка"],unit:"each",rate:175},
+{id:"drywall_corner_repair_each",name:"Repair damaged drywall corner",aliases:["repair drywall corner","damaged corner","пошкоджений кут гіпсокартону","ремонт кута"],unit:"each",rate:225},
+{id:"water_stain_block_each",name:"Seal water stain",aliases:["seal water stain","water stain primer","пляма від води","заблокувати пляму від води","stain blocking primer"],unit:"each",rate:100},
 {id:"drywall_patch_addon_minor",name:"Minor drywall patch add-on",aliases:["minor drywall patch add-on","small drywall patch with room painting","маленька латка гіпсокартону разом з фарбуванням","залатати невеликий отвір під час фарбування кімнати"],unit:"each",rate:150},
 {id:"drywall_patch_addon_medium",name:"Medium drywall patch add-on",aliases:["medium drywall patch add-on","medium drywall repair with room painting","середня латка гіпсокартону разом з фарбуванням"],unit:"each",rate:225},
 {id:"drywall_patch_addon_large",name:"Large drywall repair add-on",aliases:["large drywall repair add-on","replace damaged drywall with room painting","великий ремонт гіпсокартону разом з фарбуванням"],unit:"each",rate:350},
