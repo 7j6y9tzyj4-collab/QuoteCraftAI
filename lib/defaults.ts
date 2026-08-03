@@ -1,6 +1,12 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"vanity_top_install_each",name:"Install vanity top",aliases:["install vanity top","vanity countertop installation","встановити стільницю vanity","монтаж стільниці у ванній"],unit:"each",rate:250},
+{id:"bathroom_sink_install_each",name:"Install bathroom sink",aliases:["install bathroom sink","install vanity sink","bathroom sink installation","встановити умивальник","встановити sink у vanity"],unit:"each",rate:225},
+{id:"vanity_backsplash_sqft",name:"Install vanity backsplash",aliases:["install vanity backsplash","bathroom backsplash","tile backsplash behind vanity","встановити backsplash біля vanity","плитка над тумбою"],unit:"sqft",rate:18},
+{id:"vanity_remove_each",name:"Remove bathroom vanity",aliases:["remove bathroom vanity","vanity demolition","демонтувати vanity","зняти тумбу у ванній"],unit:"each",rate:250},
+{id:"bathroom_debris_haul_each",name:"Haul away bathroom debris",aliases:["haul away bathroom debris","remove bathroom debris","construction debris removal","вивезти сміття з ванної","вивіз будівельного сміття"],unit:"each",rate:300},
+{id:"bathroom_final_cleanup_each",name:"Final bathroom cleanup",aliases:["final bathroom cleanup","clean bathroom after renovation","фінальне прибирання ванної","прибрати ванну після ремонту"],unit:"each",rate:150},
 {id:"shower_glass_panel_install_each",name:"Install fixed shower glass panel",aliases:["install fixed shower glass panel","install shower glass panel","fixed glass panel","встановити нерухому скляну панель","встановити скло в душі"],unit:"each",rate:450},
 {id:"shower_glass_door_install_each",name:"Install shower glass door",aliases:["install shower glass door","install glass shower door","shower door installation","встановити скляні двері в душ","монтаж shower door"],unit:"each",rate:650},
 {id:"frameless_glass_enclosure_install_each",name:"Install custom frameless shower enclosure",aliases:["install frameless shower enclosure","custom shower glass enclosure","frameless glass installation","встановити безрамне скло в душі","монтаж custom shower glass"],unit:"each",rate:1200},
