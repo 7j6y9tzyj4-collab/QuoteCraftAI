@@ -1,0 +1,12 @@
+1. Put this entire folder on Desktop.
+2. Open Terminal.
+3. Type: cd 
+4. Drag the folder into Terminal and press Enter.
+5. Paste:
+   chmod +x PUSH_TO_GITHUB.command && ./PUSH_TO_GITHUB.command
+6. Approve GitHub login if the browser opens.
+
+Repository:
+https://github.com/7j6y9tzyj4-collab/QuoteCraftAI
+
+Never upload .env.local or your OpenAI API key to GitHub.
