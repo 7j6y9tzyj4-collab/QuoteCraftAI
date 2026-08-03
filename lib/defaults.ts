@@ -1,6 +1,17 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"shower_valve_roughin_each",name:"Replace shower valve rough-in",aliases:["replace shower valve","install shower valve","shower valve rough-in","замінити душовий клапан","встановити shower valve","заміна змішувача в стіні"],unit:"each",rate:650},
+{id:"shower_trim_install_each",name:"Install shower trim and handle",aliases:["install shower trim","install shower handle","shower trim kit","встановити накладку душу","встановити ручку душу"],unit:"each",rate:225},
+{id:"shower_head_install_each",name:"Install shower head",aliases:["install shower head","replace shower head","встановити душову головку","замінити душову головку"],unit:"each",rate:150},
+{id:"handheld_shower_install_each",name:"Install handheld shower",aliases:["install handheld shower","hand shower installation","встановити ручний душ","встановити handheld"],unit:"each",rate:225},
+{id:"shower_drain_install_each",name:"Install shower drain",aliases:["install shower drain","shower drain installation","встановити душовий трап","встановити злив душу"],unit:"each",rate:350},
+{id:"shower_drain_relocate_each",name:"Relocate shower drain",aliases:["relocate shower drain","move shower drain","перенести душовий злив","перенести трап"],unit:"each",rate:650},
+{id:"water_lines_relocate_fixture",name:"Relocate water supply lines",aliases:["relocate water lines","move water supply lines","перенести водяні труби","перенести подачу води"],unit:"each",rate:450},
+{id:"vanity_plumbing_connect_each",name:"Connect vanity plumbing",aliases:["connect vanity plumbing","connect vanity drain","connect vanity water lines","підключити сантехніку vanity","підключити тумбу до води і каналізації"],unit:"each",rate:250},
+{id:"freestanding_tub_install_each",name:"Install freestanding bathtub",aliases:["install freestanding tub","freestanding bathtub installation","встановити окремостоячу ванну","монтаж freestanding tub"],unit:"each",rate:900},
+{id:"bathtub_remove_each",name:"Remove bathtub",aliases:["remove bathtub","bathtub demolition","зняти ванну","демонтувати ванну"],unit:"each",rate:450},
+{id:"bathtub_faucet_install_each",name:"Install bathtub faucet",aliases:["install bathtub faucet","install tub filler","встановити змішувач для ванни","встановити tub filler"],unit:"each",rate:350},
 {id:"tile_remove_sqft",name:"Remove old tile",aliases:["remove old tile","tile demolition","зняти стару плитку","демонтаж плитки"],unit:"sqft",rate:5},
 {id:"cement_board_install_sqft",name:"Install cement board",aliases:["install cement board","cement backer board","встановити цементну плиту","монтаж cement board"],unit:"sqft",rate:6},
 {id:"uncoupling_membrane_sqft",name:"Install uncoupling membrane",aliases:["install uncoupling membrane","install ditra","uncoupling membrane","встановити ditra","розділювальна мембрана"],unit:"sqft",rate:4},
