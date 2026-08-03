@@ -88,66 +88,50 @@ function applyVerifiedMeasurements(result: any, text: string) {
 
   const normalized = text.toLowerCase();
   const wantsCeiling = /ceiling|стел/.test(normalized);
-  const wantsWalls = /wall|стін|кімнат|room/.test(normalized);
+  const wantsWalls = /wall|стін|кімнат|room|paint|фарб/.test(normalized);
 
   if (wantsWalls) {
-    const isWallPaintingItem = (item: any) => {
+    // Remove every AI-generated wall/interior painting item,
+    // so an incorrect AI quantity or note cannot remain visible.
+    result.items = result.items.filter((item: any) => {
       const value =
-        `${item?.serviceId ?? ""} ${item?.description ?? ""}`.toLowerCase();
+        `${item?.serviceId ?? ""} ${item?.description ?? ""} ${item?.note ?? ""}`
+          .toLowerCase();
 
-      return (
-        item?.serviceId === "paint_walls_sqft" ||
-        /paint.*wall|wall.*paint|фарб.*стін|стін.*фарб/.test(value)
-      );
-    };
+      const isCeiling = /ceiling|стел/.test(value);
+      const isPainting =
+        /paint|painting|фарб|interior.*wall|wall.*interior/.test(value);
 
-    let wallItem = result.items.find(isWallPaintingItem);
+      return isCeiling || !isPainting;
+    });
 
-    if (wallItem) {
-      wallItem.serviceId = "paint_walls_sqft";
-      wallItem.description = "Paint walls";
-      wallItem.quantity = room.wallNet;
-      wallItem.unit = "sqft";
-      wallItem.note = room.note;
-      wallItem.confidence = 1;
-
-      result.items = result.items.filter(
-        (item: any) => item === wallItem || !isWallPaintingItem(item)
-      );
-    } else {
-      wallItem = {
-        serviceId: "paint_walls_sqft",
-        description: "Paint walls",
-        quantity: room.wallNet,
-        unit: "sqft",
-        note: room.note,
-        confidence: 1
-      };
-
-      result.items.push(wallItem);
-    }
+    result.items.unshift({
+      serviceId: "paint_walls_sqft",
+      description: "Paint walls",
+      quantity: room.wallNet,
+      unit: "sqft",
+      note: room.note,
+      confidence: 1
+    });
   }
 
   if (wantsCeiling) {
-    const ceilingItem = result.items.find(
-      (item: any) => item.serviceId === "paint_ceiling_sqft"
-    );
+    result.items = result.items.filter((item: any) => {
+      const value =
+        `${item?.serviceId ?? ""} ${item?.description ?? ""}`
+          .toLowerCase();
 
-    if (ceilingItem) {
-      ceilingItem.quantity = room.ceiling;
-      ceilingItem.unit = "sqft";
-      ceilingItem.note = `Verified ceiling area: ${room.ceiling} sq ft.`;
-      ceilingItem.confidence = 1;
-    } else {
-      result.items.push({
-        serviceId: "paint_ceiling_sqft",
-        description: "Paint ceiling",
-        quantity: room.ceiling,
-        unit: "sqft",
-        note: `Verified ceiling area: ${room.ceiling} sq ft.`,
-        confidence: 1
-      });
-    }
+      return !/paint_ceiling|paint.*ceiling|ceiling.*paint|фарб.*стел|стел.*фарб/.test(value);
+    });
+
+    result.items.push({
+      serviceId: "paint_ceiling_sqft",
+      description: "Paint ceiling",
+      quantity: room.ceiling,
+      unit: "sqft",
+      note: `Verified ceiling area: ${room.ceiling} sq ft.`,
+      confidence: 1
+    });
   }
 
   return result;
