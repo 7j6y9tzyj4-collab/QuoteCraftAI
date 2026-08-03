@@ -158,6 +158,8 @@ export async function POST(request:NextRequest){
       return NextResponse.json({error:"Price library is empty."},{status:400});
     }
 
+    let deterministicPaintItems: any[] = [];
+
     // DETERMINISTIC_ROOM_PAINT_CALCULATION
     // Room geometry is calculated here, before OpenAI is called.
     {
@@ -250,7 +252,7 @@ export async function POST(request:NextRequest){
           });
         }
 
-        return NextResponse.json({ items });
+        deterministicPaintItems = items;
       }
     }
 
@@ -351,6 +353,24 @@ export async function POST(request:NextRequest){
 
     const parsed=JSON.parse(raw);
     const verified=applyVerifiedMeasurements(parsed,text);
+
+    if (deterministicPaintItems.length) {
+      const otherItems = Array.isArray(verified?.items)
+        ? verified.items.filter((item: any) => {
+            const value =
+              `${item?.serviceId ?? ""} ${item?.description ?? ""}`
+                .toLowerCase();
+
+            return !(
+              /paint_walls_sqft|paint_ceiling_sqft/.test(value) ||
+              /paint.*wall|wall.*paint|paint.*ceiling|ceiling.*paint/.test(value)
+            );
+          })
+        : [];
+
+      verified.items = [...deterministicPaintItems, ...otherItems];
+    }
+
     return NextResponse.json(verified);
   }catch(error){
     console.error(error);
