@@ -1,6 +1,11 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"wallpaper_remove_sqft",name:"Remove wallpaper",aliases:["remove wallpaper","wallpaper removal","зняти шпалери","демонтаж шпалер"],unit:"sqft",rate:2.5},
+{id:"baseboard_remove_linear_ft",name:"Remove baseboards",aliases:["remove baseboards","baseboard removal","зняти плінтуси","демонтаж плінтусів"],unit:"linear_ft",rate:2},
+{id:"drywall_remove_sqft",name:"Remove damaged drywall",aliases:["remove damaged drywall","drywall demolition","вирізати пошкоджений гіпсокартон","демонтаж гіпсокартону"],unit:"sqft",rate:4},
+{id:"door_remove_each",name:"Remove interior door",aliases:["remove interior door","door removal","зняти двері","демонтувати двері"],unit:"each",rate:100},
+{id:"light_fixture_remove_each",name:"Remove light fixture",aliases:["remove light fixture","light fixture removal","зняти світильник","демонтувати світильник"],unit:"each",rate:75},
 {id:"protect_room_each",name:"Protect floors and furniture",aliases:["protect floors and furniture","cover floors","cover furniture","захистити підлогу і меблі","накрити підлогу","накрити меблі"],unit:"room",rate:125},
 {id:"fill_nail_holes_room",name:"Fill nail holes",aliases:["fill nail holes","nail holes","закрити отвори від цвяхів","зашпаклювати отвори від цвяхів"],unit:"room",rate:75},
 {id:"caulk_trim_linear_ft",name:"Caulk baseboards and trim",aliases:["caulk baseboards","caulk trim","герметизувати плінтуси","закрити щілини біля плінтусів","caulking trim"],unit:"linear_ft",rate:2},
