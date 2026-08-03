@@ -219,7 +219,11 @@ export async function POST(request:NextRequest){
           grossWalls - doorArea - windowArea
         );
 
-        const wantsCeiling = /ceiling|стел/.test(normalized);
+        const excludesCeiling =
+          /without\s+(?:the\s+)?ceiling|no\s+ceiling|без\s+стел\w*|стел\w*\s+не\s+(?:фарбувати|потрібно|треба)/.test(normalized);
+
+        const wantsCeiling =
+          /ceiling|стел/.test(normalized) && !excludesCeiling;
         const items: any[] = [];
 
         items.push({
