@@ -1,6 +1,13 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"carpet_remove_sqft",name:"Remove carpet",aliases:["remove carpet","carpet removal","зняти ковролін","демонтаж ковроліну"],unit:"sqft",rate:1.5},
+{id:"lvp_remove_sqft",name:"Remove old laminate or LVP",aliases:["remove laminate","remove lvp","laminate removal","lvp removal","зняти ламінат","демонтаж ламінату","зняти вінілову підлогу"],unit:"sqft",rate:2},
+{id:"subfloor_prep_sqft",name:"Minor subfloor preparation",aliases:["prepare subfloor","minor subfloor repair","floor preparation","підготувати основу підлоги","незначний ремонт основи"],unit:"sqft",rate:2.5},
+{id:"floor_leveling_sqft",name:"Level floor with compound",aliases:["level floor","floor leveling compound","self leveling","вирівняти підлогу","самовирівнююча суміш"],unit:"sqft",rate:4.5},
+{id:"underlayment_install_sqft",name:"Install flooring underlayment",aliases:["install underlayment","floor underlayment","встановити підкладку","підкладка під ламінат"],unit:"sqft",rate:1.25},
+{id:"floor_transition_each",name:"Install floor transition",aliases:["install floor transition","transition strip","floor threshold","встановити перехід підлоги","перехідна планка","поріжок"],unit:"each",rate:75},
+{id:"move_furniture_floor_room",name:"Move furniture for flooring",aliases:["move furniture for flooring","move furniture before floor installation","пересунути меблі для підлоги","винести меблі перед монтажем підлоги"],unit:"room",rate:100},
 {id:"drywall_install_sqft",name:"Install drywall",aliases:["install drywall","new drywall installation","встановити гіпсокартон","монтаж гіпсокартону"],unit:"sqft",rate:8},
 {id:"drywall_finish_sqft",name:"Tape mud and sand drywall",aliases:["tape mud and sand drywall","finish drywall","шпаклювати гіпсокартон","проклеїти і зашпаклювати гіпсокартон"],unit:"sqft",rate:6},
 {id:"baseboard_install_linear_ft",name:"Install baseboards",aliases:["install baseboards","baseboard installation","встановити плінтуси","монтаж плінтусів"],unit:"linear_ft",rate:4},
