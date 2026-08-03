@@ -1,6 +1,12 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"drywall_install_sqft",name:"Install drywall",aliases:["install drywall","new drywall installation","встановити гіпсокартон","монтаж гіпсокартону"],unit:"sqft",rate:8},
+{id:"drywall_finish_sqft",name:"Tape mud and sand drywall",aliases:["tape mud and sand drywall","finish drywall","шпаклювати гіпсокартон","проклеїти і зашпаклювати гіпсокартон"],unit:"sqft",rate:6},
+{id:"baseboard_install_linear_ft",name:"Install baseboards",aliases:["install baseboards","baseboard installation","встановити плінтуси","монтаж плінтусів"],unit:"linear_ft",rate:4},
+{id:"door_casing_install_linear_ft",name:"Install door casing",aliases:["install door casing","door trim installation","встановити дверний наличник","монтаж дверної обналички"],unit:"linear_ft",rate:5},
+{id:"quarter_round_install_linear_ft",name:"Install quarter round",aliases:["install quarter round","quarter round installation","встановити quarter round","монтаж чвертькруглого молдингу"],unit:"linear_ft",rate:3},
+{id:"light_fixture_reinstall_each",name:"Reinstall light fixture",aliases:["reinstall light fixture","put light fixture back","повторно встановити світильник","поставити світильник назад"],unit:"each",rate:100},
 {id:"wallpaper_remove_sqft",name:"Remove wallpaper",aliases:["remove wallpaper","wallpaper removal","зняти шпалери","демонтаж шпалер"],unit:"sqft",rate:2.5},
 {id:"baseboard_remove_linear_ft",name:"Remove baseboards",aliases:["remove baseboards","baseboard removal","зняти плінтуси","демонтаж плінтусів"],unit:"linear_ft",rate:2},
 {id:"drywall_remove_sqft",name:"Remove damaged drywall",aliases:["remove damaged drywall","drywall demolition","вирізати пошкоджений гіпсокартон","демонтаж гіпсокартону"],unit:"sqft",rate:4},
