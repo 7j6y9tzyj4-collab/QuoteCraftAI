@@ -11,6 +11,133 @@ type PriceRule={
 
 export const runtime="nodejs";
 
+type RoomCalculation = {
+  wallGross: number;
+  openings: number;
+  wallNet: number;
+  ceiling: number;
+  note: string;
+};
+
+function calculateRoomAreas(text: string): RoomCalculation | null {
+  const normalized = text
+    .toLowerCase()
+    .replace(/,/g, ".")
+    .replace(/[×х]/g, "x");
+
+  const roomMatch =
+    normalized.match(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/i);
+
+  const heightMatch =
+    normalized.match(/(?:height|висот\w*)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i) ||
+    normalized.match(/(\d+(?:\.\d+)?)\s*(?:ft|feet|фут\w*)\s*(?:height|висот\w*)/i);
+
+  if (!roomMatch || !heightMatch) return null;
+
+  const length = Number(roomMatch[1]);
+  const width = Number(roomMatch[2]);
+  const height = Number(heightMatch[1]);
+
+  if (![length, width, height].every(Number.isFinite)) return null;
+
+  const wallGross = 2 * (length + width) * height;
+  const ceiling = length * width;
+
+  let openings = 0;
+  const openingDetails: string[] = [];
+
+  const doorMatch = normalized.match(
+    /(\d+)\s*(?:door\w*|двер\w*)[^0-9]{0,20}(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/i
+  );
+
+  if (doorMatch) {
+    const count = Number(doorMatch[1]);
+    const area = count * Number(doorMatch[2]) * Number(doorMatch[3]);
+    openings += area;
+    openingDetails.push(`doors: ${area} sq ft`);
+  }
+
+  const windowMatch = normalized.match(
+    /(\d+)\s*(?:window\w*|вік\w*)[^0-9]{0,20}(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/i
+  );
+
+  if (windowMatch) {
+    const count = Number(windowMatch[1]);
+    const area = count * Number(windowMatch[2]) * Number(windowMatch[3]);
+    openings += area;
+    openingDetails.push(`windows: ${area} sq ft`);
+  }
+
+  const wallNet = Math.max(0, wallGross - openings);
+
+  return {
+    wallGross,
+    openings,
+    wallNet,
+    ceiling,
+    note:
+      `Verified calculation: gross walls ${wallGross} sq ft` +
+      (openingDetails.length ? `; ${openingDetails.join("; ")}` : "") +
+      `; net walls ${wallNet} sq ft; ceiling ${ceiling} sq ft.`,
+  };
+}
+
+function applyVerifiedMeasurements(result: any, text: string) {
+  const room = calculateRoomAreas(text);
+  if (!room || !Array.isArray(result?.items)) return result;
+
+  const normalized = text.toLowerCase();
+  const wantsCeiling = /ceiling|стел/.test(normalized);
+  const wantsWalls = /wall|стін|кімнат|room/.test(normalized);
+
+  if (wantsWalls) {
+    const wallItem = result.items.find(
+      (item: any) => item.serviceId === "paint_walls_sqft"
+    );
+
+    if (wallItem) {
+      wallItem.quantity = room.wallNet;
+      wallItem.unit = "sqft";
+      wallItem.note = room.note;
+      wallItem.confidence = 1;
+    } else {
+      result.items.push({
+        serviceId: "paint_walls_sqft",
+        description: "Paint walls",
+        quantity: room.wallNet,
+        unit: "sqft",
+        note: room.note,
+        confidence: 1
+      });
+    }
+  }
+
+  if (wantsCeiling) {
+    const ceilingItem = result.items.find(
+      (item: any) => item.serviceId === "paint_ceiling_sqft"
+    );
+
+    if (ceilingItem) {
+      ceilingItem.quantity = room.ceiling;
+      ceilingItem.unit = "sqft";
+      ceilingItem.note = `Verified ceiling area: ${room.ceiling} sq ft.`;
+      ceilingItem.confidence = 1;
+    } else {
+      result.items.push({
+        serviceId: "paint_ceiling_sqft",
+        description: "Paint ceiling",
+        quantity: room.ceiling,
+        unit: "sqft",
+        note: `Verified ceiling area: ${room.ceiling} sq ft.`,
+        confidence: 1
+      });
+    }
+  }
+
+  return result;
+}
+
+
 export async function POST(request:NextRequest){
   try{
     if(!process.env.OPENAI_API_KEY){
@@ -127,7 +254,8 @@ export async function POST(request:NextRequest){
     }
 
     const parsed=JSON.parse(raw);
-    return NextResponse.json(parsed);
+    const verified=applyVerifiedMeasurements(parsed,text);
+    return NextResponse.json(verified);
   }catch(error){
     console.error(error);
     const message=error instanceof Error?error.message:"Unknown server error";
