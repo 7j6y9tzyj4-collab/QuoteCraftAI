@@ -1,6 +1,9 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"paint_door_each",name:"Paint door",aliases:["paint door","paint doors","пофарбувати двері","фарбування дверей"],unit:"each",rate:150},
+{id:"paint_door_frame_each",name:"Paint door frame",aliases:["paint door frame","paint door casing","пофарбувати дверну коробку","фарбування дверної коробки"],unit:"each",rate:100},
+{id:"paint_baseboards_linear_ft",name:"Paint baseboards",aliases:["paint baseboards","paint trim","пофарбувати плінтуси","фарбування плінтусів"],unit:"linear_ft",rate:2.5},
 {id:"paint_window_each",name:"Paint window",aliases:["paint window","paint windows","пофарбувати вікно","пофарбувати вікна","фарбування вікна","фарбування вікон"],unit:"each",rate:100},
 {id:"replace_outlet_each",name:"Replace electrical outlet",aliases:["replace outlet","electrical outlet","outlet","розетка","розетки","замінити розетку"],unit:"each",rate:75},
 {id:"replace_switch_each",name:"Replace light switch",aliases:["replace switch","light switch","switch","вимикач","вимикачі","замінити вимикач"],unit:"each",rate:75},
