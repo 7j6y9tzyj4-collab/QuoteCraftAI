@@ -1,6 +1,14 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"tile_remove_sqft",name:"Remove old tile",aliases:["remove old tile","tile demolition","зняти стару плитку","демонтаж плитки"],unit:"sqft",rate:5},
+{id:"cement_board_install_sqft",name:"Install cement board",aliases:["install cement board","cement backer board","встановити цементну плиту","монтаж cement board"],unit:"sqft",rate:6},
+{id:"uncoupling_membrane_sqft",name:"Install uncoupling membrane",aliases:["install uncoupling membrane","install ditra","uncoupling membrane","встановити ditra","розділювальна мембрана"],unit:"sqft",rate:4},
+{id:"tile_waterproofing_sqft",name:"Waterproof tile area",aliases:["waterproof shower","waterproof tile area","install waterproofing membrane","гідроізоляція душу","гідроізоляція під плитку"],unit:"sqft",rate:7},
+{id:"shower_pan_build_each",name:"Build and waterproof shower pan",aliases:["build shower pan","waterproof shower pan","install shower base","зробити душовий піддон","гідроізоляція піддона"],unit:"each",rate:850},
+{id:"tile_grout_sqft",name:"Grout tile",aliases:["grout tile","apply grout","затерти плитку","затирка плитки"],unit:"sqft",rate:3},
+{id:"tile_silicone_linear_ft",name:"Silicone tile joints",aliases:["silicone tile joints","caulk tile joints","silicone shower corners","силікон у кутах плитки","засиліконити плитку"],unit:"linear_ft",rate:5},
+{id:"schluter_edge_linear_ft",name:"Install Schluter tile edge",aliases:["install schluter edge","tile edge trim","schluter trim","встановити профіль schluter","профіль для плитки"],unit:"linear_ft",rate:8},
 {id:"carpet_remove_sqft",name:"Remove carpet",aliases:["remove carpet","carpet removal","зняти ковролін","демонтаж ковроліну"],unit:"sqft",rate:1.5},
 {id:"lvp_remove_sqft",name:"Remove old laminate or LVP",aliases:["remove laminate","remove lvp","laminate removal","lvp removal","зняти ламінат","демонтаж ламінату","зняти вінілову підлогу"],unit:"sqft",rate:2},
 {id:"subfloor_prep_sqft",name:"Minor subfloor preparation",aliases:["prepare subfloor","minor subfloor repair","floor preparation","підготувати основу підлоги","незначний ремонт основи"],unit:"sqft",rate:2.5},
