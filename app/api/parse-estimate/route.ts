@@ -158,6 +158,98 @@ export async function POST(request:NextRequest){
       return NextResponse.json({error:"Price library is empty."},{status:400});
     }
 
+    // DETERMINISTIC_ROOM_PAINT_CALCULATION
+    // Room geometry is calculated here, before OpenAI is called.
+    {
+      const normalized = text
+        .toLowerCase()
+        .replace(/,/g, ".")
+        .replace(/[×х]/g, "x");
+
+      const roomMatch = normalized.match(
+        /(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/
+      );
+
+      const heightMatch =
+        normalized.match(
+          /(?:height|висот\w*)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/
+        ) ||
+        normalized.match(
+          /(?:height|висот\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)/
+        );
+
+      const isPainting =
+        /paint|painting|пофарб|фарбув|фарб/.test(normalized);
+
+      if (roomMatch && heightMatch && isPainting) {
+        const length = Number(roomMatch[1]);
+        const width = Number(roomMatch[2]);
+        const height = Number(heightMatch[1]);
+
+        const grossWalls = 2 * (length + width) * height;
+        const ceilingArea = length * width;
+
+        let doorArea = 0;
+        let windowArea = 0;
+
+        const doorMatch = normalized.match(
+          /(\d+)\s*(?:door\w*|двер\w*)[^0-9]{0,25}(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/
+        );
+
+        if (doorMatch) {
+          doorArea =
+            Number(doorMatch[1]) *
+            Number(doorMatch[2]) *
+            Number(doorMatch[3]);
+        }
+
+        const windowMatch = normalized.match(
+          /(\d+)\s*(?:window\w*|вік\w*)[^0-9]{0,25}(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/
+        );
+
+        if (windowMatch) {
+          windowArea =
+            Number(windowMatch[1]) *
+            Number(windowMatch[2]) *
+            Number(windowMatch[3]);
+        }
+
+        const netWalls = Math.max(
+          0,
+          grossWalls - doorArea - windowArea
+        );
+
+        const wantsCeiling = /ceiling|стел/.test(normalized);
+        const items: any[] = [];
+
+        items.push({
+          serviceId: "paint_walls_sqft",
+          description: "Paint walls",
+          quantity: netWalls,
+          unit: "sqft",
+          note:
+            `Verified calculation: gross walls ${grossWalls} sq ft; ` +
+            `door area ${doorArea} sq ft; ` +
+            `window area ${windowArea} sq ft; ` +
+            `net paintable walls ${netWalls} sq ft.`,
+          confidence: 1
+        });
+
+        if (wantsCeiling) {
+          items.push({
+            serviceId: "paint_ceiling_sqft",
+            description: "Paint ceiling",
+            quantity: ceilingArea,
+            unit: "sqft",
+            note: `Verified ceiling area: ${length} × ${width} = ${ceilingArea} sq ft.`,
+            confidence: 1
+          });
+        }
+
+        return NextResponse.json({ items });
+      }
+    }
+
     const serviceIds=prices.map(p=>p.id);
     const catalog=prices.map(p=>({
       serviceId:p.id,
