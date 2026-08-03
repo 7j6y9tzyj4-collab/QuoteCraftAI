@@ -1,6 +1,10 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"drywall_patch_addon_minor",name:"Minor drywall patch add-on",aliases:["minor drywall patch add-on","small drywall patch with room painting","маленька латка гіпсокартону разом з фарбуванням","залатати невеликий отвір під час фарбування кімнати"],unit:"each",rate:150},
+{id:"drywall_patch_addon_medium",name:"Medium drywall patch add-on",aliases:["medium drywall patch add-on","medium drywall repair with room painting","середня латка гіпсокартону разом з фарбуванням"],unit:"each",rate:225},
+{id:"drywall_patch_addon_large",name:"Large drywall repair add-on",aliases:["large drywall repair add-on","replace damaged drywall with room painting","великий ремонт гіпсокартону разом з фарбуванням"],unit:"each",rate:350},
+{id:"drywall_repair_standalone",name:"Standalone drywall repair visit",aliases:["standalone drywall repair","drywall repair only","окремий виїзд на ремонт гіпсокартону","тільки залатати отвір","ремонт гіпсокартону без фарбування кімнати"],unit:"each",rate:300},
 {id:"paint_door_each",name:"Paint door",aliases:["paint door","paint doors","пофарбувати двері","фарбування дверей"],unit:"each",rate:150},
 {id:"paint_door_frame_each",name:"Paint door frame",aliases:["paint door frame","paint door casing","пофарбувати дверну коробку","фарбування дверної коробки"],unit:"each",rate:100},
 {id:"paint_baseboards_linear_ft",name:"Paint baseboards",aliases:["paint baseboards","paint trim","пофарбувати плінтуси","фарбування плінтусів"],unit:"linear_ft",rate:2.5},
