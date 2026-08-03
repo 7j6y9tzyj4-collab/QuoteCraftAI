@@ -1,6 +1,14 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"outlet_new_each",name:"Install new electrical outlet",aliases:["install new outlet","add outlet","new electrical outlet","встановити нову розетку","додати розетку"],unit:"each",rate:225},
+{id:"gfci_install_each",name:"Install GFCI outlet",aliases:["install gfci outlet","replace gfci outlet","gfci receptacle","встановити gfci розетку","замінити gfci"],unit:"each",rate:150},
+{id:"dimmer_install_each",name:"Install dimmer switch",aliases:["install dimmer switch","replace switch with dimmer","dimmer installation","встановити димер","замінити вимикач на димер"],unit:"each",rate:125},
+{id:"recessed_light_install_each",name:"Install recessed light",aliases:["install recessed light","install can light","install wafer light","встановити recessed light","встановити точковий світильник"],unit:"each",rate:150},
+{id:"vanity_light_install_each",name:"Install vanity light",aliases:["install vanity light","bathroom vanity light","mirror light installation","встановити світильник над дзеркалом","встановити vanity light"],unit:"each",rate:175},
+{id:"bath_fan_install_each",name:"Install bathroom exhaust fan",aliases:["install bathroom exhaust fan","install bath fan","bathroom fan installation","встановити витяжний вентилятор у ванній"],unit:"each",rate:225},
+{id:"electrical_box_relocate_each",name:"Relocate electrical box",aliases:["relocate electrical box","move electrical box","move outlet box","перенести електричну коробку","перенести коробку розетки"],unit:"each",rate:200},
+{id:"new_circuit_each",name:"Add new electrical circuit",aliases:["add new circuit","run new circuit from panel","dedicated circuit","додати нову електричну лінію","провести нову лінію від щита"],unit:"each",rate:650},
 {id:"shower_valve_roughin_each",name:"Replace shower valve rough-in",aliases:["replace shower valve","install shower valve","shower valve rough-in","замінити душовий клапан","встановити shower valve","заміна змішувача в стіні"],unit:"each",rate:650},
 {id:"shower_trim_install_each",name:"Install shower trim and handle",aliases:["install shower trim","install shower handle","shower trim kit","встановити накладку душу","встановити ручку душу"],unit:"each",rate:225},
 {id:"shower_head_install_each",name:"Install shower head",aliases:["install shower head","replace shower head","встановити душову головку","замінити душову головку"],unit:"each",rate:150},
