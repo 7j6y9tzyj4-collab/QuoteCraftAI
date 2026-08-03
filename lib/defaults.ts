@@ -1,6 +1,13 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"bathroom_mirror_install_each",name:"Install bathroom mirror",aliases:["install bathroom mirror","install mirror","mount bathroom mirror","встановити дзеркало у ванній","повісити дзеркало"],unit:"each",rate:175},
+{id:"medicine_cabinet_install_each",name:"Install medicine cabinet",aliases:["install medicine cabinet","mount medicine cabinet","встановити medicine cabinet","встановити шафку з дзеркалом"],unit:"each",rate:300},
+{id:"towel_warmer_install_each",name:"Install towel warmer",aliases:["install towel warmer","towel warmer installation","встановити рушникосушку","встановити towel warmer"],unit:"each",rate:250},
+{id:"toilet_paper_holder_install_each",name:"Install toilet paper holder",aliases:["install toilet paper holder","mount toilet paper holder","встановити тримач туалетного паперу"],unit:"each",rate:75},
+{id:"towel_bar_install_each",name:"Install towel bar",aliases:["install towel bar","mount towel bar","встановити рушникотримач","встановити towel bar"],unit:"each",rate:85},
+{id:"robe_hook_install_each",name:"Install robe hook",aliases:["install robe hook","mount robe hook","встановити гачок для халата","встановити hook"],unit:"each",rate:50},
+{id:"bathroom_accessories_set_each",name:"Install bathroom accessories set",aliases:["install bathroom accessories set","install bath accessories","встановити комплект аксесуарів у ванній"],unit:"each",rate:250},
 {id:"outlet_new_each",name:"Install new electrical outlet",aliases:["install new outlet","add outlet","new electrical outlet","встановити нову розетку","додати розетку"],unit:"each",rate:225},
 {id:"gfci_install_each",name:"Install GFCI outlet",aliases:["install gfci outlet","replace gfci outlet","gfci receptacle","встановити gfci розетку","замінити gfci"],unit:"each",rate:150},
 {id:"dimmer_install_each",name:"Install dimmer switch",aliases:["install dimmer switch","replace switch with dimmer","dimmer installation","встановити димер","замінити вимикач на димер"],unit:"each",rate:125},
