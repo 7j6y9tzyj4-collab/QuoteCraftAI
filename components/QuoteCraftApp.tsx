@@ -127,6 +127,119 @@ export default function QuoteCraftApp(){
    const next=[cur,...all.filter(e=>e.id!==cur.id)];saveAll(next);setScreen("saved");
  };
 
+
+ const printEstimate=()=>{
+   const printWindow=window.open("","_blank");
+
+   if(!printWindow){
+     alert("Safari заблокував нове вікно. Дозвольте pop-ups і спробуйте ще раз.");
+     return;
+   }
+
+   const esc=(value:unknown)=>String(value??"")
+     .replace(/&/g,"&amp;")
+     .replace(/</g,"&lt;")
+     .replace(/>/g,"&gt;")
+     .replace(/"/g,"&quot;")
+     .replace(/'/g,"&#039;");
+
+   const rows=cur.items.map(item=>`
+     <tr>
+       <td>
+         <strong>${esc(item.description)}</strong>
+         ${item.note?`<div class="note">${esc(item.note)}</div>`:""}
+       </td>
+       <td>${esc(item.quantity)} ${esc(unitLabel(item.unit))}</td>
+       <td>${esc(money(item.unitPrice))}</td>
+       <td>${esc(money(item.quantity*item.unitPrice))}</td>
+     </tr>
+   `).join("");
+
+   const html=`
+   <!doctype html>
+   <html>
+   <head>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width,initial-scale=1">
+     <title>${esc(cur.project||"Estimate")}</title>
+     <style>
+       body{
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         color:#101828;
+         margin:0;
+         padding:24px;
+       }
+       h1{margin:0 0 8px}
+       .meta{line-height:1.6;margin-bottom:22px}
+       table{width:100%;border-collapse:collapse}
+       th,td{
+         border-bottom:1px solid #d0d5dd;
+         padding:10px 5px;
+         text-align:left;
+         vertical-align:top;
+       }
+       th{font-size:12px;color:#475467}
+       td:nth-child(2),td:nth-child(3),td:nth-child(4){white-space:nowrap}
+       .note{font-size:11px;color:#667085;margin-top:4px}
+       .totals{width:290px;margin:24px 0 0 auto}
+       .totals div{display:flex;justify-content:space-between;padding:6px 0}
+       .grand{
+         border-top:2px solid #101828;
+         margin-top:6px;
+         padding-top:12px!important;
+         font-size:20px;
+         font-weight:800;
+       }
+       @media(max-width:600px){
+         body{padding:14px}
+         table{font-size:11px}
+         th,td{padding:8px 3px}
+         .totals{width:100%}
+       }
+       @media print{body{padding:0}}
+     </style>
+   </head>
+   <body>
+     <h1>${esc(cur.project||"Estimate")}</h1>
+
+     <div class="meta">
+       ${cur.client?`<div><strong>Client:</strong> ${esc(cur.client)}</div>`:""}
+       ${cur.address?`<div><strong>Address:</strong> ${esc(cur.address)}</div>`:""}
+     </div>
+
+     <table>
+       <thead>
+         <tr>
+           <th>Description</th>
+           <th>Quantity</th>
+           <th>Rate</th>
+           <th>Total</th>
+         </tr>
+       </thead>
+       <tbody>${rows}</tbody>
+     </table>
+
+     <div class="totals">
+       <div><span>Subtotal</span><span>${esc(money(subtotal))}</span></div>
+       <div><span>Discount</span><span>−${esc(money(discount))}</span></div>
+       <div><span>Tax</span><span>${esc(money(tax))}</span></div>
+       <div class="grand"><span>Total</span><span>${esc(money(total))}</span></div>
+       <div><strong>Required deposit</strong><strong>${esc(money(deposit))}</strong></div>
+     </div>
+
+     <script>
+       window.addEventListener("load",function(){
+         setTimeout(function(){window.print();},500);
+       });
+     </script>
+   </body>
+   </html>`;
+
+   printWindow.document.open();
+   printWindow.document.write(html);
+   printWindow.document.close();
+ };
+
  return <div className="shell">
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><span className="mark">Q⚡</span></header>
   <main>
@@ -166,7 +279,7 @@ export default function QuoteCraftApp(){
 
     <section className="panel grid3 noPrint"><label>Discount, $<input type="number" value={cur.discount} onChange={e=>setCur({...cur,discount:Number(e.target.value)})}/></label><label>Tax, %<input type="number" value={cur.tax} onChange={e=>setCur({...cur,tax:Number(e.target.value)})}/></label><label>Deposit, %<input type="number" value={cur.deposit} onChange={e=>setCur({...cur,deposit:Number(e.target.value)})}/></label></section>
     <section className="total"><div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
-    <div className="actions noPrint"><button className="secondary" onClick={()=>window.print()}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
+    <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
 
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="delete" onClick={()=>saveAll(all.filter(x=>x.id!==e.id))}>Delete</button></article>)}</section>}
