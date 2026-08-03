@@ -33,3 +33,5 @@ Expected four separate items:
 - Paint one wall — 1 each
 - Replace bathroom exhaust fan — 1 each
 - Install LVP / laminate flooring — 35 sq ft
+
+<!-- Trigger Vercel rebuild -->
