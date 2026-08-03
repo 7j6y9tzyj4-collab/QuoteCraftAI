@@ -1,6 +1,7 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"paint_window_each",name:"Paint window",aliases:["paint window","paint windows","пофарбувати вікно","пофарбувати вікна","фарбування вікна","фарбування вікон"],unit:"each",rate:100},
 {id:"replace_outlet_each",name:"Replace electrical outlet",aliases:["replace outlet","electrical outlet","outlet","розетка","розетки","замінити розетку"],unit:"each",rate:75},
 {id:"replace_switch_each",name:"Replace light switch",aliases:["replace switch","light switch","switch","вимикач","вимикачі","замінити вимикач"],unit:"each",rate:75},
 {id:"kitchen_faucet_replace",name:"Replace kitchen faucet",aliases:["kitchen faucet","кухонний кран","кран на кухні","змішувач на кухні"],unit:"each",rate:250},
