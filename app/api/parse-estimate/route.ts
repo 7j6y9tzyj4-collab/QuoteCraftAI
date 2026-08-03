@@ -91,24 +91,40 @@ function applyVerifiedMeasurements(result: any, text: string) {
   const wantsWalls = /wall|стін|кімнат|room/.test(normalized);
 
   if (wantsWalls) {
-    const wallItem = result.items.find(
-      (item: any) => item.serviceId === "paint_walls_sqft"
-    );
+    const isWallPaintingItem = (item: any) => {
+      const value =
+        `${item?.serviceId ?? ""} ${item?.description ?? ""}`.toLowerCase();
+
+      return (
+        item?.serviceId === "paint_walls_sqft" ||
+        /paint.*wall|wall.*paint|фарб.*стін|стін.*фарб/.test(value)
+      );
+    };
+
+    let wallItem = result.items.find(isWallPaintingItem);
 
     if (wallItem) {
+      wallItem.serviceId = "paint_walls_sqft";
+      wallItem.description = "Paint walls";
       wallItem.quantity = room.wallNet;
       wallItem.unit = "sqft";
       wallItem.note = room.note;
       wallItem.confidence = 1;
+
+      result.items = result.items.filter(
+        (item: any) => item === wallItem || !isWallPaintingItem(item)
+      );
     } else {
-      result.items.push({
+      wallItem = {
         serviceId: "paint_walls_sqft",
         description: "Paint walls",
         quantity: room.wallNet,
         unit: "sqft",
         note: room.note,
         confidence: 1
-      });
+      };
+
+      result.items.push(wallItem);
     }
   }
 
