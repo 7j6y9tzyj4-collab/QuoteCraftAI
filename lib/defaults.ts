@@ -1,6 +1,10 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"protect_room_each",name:"Protect floors and furniture",aliases:["protect floors and furniture","cover floors","cover furniture","захистити підлогу і меблі","накрити підлогу","накрити меблі"],unit:"room",rate:125},
+{id:"fill_nail_holes_room",name:"Fill nail holes",aliases:["fill nail holes","nail holes","закрити отвори від цвяхів","зашпаклювати отвори від цвяхів"],unit:"room",rate:75},
+{id:"caulk_trim_linear_ft",name:"Caulk baseboards and trim",aliases:["caulk baseboards","caulk trim","герметизувати плінтуси","закрити щілини біля плінтусів","caulking trim"],unit:"linear_ft",rate:2},
+{id:"final_cleanup_room",name:"Final cleanup",aliases:["final cleanup","jobsite cleanup","clean up room","фінальне прибирання","прибрати після роботи"],unit:"room",rate:100},
 {id:"drywall_crack_linear_ft",name:"Repair drywall crack",aliases:["repair drywall crack","drywall crack","тріщина в гіпсокартоні","ремонт тріщини"],unit:"linear_ft",rate:12},
 {id:"drywall_tape_repair_each",name:"Repair loose drywall tape",aliases:["repair loose drywall tape","drywall tape repair","відклеївся tape","ремонт стрічки гіпсокартону","відклеїлась стрічка"],unit:"each",rate:175},
 {id:"drywall_corner_repair_each",name:"Repair damaged drywall corner",aliases:["repair drywall corner","damaged corner","пошкоджений кут гіпсокартону","ремонт кута"],unit:"each",rate:225},
