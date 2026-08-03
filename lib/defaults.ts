@@ -1,6 +1,13 @@
 import type {PriceRule} from "./types";
 
 export const defaults:PriceRule[]=[
+{id:"shower_glass_panel_install_each",name:"Install fixed shower glass panel",aliases:["install fixed shower glass panel","install shower glass panel","fixed glass panel","встановити нерухому скляну панель","встановити скло в душі"],unit:"each",rate:450},
+{id:"shower_glass_door_install_each",name:"Install shower glass door",aliases:["install shower glass door","install glass shower door","shower door installation","встановити скляні двері в душ","монтаж shower door"],unit:"each",rate:650},
+{id:"frameless_glass_enclosure_install_each",name:"Install custom frameless shower enclosure",aliases:["install frameless shower enclosure","custom shower glass enclosure","frameless glass installation","встановити безрамне скло в душі","монтаж custom shower glass"],unit:"each",rate:1200},
+{id:"shower_niche_build_each",name:"Build shower niche",aliases:["build shower niche","frame shower niche","construct shower niche","зробити нішу в душі","сформувати нішу"],unit:"each",rate:450},
+{id:"shower_niche_tile_each",name:"Tile shower niche",aliases:["tile shower niche","install tile in niche","обкласти нішу плиткою","плитка в душовій ніші"],unit:"each",rate:250},
+{id:"shower_bench_build_each",name:"Build shower bench",aliases:["build shower bench","construct shower bench","frame shower bench","зробити лавку в душі","побудувати shower bench"],unit:"each",rate:650},
+{id:"shower_bench_tile_each",name:"Tile shower bench",aliases:["tile shower bench","install tile on shower bench","обкласти лавку плиткою","плитка на shower bench"],unit:"each",rate:350},
 {id:"bathroom_mirror_install_each",name:"Install bathroom mirror",aliases:["install bathroom mirror","install mirror","mount bathroom mirror","встановити дзеркало у ванній","повісити дзеркало"],unit:"each",rate:175},
 {id:"medicine_cabinet_install_each",name:"Install medicine cabinet",aliases:["install medicine cabinet","mount medicine cabinet","встановити medicine cabinet","встановити шафку з дзеркалом"],unit:"each",rate:300},
 {id:"towel_warmer_install_each",name:"Install towel warmer",aliases:["install towel warmer","towel warmer installation","встановити рушникосушку","встановити towel warmer"],unit:"each",rate:250},
