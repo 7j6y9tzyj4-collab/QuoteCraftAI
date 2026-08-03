@@ -378,6 +378,70 @@ export async function POST(request:NextRequest){
       verified.items = [...deterministicPaintItems, ...otherItems];
     }
 
+    // DETERMINISTIC_DRYWALL_PRICING
+    {
+      const normalized = text
+        .toLowerCase()
+        .replace(/,/g, ".");
+
+      const mentionsDrywall =
+        /drywall|гіпсокартон|отвор|дірк|латк|patch|hole/.test(normalized);
+
+      const paintingWholeRoom =
+        /paint|painting|пофарб|фарбув|фарб/.test(normalized) &&
+        /room|кімнат|wall|стін/.test(normalized);
+
+      const standaloneOnly =
+        /drywall repair only|standalone|тільки залатати|лише залатати|тільки ремонт гіпсокартону|без фарбування кімнати/.test(normalized);
+
+      if (mentionsDrywall && Array.isArray(verified?.items)) {
+        verified.items = verified.items.filter((item: any) => {
+          const id = String(item?.serviceId ?? "");
+          return ![
+            "drywall_patch_addon_minor",
+            "drywall_patch_addon_medium",
+            "drywall_patch_addon_large",
+            "drywall_repair_standalone"
+          ].includes(id);
+        });
+
+        let serviceId = "drywall_patch_addon_minor";
+        let description = "Minor drywall patch add-on";
+        let note =
+          "Small drywall patch completed as part of the room painting project.";
+
+        if (standaloneOnly || !paintingWholeRoom) {
+          serviceId = "drywall_repair_standalone";
+          description = "Standalone drywall repair visit";
+          note =
+            "Separate drywall repair visit with patching, mudding, sanding, and localized touch-up.";
+        } else if (
+          /large|великий|вирізати|замінити гіпсокартон|cut out|replace drywall/.test(normalized)
+        ) {
+          serviceId = "drywall_patch_addon_large";
+          description = "Large drywall repair add-on";
+          note =
+            "Cut out and replace damaged drywall as part of the room painting project.";
+        } else if (
+          /medium|середн|12 inch|12 inches|1 sq ft|2 sq ft/.test(normalized)
+        ) {
+          serviceId = "drywall_patch_addon_medium";
+          description = "Medium drywall patch add-on";
+          note =
+            "Medium drywall patch completed as part of the room painting project.";
+        }
+
+        verified.items.push({
+          serviceId,
+          description,
+          quantity: 1,
+          unit: "each",
+          note,
+          confidence: 1
+        });
+      }
+    }
+
     return NextResponse.json(verified);
   }catch(error){
     console.error(error);
