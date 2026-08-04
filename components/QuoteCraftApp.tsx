@@ -33,6 +33,8 @@ export default function QuoteCraftApp(){
  const [email,setEmail]=useState("");
  const [password,setPassword]=useState("");
  const [authLoading,setAuthLoading]=useState(true);
+ const [recoveryMode,setRecoveryMode]=useState(false);
+ const [newPassword,setNewPassword]=useState("");
  const recognitionRef=useRef<any>(null);
  const baseRef=useRef("");
  const finalRef=useRef("");
@@ -48,8 +50,14 @@ export default function QuoteCraftApp(){
      setAuthLoading(false);
    });
 
-   const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{
+   const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
      setUser(session?.user??null);
+
+     if(event==="PASSWORD_RECOVERY"){
+       setRecoveryMode(true);
+       setMessage("Введи новий пароль.");
+     }
+
      setAuthLoading(false);
    });
 
@@ -221,6 +229,31 @@ export default function QuoteCraftApp(){
    }
 
    setMessage("Лист для скидання пароля надіслано. Перевір email.");
+ };
+
+
+ const updatePassword=async()=>{
+   if(newPassword.length<6){
+     setMessage("Новий пароль має містити щонайменше 6 символів.");
+     return;
+   }
+
+   setAuthLoading(true);
+
+   const {error}=await supabase.auth.updateUser({
+     password:newPassword
+   });
+
+   setAuthLoading(false);
+
+   if(error){
+     setMessage(error.message);
+     return;
+   }
+
+   setNewPassword("");
+   setRecoveryMode(false);
+   setMessage("Пароль успішно змінено.");
  };
 
  const signOut=async()=>{
@@ -430,7 +463,48 @@ export default function QuoteCraftApp(){
 
 
  if(authLoading&&!user){
+  
+ if(recoveryMode){
    return <div className="shell">
+     <header>
+       <div>
+         <strong>QuoteCraft AI</strong>
+         <small>Password recovery</small>
+       </div>
+       <span className="mark">Q⚡</span>
+     </header>
+
+     <main>
+       <section className="panel">
+         <span className="eyebrow">NEW PASSWORD</span>
+         <h1>Створи новий пароль</h1>
+
+         <label>
+           New password
+           <input
+             type="password"
+             autoComplete="new-password"
+             value={newPassword}
+             onChange={e=>setNewPassword(e.target.value)}
+             placeholder="Minimum 6 characters"
+           />
+         </label>
+
+         {message&&<div className="statusMessage">{message}</div>}
+
+         <button
+           className="primary full"
+           onClick={updatePassword}
+           disabled={authLoading}
+         >
+           {authLoading?"Please wait…":"Save new password"}
+         </button>
+       </section>
+     </main>
+   </div>;
+ }
+
+ return <div className="shell">
      <main>
        <section className="panel">
          <h1>QuoteCraft AI</h1>
