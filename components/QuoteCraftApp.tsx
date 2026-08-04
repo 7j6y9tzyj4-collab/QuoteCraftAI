@@ -2,6 +2,8 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import type {Estimate,Item,PriceRule,Unit} from "@/lib/types";
 import {defaults} from "@/lib/defaults";
+import {supabase} from "@/lib/supabase";
+import type {User} from "@supabase/supabase-js";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -27,19 +29,179 @@ export default function QuoteCraftApp(){
  const [thinking,setThinking]=useState(false);
  const [listening,setListening]=useState(false);
  const [message,setMessage]=useState("");
+ const [user,setUser]=useState<User|null>(null);
+ const [email,setEmail]=useState("");
+ const [password,setPassword]=useState("");
+ const [authLoading,setAuthLoading]=useState(true);
  const recognitionRef=useRef<any>(null);
  const baseRef=useRef("");
  const finalRef=useRef("");
 
  useEffect(()=>{setAll(load(EK,[]));setPrices(load(PK,defaults))},[]);
+
+ useEffect(()=>{
+   let active=true;
+
+   supabase.auth.getSession().then(({data})=>{
+     if(!active)return;
+     setUser(data.session?.user??null);
+     setAuthLoading(false);
+   });
+
+   const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{
+     setUser(session?.user??null);
+     setAuthLoading(false);
+   });
+
+   return()=>{
+     active=false;
+     subscription.unsubscribe();
+   };
+ },[]);
+
+
+ useEffect(()=>{
+   if(!user)return;
+
+   let active=true;
+
+   const loadCloudEstimates=async()=>{
+     setAuthLoading(true);
+
+     const {data,error}=await supabase
+       .from("estimates")
+       .select("estimate_data")
+       .eq("user_id",user.id)
+       .order("updated_at",{ascending:false});
+
+     if(!active)return;
+
+     if(error){
+       setMessage("Не вдалося завантажити estimates: "+error.message);
+       setAuthLoading(false);
+       return;
+     }
+
+     let cloudEstimates=(data??[]).map(
+       row=>row.estimate_data as Estimate
+     );
+
+     const localEstimates=load<Estimate[]>(EK,[]);
+
+     if(cloudEstimates.length===0&&localEstimates.length>0){
+       const rows=localEstimates.map(estimate=>({
+         id:estimate.id,
+         user_id:user.id,
+         estimate_data:estimate,
+         updated_at:new Date().toISOString()
+       }));
+
+       const {error:uploadError}=await supabase
+         .from("estimates")
+         .upsert(rows,{onConflict:"id"});
+
+       if(uploadError){
+         setMessage("Не вдалося перенести старі estimates: "+uploadError.message);
+       }else{
+         cloudEstimates=localEstimates;
+         setMessage("Старі estimates перенесено у хмару.");
+       }
+     }
+
+     setAll(cloudEstimates);
+     localStorage.setItem(EK,JSON.stringify(cloudEstimates));
+     setAuthLoading(false);
+   };
+
+   loadCloudEstimates();
+
+   return()=>{
+     active=false;
+   };
+ },[user]);
+
  const subtotal=useMemo(()=>cur.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0),[cur.items]);
  const discount=Math.min(subtotal,cur.discount||0);
  const tax=(subtotal-discount)*(cur.tax||0)/100;
  const total=subtotal-discount+tax;
  const deposit=total*(cur.deposit||0)/100;
- const saveAll=(x:Estimate[])=>{setAll(x);localStorage.setItem(EK,JSON.stringify(x))};
+ const saveAll=async(x:Estimate[])=>{
+   setAll(x);
+   localStorage.setItem(EK,JSON.stringify(x));
+
+   if(!user)return;
+
+   const rows=x.map(estimate=>({
+     id:estimate.id,
+     user_id:user.id,
+     estimate_data:estimate,
+     updated_at:new Date().toISOString()
+   }));
+
+   const {error}=await supabase
+     .from("estimates")
+     .upsert(rows,{onConflict:"id"});
+
+   if(error){
+     setMessage("Кошторис збережено на пристрої, але не в хмарі: "+error.message);
+   }
+ };
  const savePrices=(x:PriceRule[])=>{setPrices(x);localStorage.setItem(PK,JSON.stringify(x))};
  const value=(e:Estimate)=>e.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);
+
+
+ const signUp=async()=>{
+   if(!email.trim()||!password){
+     setMessage("Введи email і пароль.");
+     return;
+   }
+
+   setAuthLoading(true);
+
+   const {error}=await supabase.auth.signUp({
+     email:email.trim(),
+     password
+   });
+
+   setAuthLoading(false);
+
+   if(error){
+     setMessage(error.message);
+     return;
+   }
+
+   setMessage("Акаунт створено. Перевір email для підтвердження.");
+ };
+
+ const signIn=async()=>{
+   if(!email.trim()||!password){
+     setMessage("Введи email і пароль.");
+     return;
+   }
+
+   setAuthLoading(true);
+
+   const {error}=await supabase.auth.signInWithPassword({
+     email:email.trim(),
+     password
+   });
+
+   setAuthLoading(false);
+
+   if(error){
+     setMessage(error.message);
+     return;
+   }
+
+   setPassword("");
+   setMessage("Вхід виконано.");
+ };
+
+ const signOut=async()=>{
+   await supabase.auth.signOut();
+   setUser(null);
+   setMessage("Ти вийшов з акаунта.");
+ };
 
  function start(){
   recognitionRef.current?.abort?.();
@@ -239,6 +401,85 @@ export default function QuoteCraftApp(){
    printWindow.document.write(html);
    printWindow.document.close();
  };
+
+
+ if(authLoading&&!user){
+   return <div className="shell">
+     <main>
+       <section className="panel">
+         <h1>QuoteCraft AI</h1>
+         <p className="muted">Завантаження акаунта…</p>
+       </section>
+     </main>
+   </div>;
+ }
+
+ if(!user){
+   return <div className="shell">
+     <header>
+       <div>
+         <strong>QuoteCraft AI</strong>
+         <small>Cloud estimates</small>
+       </div>
+       <span className="mark">Q⚡</span>
+     </header>
+
+     <main>
+       <section className="panel">
+         <span className="eyebrow">ACCOUNT</span>
+         <h1>Увійди у свій естіматор</h1>
+         <p className="muted">
+           Використовуй однаковий email і пароль на Mac та iPhone,
+           щоб бачити ті самі estimates.
+         </p>
+
+         <div className="grid">
+           <label className="wide">
+             Email
+             <input
+               type="email"
+               autoComplete="email"
+               value={email}
+               onChange={e=>setEmail(e.target.value)}
+               placeholder="your@email.com"
+             />
+           </label>
+
+           <label className="wide">
+             Password
+             <input
+               type="password"
+               autoComplete="current-password"
+               value={password}
+               onChange={e=>setPassword(e.target.value)}
+               placeholder="Minimum 6 characters"
+             />
+           </label>
+         </div>
+
+         {message&&<div className="statusMessage">{message}</div>}
+
+         <div className="actions">
+           <button
+             className="secondary"
+             onClick={signUp}
+             disabled={authLoading}
+           >
+             Create account
+           </button>
+
+           <button
+             className="primary"
+             onClick={signIn}
+             disabled={authLoading}
+           >
+             {authLoading?"Please wait…":"Sign in"}
+           </button>
+         </div>
+       </section>
+     </main>
+   </div>;
+ }
 
  return <div className="shell">
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><span className="mark">Q⚡</span></header>
