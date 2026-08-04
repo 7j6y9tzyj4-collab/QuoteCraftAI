@@ -197,6 +197,32 @@ export default function QuoteCraftApp(){
    setMessage("Вхід виконано.");
  };
 
+
+ const resetPassword=async()=>{
+   if(!email.trim()){
+     setMessage("Введи email.");
+     return;
+   }
+
+   setAuthLoading(true);
+
+   const {error}=await supabase.auth.resetPasswordForEmail(
+     email.trim(),
+     {
+       redirectTo:"https://quotecraftai-app.vercel.app"
+     }
+   );
+
+   setAuthLoading(false);
+
+   if(error){
+     setMessage(error.message);
+     return;
+   }
+
+   setMessage("Лист для скидання пароля надіслано. Перевір email.");
+ };
+
  const signOut=async()=>{
    await supabase.auth.signOut();
    setUser(null);
@@ -476,6 +502,14 @@ export default function QuoteCraftApp(){
              {authLoading?"Please wait…":"Sign in"}
            </button>
          </div>
+
+         <button
+           className="secondary full"
+           onClick={resetPassword}
+           disabled={authLoading}
+         >
+           Forgot password
+         </button>
        </section>
      </main>
    </div>;
