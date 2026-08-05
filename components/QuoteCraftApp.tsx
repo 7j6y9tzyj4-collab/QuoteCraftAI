@@ -71,6 +71,35 @@ export default function QuoteCraftApp(){
  useEffect(()=>{
    if(!user)return;
 
+   const channel=supabase
+     .channel(`user-prices-${user.id}`)
+     .on(
+       "postgres_changes",
+       {
+         event:"*",
+         schema:"public",
+         table:"user_prices",
+         filter:`user_id=eq.${user.id}`
+       },
+       payload=>{
+         const row=payload.new as {prices_data?:PriceRule[]};
+
+         if(row?.prices_data){
+           setPrices(row.prices_data);
+           localStorage.setItem(PK,JSON.stringify(row.prices_data));
+         }
+       }
+     )
+     .subscribe();
+
+   return()=>{
+     supabase.removeChannel(channel);
+   };
+ },[user]);
+
+ useEffect(()=>{
+   if(!user)return;
+
    let active=true;
 
    const loadCloudEstimates=async()=>{
