@@ -633,7 +633,40 @@ export default function QuoteCraftApp(){
 
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="delete" onClick={()=>saveAll(all.filter(x=>x.id!==e.id))}>Delete</button></article>)}</section>}
 
-   {screen==="prices"&&<section className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p>{prices.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{unitLabel(r.unit)}</small></div><label>Rate<input type="number" min="0" step="0.01" value={r.rate} onChange={e=>savePrices(prices.map(x=>x.id===r.id?{...x,rate:Number(e.target.value)}:x))}/></label></article>)}<button className="secondary full" onClick={()=>savePrices(defaults)}>Reset default prices</button></section>}
+   {screen==="prices"&&<section className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p>{prices.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{unitLabel(r.unit)}</small></div><label>Rate<input type="number" min="0" step="0.01" value={r.rate} onChange={e=>savePrices(prices.map(x=>x.id===r.id?{...x,rate:Number(e.target.value)}:x))}/></label></article>)}<button className="secondary full" onClick={()=>savePrices(defaults)}>Reset default prices</button>
+
+<div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
+  <span className="eyebrow">ACCOUNT</span>
+  <h2>Change password</h2>
+
+  <label>
+    New password
+    <input
+      type="password"
+      autoComplete="new-password"
+      value={newPassword}
+      onChange={e=>setNewPassword(e.target.value)}
+      placeholder="Minimum 6 characters"
+    />
+  </label>
+
+  <button
+    className="primary full"
+    onClick={updatePassword}
+    disabled={authLoading}
+  >
+    {authLoading?"Please wait…":"Save new password"}
+  </button>
+
+  <button
+    className="secondary full"
+    onClick={signOut}
+    style={{marginTop:10}}
+  >
+    Sign out
+  </button>
+</div>
+</section>}
   </main>
   <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
  </div>
