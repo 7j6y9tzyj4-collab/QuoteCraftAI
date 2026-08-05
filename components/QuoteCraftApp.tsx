@@ -118,6 +118,35 @@ export default function QuoteCraftApp(){
 
      setAll(cloudEstimates);
      localStorage.setItem(EK,JSON.stringify(cloudEstimates));
+
+     const {data:priceRow,error:priceError}=await supabase
+       .from("user_prices")
+       .select("prices_data")
+       .eq("user_id",user.id)
+       .maybeSingle();
+
+     if(priceError){
+       setMessage("Не вдалося завантажити ціни: "+priceError.message);
+     }else if(priceRow?.prices_data){
+       const cloudPrices=priceRow.prices_data as PriceRule[];
+       setPrices(cloudPrices);
+       localStorage.setItem(PK,JSON.stringify(cloudPrices));
+     }else{
+       const localPrices=load<PriceRule[]>(PK,defaults);
+
+       const {error:uploadPriceError}=await supabase
+         .from("user_prices")
+         .upsert({
+           user_id:user.id,
+           prices_data:localPrices,
+           updated_at:new Date().toISOString()
+         },{onConflict:"user_id"});
+
+       if(uploadPriceError){
+         setMessage("Не вдалося перенести ціни у хмару: "+uploadPriceError.message);
+       }
+     }
+
      setAuthLoading(false);
    };
 
@@ -176,7 +205,24 @@ export default function QuoteCraftApp(){
    setMessage("Estimate видалено.");
  };
 
- const savePrices=(x:PriceRule[])=>{setPrices(x);localStorage.setItem(PK,JSON.stringify(x))};
+ const savePrices=async(x:PriceRule[])=>{
+   setPrices(x);
+   localStorage.setItem(PK,JSON.stringify(x));
+
+   if(!user)return;
+
+   const {error}=await supabase
+     .from("user_prices")
+     .upsert({
+       user_id:user.id,
+       prices_data:x,
+       updated_at:new Date().toISOString()
+     },{onConflict:"user_id"});
+
+   if(error){
+     setMessage("Ціни збережено на пристрої, але не в хмарі: "+error.message);
+   }
+ };
  const value=(e:Estimate)=>e.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);
 
 
