@@ -100,6 +100,45 @@ export default function QuoteCraftApp(){
  useEffect(()=>{
    if(!user)return;
 
+   const loadLatestPrices=async()=>{
+     const {data,error}=await supabase
+       .from("user_prices")
+       .select("prices_data")
+       .eq("user_id",user.id)
+       .maybeSingle();
+
+     if(error){
+       setMessage("Не вдалося оновити ціни: "+error.message);
+       return;
+     }
+
+     if(data?.prices_data){
+       const latest=data.prices_data as PriceRule[];
+       setPrices(latest);
+       localStorage.setItem(PK,JSON.stringify(latest));
+     }
+   };
+
+   loadLatestPrices();
+
+   const refresh=()=>{
+     if(document.visibilityState==="visible"){
+       loadLatestPrices();
+     }
+   };
+
+   window.addEventListener("focus",loadLatestPrices);
+   document.addEventListener("visibilitychange",refresh);
+
+   return()=>{
+     window.removeEventListener("focus",loadLatestPrices);
+     document.removeEventListener("visibilitychange",refresh);
+   };
+ },[user,screen]);
+
+ useEffect(()=>{
+   if(!user)return;
+
    let active=true;
 
    const loadCloudEstimates=async()=>{
