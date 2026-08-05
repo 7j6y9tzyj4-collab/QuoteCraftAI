@@ -154,6 +154,28 @@ export default function QuoteCraftApp(){
      setMessage("Кошторис збережено на пристрої, але не в хмарі: "+error.message);
    }
  };
+ const deleteEstimate=async(id:string)=>{
+   const next=all.filter(x=>x.id!==id);
+
+   setAll(next);
+   localStorage.setItem(EK,JSON.stringify(next));
+
+   if(!user)return;
+
+   const {error}=await supabase
+     .from("estimates")
+     .delete()
+     .eq("id",id)
+     .eq("user_id",user.id);
+
+   if(error){
+     setMessage("Не вдалося видалити estimate з хмари: "+error.message);
+     return;
+   }
+
+   setMessage("Estimate видалено.");
+ };
+
  const savePrices=(x:PriceRule[])=>{setPrices(x);localStorage.setItem(PK,JSON.stringify(x))};
  const value=(e:Estimate)=>e.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);
 
@@ -631,7 +653,7 @@ export default function QuoteCraftApp(){
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
 
-   {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="delete" onClick={()=>saveAll(all.filter(x=>x.id!==e.id))}>Delete</button></article>)}</section>}
+   {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
    {screen==="prices"&&<section className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p>{prices.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{unitLabel(r.unit)}</small></div><label>Rate<input type="number" min="0" step="0.01" value={r.rate} onChange={e=>savePrices(prices.map(x=>x.id===r.id?{...x,rate:Number(e.target.value)}:x))}/></label></article>)}<button className="secondary full" onClick={()=>savePrices(defaults)}>Reset default prices</button>
 
