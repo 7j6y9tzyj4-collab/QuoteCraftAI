@@ -11,6 +11,31 @@ type PriceRule={
 
 export const runtime="nodejs";
 
+// UNIT_AND_SCALE_GUARDS
+// The deterministic room-paint math below assumes ordinary room dimensions
+// in feet. Two guards keep it from misfiring on anything else:
+//  1) If the speaker used inches (дюйм/інч/inch) and never mentioned feet,
+//     every raw number is converted to feet (divided by 12) before any
+//     area formula runs. Without this, "64 x 29, height 81 inches" was
+//     being treated as 64 x 29 x 81 FEET, producing a 15,000+ sq ft
+//     "room" out of a small closet.
+//  2) If the job talks about a closet, cabinet, wardrobe, vanity, or
+//     shelving, this is furniture-scale work, not a whole room — the
+//     deterministic room-paint override must not run at all, and the
+//     AI's own per-item judgment (guided by the prompt) is used instead.
+const INCH_UNIT_RE = /\binch\w*|дюйм\w*|інч\w*|"/i;
+const FOOT_UNIT_RE = /\bft\b|\bfoot\b|\bfeet\b|фут\w*/i;
+const FURNITURE_SCALE_RE =
+  /шаф\w*|клозет\w*|closet\w*|тумбоч\w*|cabinet\w*|полиц\w*|shelf\w*|shelves|wardrobe\w*|гардероб\w*|vanity/i;
+
+function isInchesContext(normalized: string): boolean {
+  return INCH_UNIT_RE.test(normalized) && !FOOT_UNIT_RE.test(normalized);
+}
+
+function isFurnitureScale(normalized: string): boolean {
+  return FURNITURE_SCALE_RE.test(normalized);
+}
+
 type RoomCalculation = {
   wallGross: number;
   openings: number;
@@ -25,6 +50,11 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
     .replace(/,/g, ".")
     .replace(/[×х]/g, "x");
 
+  // A closet/cabinet/shelving job is never the "paint the whole room"
+  // scenario this function models — skip it entirely so its numbers
+  // (usually inches, usually small) never get run through room math.
+  if (isFurnitureScale(normalized)) return null;
+
   const roomMatch =
     normalized.match(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/i);
 
@@ -34,9 +64,10 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
 
   if (!roomMatch || !heightMatch) return null;
 
-  const length = Number(roomMatch[1]);
-  const width = Number(roomMatch[2]);
-  const height = Number(heightMatch[1]);
+  const unitDivisor = isInchesContext(normalized) ? 12 : 1;
+  const length = Number(roomMatch[1]) / unitDivisor;
+  const width = Number(roomMatch[2]) / unitDivisor;
+  const height = Number(heightMatch[1]) / unitDivisor;
 
   if (![length, width, height].every(Number.isFinite)) return null;
 
@@ -52,7 +83,8 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
 
   if (doorMatch) {
     const count = Number(doorMatch[1]);
-    const area = count * Number(doorMatch[2]) * Number(doorMatch[3]);
+    const area =
+      count * (Number(doorMatch[2]) / unitDivisor) * (Number(doorMatch[3]) / unitDivisor);
     openings += area;
     openingDetails.push(`doors: ${area} sq ft`);
   }
@@ -63,7 +95,8 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
 
   if (windowMatch) {
     const count = Number(windowMatch[1]);
-    const area = count * Number(windowMatch[2]) * Number(windowMatch[3]);
+    const area =
+      count * (Number(windowMatch[2]) / unitDivisor) * (Number(windowMatch[3]) / unitDivisor);
     openings += area;
     openingDetails.push(`windows: ${area} sq ft`);
   }
@@ -162,6 +195,9 @@ export async function POST(request:NextRequest){
 
     // DETERMINISTIC_ROOM_PAINT_CALCULATION
     // Room geometry is calculated here, before OpenAI is called.
+    // Guarded by the same unit + furniture-scale checks as calculateRoomAreas
+    // above, so a closet/cabinet job given in inches never gets treated as
+    // a room given in feet.
     {
       const normalized = text
         .toLowerCase()
@@ -183,10 +219,11 @@ export async function POST(request:NextRequest){
       const isPainting =
         /paint|painting|пофарб|фарбув|фарб/.test(normalized);
 
-      if (roomMatch && heightMatch && isPainting) {
-        const length = Number(roomMatch[1]);
-        const width = Number(roomMatch[2]);
-        const height = Number(heightMatch[1]);
+      if (roomMatch && heightMatch && isPainting && !isFurnitureScale(normalized)) {
+        const unitDivisor = isInchesContext(normalized) ? 12 : 1;
+        const length = Number(roomMatch[1]) / unitDivisor;
+        const width = Number(roomMatch[2]) / unitDivisor;
+        const height = Number(heightMatch[1]) / unitDivisor;
 
         const grossWalls = 2 * (length + width) * height;
         const ceilingArea = length * width;
@@ -201,8 +238,8 @@ export async function POST(request:NextRequest){
         if (doorMatch) {
           doorArea =
             Number(doorMatch[1]) *
-            Number(doorMatch[2]) *
-            Number(doorMatch[3]);
+            (Number(doorMatch[2]) / unitDivisor) *
+            (Number(doorMatch[3]) / unitDivisor);
         }
 
         const windowMatch = normalized.match(
@@ -212,8 +249,8 @@ export async function POST(request:NextRequest){
         if (windowMatch) {
           windowArea =
             Number(windowMatch[1]) *
-            Number(windowMatch[2]) *
-            Number(windowMatch[3]);
+            (Number(windowMatch[2]) / unitDivisor) *
+            (Number(windowMatch[3]) / unitDivisor);
         }
 
         const netWalls = Math.max(
@@ -310,7 +347,13 @@ export async function POST(request:NextRequest){
             "Never invent a price. Select a serviceId from the supplied catalog or use CUSTOM.",
             "Return concise professional English descriptions.",
             "Preserve uncertain details in note and lower confidence.",
-            "Do not combine separate areas unless the speaker clearly describes one continuous job."
+            "Do not combine separate areas unless the speaker clearly describes one continuous job.",
+            "The speaker often gives closet, cabinet, or furniture dimensions in inches (дюйм, інч, inch), not feet. Before computing any square footage, check whether the numbers are inches; if so, divide each dimension by 12 to get feet, then compute area in square feet. Never treat an inch measurement as if it were already a foot measurement — a 64 x 29 inch closet is a few square feet of wall, not thousands.",
+            "A closet, cabinet, wardrobe, vanity, or shelving job is furniture-scale work, not a whole-room painting job, even if the word wall or paint appears (for example 'зробити стіну' means building a small stud partition, not painting a room). Do not produce a whole-room 'paint walls' or 'paint ceiling' line item for this kind of job; price painting of the specific small surfaces described (the new partition, the doors, the built-in shelving) using each or a correctly small square-foot quantity.",
+            "тубайфори or 2x4 refers to wood stud framing for a wall, not drywall or a door.",
+            "полиці means shelves — keep them described as shelves, not cabinets, and do not relabel a shelf countertop as a 'vanity top' (vanity implies a bathroom sink unit).",
+            "тумбочки means base cabinets or storage units, distinct from полиці (shelves). If the speaker mentions both, create separate line items for each — do not merge them into one 'cabinets' item.",
+            "If the speaker describes cutting out and installing new drywall for a relocated or new wall opening, do not also add a separate generic drywall repair or patch add-on for the same opening — that work is already covered by the explicit cut/remove/install items."
           ].join(" ")
         },
         {
@@ -394,7 +437,18 @@ export async function POST(request:NextRequest){
       const standaloneOnly =
         /drywall repair only|standalone|тільки залатати|лише залатати|тільки ремонт гіпсокартону|без фарбування кімнати/.test(normalized);
 
-      if (mentionsDrywall && Array.isArray(verified?.items)) {
+      // If the job already has explicit line items for cutting, removing,
+      // or installing drywall (a new or relocated wall, a new opening,
+      // etc.), that work is already fully priced — adding a generic
+      // "patch add-on" on top would double-charge for the same drywall.
+      const hasExplicitDrywallWork =
+        Array.isArray(verified?.items) &&
+        verified.items.some((item: any) => {
+          const value = `${item?.serviceId ?? ""} ${item?.description ?? ""}`.toLowerCase();
+          return /install drywall|remove drywall|cut drywall|hang drywall|new wall|new opening/.test(value);
+        });
+
+      if (mentionsDrywall && !hasExplicitDrywallWork && Array.isArray(verified?.items)) {
         verified.items = verified.items.filter((item: any) => {
           const id = String(item?.serviceId ?? "");
           return ![
