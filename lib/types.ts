@@ -9,6 +9,7 @@ export type Item={
   note?:string;
   confidence?:number;
 };
+export type EstimateStatus="draft"|"sent"|"viewed"|"accepted";
 export type Estimate={
   id:string;
   client:string;
@@ -19,6 +20,8 @@ export type Estimate={
   tax:number;
   deposit:number;
   createdAt:string;
+  shareToken?:string;
+  status?:EstimateStatus;
 };
 export type PriceRule={
   id:string;

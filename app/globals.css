@@ -12,3 +12,36 @@ button:disabled{opacity:.6;cursor:not-allowed}
 
 .statusMessage{margin-top:9px;background:#eff8ff;color:#175cd3;border:1px solid #b2ddff;border-radius:11px;padding:10px;font-size:12px;line-height:1.4}
 .itemNote{margin-top:8px;background:#f8fafc;color:#475467;border:1px solid #e4e7ec;border-radius:10px;padding:8px 10px;font-size:12px}
+
+.recHint{margin-top:9px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:11px;padding:10px;font-size:12px;line-height:1.4}
+.voice.recording{background:#fee4e2;color:#b42318;border-radius:13px;padding:12px 15px;font-weight:800;animation:qcPulse 1.4s ease-in-out infinite}
+@keyframes qcPulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+.saved{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+.saved>button:first-child{background:#fff;text-align:left;flex:1;min-width:160px}
+.dup{background:#eef2f7;color:#344054;border-radius:9px;padding:7px 11px;font-weight:700}
+
+.badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.02em;padding:3px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;text-transform:uppercase}
+.badge-draft{background:#eef2f7;color:#475467}
+.badge-sent{background:#eff8ff;color:#175cd3}
+.badge-viewed{background:#fff4ed;color:#b54708}
+.badge-accepted{background:#ecfdf3;color:#027a48}
+
+.shareRow{display:flex;gap:8px;flex-wrap:wrap}
+.shareRow button{flex:1}
+
+.shared{max-width:720px;margin:0 auto;padding:28px 16px 60px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828}
+.sharedCard{background:#fff;border:1px solid var(--line);border-radius:20px;padding:24px}
+.sharedHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+.sharedHead h1{margin:6px 0 10px;font-size:26px}
+.sharedHead p{margin:2px 0;color:#667085;font-size:14px}
+.sharedEyebrow{font-size:11px;font-weight:900;letter-spacing:.12em;color:#2f6df6}
+.sharedTable{width:100%;border-collapse:collapse;margin-top:8px}
+.sharedTable th,.sharedTable td{border-bottom:1px solid var(--line);padding:10px 6px;text-align:left;vertical-align:top;font-size:14px}
+.sharedTable th{font-size:11px;color:#667085;text-transform:uppercase}
+.sharedNote{font-size:12px;color:#667085;margin-top:4px}
+.sharedTotals{width:300px;margin:20px 0 0 auto}
+.sharedTotals div{display:flex;justify-content:space-between;padding:6px 0}
+.sharedTotals .grand{border-top:2px solid #101828;margin-top:6px;padding-top:12px;font-size:20px;font-weight:800}
+@media(max-width:600px){.sharedTotals{width:100%}.sharedHead{flex-direction:column}}
+@media print{.noPrint{display:none!important}}

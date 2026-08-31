@@ -1,13 +1,13 @@
 "use client";
 import {useEffect,useMemo,useRef,useState} from "react";
-import type {Estimate,Item,PriceRule,Unit} from "@/lib/types";
+import type {Estimate,EstimateStatus,Item,PriceRule,Unit} from "@/lib/types";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
-const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString()});
+const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
 
@@ -35,9 +35,12 @@ export default function QuoteCraftApp(){
  const [authLoading,setAuthLoading]=useState(true);
  const [recoveryMode,setRecoveryMode]=useState(false);
  const [newPassword,setNewPassword]=useState("");
+ const [transcribing,setTranscribing]=useState(false);
  const recognitionRef=useRef<any>(null);
  const baseRef=useRef("");
  const finalRef=useRef("");
+ const mediaRecorderRef=useRef<MediaRecorder|null>(null);
+ const audioChunksRef=useRef<Blob[]>([]);
 
  useEffect(()=>{setAll(load(EK,[]));setPrices(load(PK,defaults))},[]);
 
@@ -169,6 +172,8 @@ export default function QuoteCraftApp(){
          id:estimate.id,
          user_id:user.id,
          estimate_data:estimate,
+         share_token:estimate.shareToken??null,
+         status:estimate.status??"draft",
          updated_at:new Date().toISOString()
        }));
 
@@ -240,6 +245,8 @@ export default function QuoteCraftApp(){
      id:estimate.id,
      user_id:user.id,
      estimate_data:estimate,
+     share_token:estimate.shareToken??null,
+     status:estimate.status??"draft",
      updated_at:new Date().toISOString()
    }));
 
@@ -400,10 +407,30 @@ export default function QuoteCraftApp(){
 
  function start(){
   recognitionRef.current?.abort?.();
-  setCur(fresh());setPrompt("");setMessage("");setListening(false);setScreen("new");
+  mediaRecorderRef.current?.stop?.();
+  setCur(fresh());setPrompt("");setMessage("");setListening(false);setTranscribing(false);setScreen("new");
+ }
+
+ function needsRecorderFallback(){
+  if(typeof window==="undefined")return false;
+  const ua=navigator.userAgent||"";
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+  const w=window as typeof window&{SpeechRecognition?:unknown;webkitSpeechRecognition?:unknown};
+  const hasLiveApi=Boolean(w.SpeechRecognition||w.webkitSpeechRecognition);
+  return isIOS||!hasLiveApi;
  }
 
  function startVoice(){
+  if(needsRecorderFallback())startVoiceRecording();
+  else startVoiceLive();
+ }
+
+ function stopVoice(){
+  if(mediaRecorderRef.current)stopVoiceRecording();
+  else stopVoiceLive();
+ }
+
+ function startVoiceLive(){
   setMessage("");
   const w=window as typeof window&{SpeechRecognition?:new()=>any;webkitSpeechRecognition?:new()=>any};
   const Ctor=w.SpeechRecognition||w.webkitSpeechRecognition;
@@ -436,7 +463,58 @@ export default function QuoteCraftApp(){
   recognition.start();
  }
 
- function stopVoice(){recognitionRef.current?.stop?.();setListening(false)}
+ function stopVoiceLive(){recognitionRef.current?.stop?.();setListening(false)}
+
+ async function startVoiceRecording(){
+  setMessage("");
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const candidates=["audio/mp4","audio/webm;codecs=opus","audio/webm","audio/aac"];
+    const mimeType=candidates.find(t=>typeof MediaRecorder!=="undefined"&&MediaRecorder.isTypeSupported?.(t))||"";
+    const recorder=mimeType?new MediaRecorder(stream,{mimeType}):new MediaRecorder(stream);
+    mediaRecorderRef.current=recorder;
+    audioChunksRef.current=[];
+
+    recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)audioChunksRef.current.push(e.data)};
+    recorder.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      mediaRecorderRef.current=null;
+      setListening(false);
+
+      const blob=new Blob(audioChunksRef.current,{type:recorder.mimeType||"audio/mp4"});
+      audioChunksRef.current=[];
+
+      if(blob.size<800){setMessage("Запис надто короткий. Спробуй ще раз.");return}
+
+      setTranscribing(true);
+      try{
+        const ext=(recorder.mimeType||"").includes("webm")?"webm":(recorder.mimeType||"").includes("aac")?"aac":"mp4";
+        const form=new FormData();
+        form.append("audio",blob,`voice.${ext}`);
+
+        const response=await fetch("/api/transcribe",{method:"POST",body:form});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data?.error||"Не вдалося розпізнати мову.");
+
+        const text=String(data.text||"").trim();
+        if(text)setPrompt(p=>[p.trim(),text].filter(Boolean).join(" ").trim());
+        else setMessage("Не вдалося розпізнати мову. Спробуй ще раз, говорячи чіткіше.");
+      }catch(err){
+        setMessage(err instanceof Error?err.message:"Помилка транскрибування.");
+      }finally{
+        setTranscribing(false);
+      }
+    };
+
+    recorder.start();
+    setListening(true);
+  }catch{
+    setListening(false);
+    setMessage("Не вдалося отримати доступ до мікрофона. Дозволь доступ у Налаштування → Safari → Мікрофон.");
+  }
+ }
+
+ function stopVoiceRecording(){mediaRecorderRef.current?.stop?.()}
 
  async function generate(){
   if(!prompt.trim()){setMessage("Спочатку опиши роботу.");return}
@@ -482,6 +560,48 @@ export default function QuoteCraftApp(){
    if(!cur.items.length){setMessage("Немає позицій для збереження.");return}
    if(cur.items.some(i=>!i.description.trim()||i.quantity<=0||i.unitPrice<0)){setMessage("Перевір назву, кількість і ціну кожної позиції.");return}
    const next=[cur,...all.filter(e=>e.id!==cur.id)];saveAll(next);setScreen("saved");
+ };
+
+ const statusLabel=(s?:EstimateStatus)=>({draft:"Чернетка",sent:"Надіслано",viewed:"Переглянуто",accepted:"Прийнято"}[s||"draft"]);
+
+ const shareEstimate=async()=>{
+   if(!user){setMessage("Увійди в акаунт, щоб надіслати посилання клієнту.");return}
+   if(!cur.items.length){setMessage("Немає позицій для збереження.");return}
+   if(cur.items.some(i=>!i.description.trim()||i.quantity<=0||i.unitPrice<0)){setMessage("Перевір назву, кількість і ціну кожної позиції.");return}
+
+   const token=cur.shareToken||crypto.randomUUID();
+   const updated:Estimate={...cur,shareToken:token,status:cur.status==="accepted"?cur.status:"sent"};
+   setCur(updated);
+   const next=[updated,...all.filter(e=>e.id!==updated.id)];
+   await saveAll(next);
+
+   const link=`${window.location.origin}/e/${token}`;
+   let copied=false;
+   try{
+     await navigator.clipboard.writeText(link);
+     copied=true;
+   }catch{}
+
+   setMessage(copied?`Посилання для клієнта скопійовано: ${link}`:`Посилання для клієнта: ${link}`);
+
+   const nav=navigator as Navigator&{share?:(data:{title?:string;text?:string;url?:string})=>Promise<void>};
+   if(nav.share){
+     try{
+       await nav.share({title:updated.project||"Estimate",text:`Кошторис для ${updated.client||"клієнта"}`,url:link});
+     }catch{}
+   }
+ };
+
+ const duplicate=(estimate:Estimate)=>{
+   const copy:Estimate={
+     ...estimate,
+     id:crypto.randomUUID(),
+     createdAt:new Date().toISOString(),
+     shareToken:undefined,
+     status:"draft"
+   };
+   setCur(copy);
+   setScreen("new");
  };
 
 
@@ -735,15 +855,16 @@ export default function QuoteCraftApp(){
    </>}
 
    {screen==="new"&&<>
-    <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>New estimate</b><button onClick={start}>Clear</button></div>
+    <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>New estimate{cur.status&&cur.status!=="draft"&&<span className={`badge badge-${cur.status}`}>{statusLabel(cur.status)}</span>}</b><button onClick={start}>Clear</button></div>
     <section className="assistant noPrint">
       <div className="assisttitle"><span>✨</span><div><b>Опиши роботу простою мовою</b><small>Українська, English або змішано</small></div></div>
       <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Замінити кран на кухні, пофарбувати одну стіну, замінити вентилятор і покласти ламінат 35 square feet."/>
       {message&&<div className="statusMessage">{message}</div>}
       <div className="actions">
-       {!listening?<button className="secondary" onClick={startVoice}>🎤 Voice</button>:<button className="voice listening" onClick={stopVoice}>⏹ Stop</button>}
-       <button className="primary" onClick={generate} disabled={listening||thinking}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
+       {!listening?<button className="secondary" onClick={startVoice} disabled={transcribing}>{transcribing?"⏳ Розпізнаю…":"🎤 Voice"}</button>:<button className={mediaRecorderRef.current?"voice recording":"voice listening"} onClick={stopVoice}>{mediaRecorderRef.current?"⏹ Стоп і надіслати":"⏹ Stop"}</button>}
+       <button className="primary" onClick={generate} disabled={listening||thinking||transcribing}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
       </div>
+      {transcribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
     <section className="panel grid noPrint"><label>Client<input value={cur.client} onChange={e=>setCur({...cur,client:e.target.value})}/></label><label>Project<input value={cur.project} onChange={e=>setCur({...cur,project:e.target.value})}/></label><label className="wide">Address<input value={cur.address} onChange={e=>setCur({...cur,address:e.target.value})}/></label></section>
@@ -764,10 +885,11 @@ export default function QuoteCraftApp(){
 
     <section className="panel grid3 noPrint"><label>Discount, $<input type="number" value={cur.discount} onChange={e=>setCur({...cur,discount:Number(e.target.value)})}/></label><label>Tax, %<input type="number" value={cur.tax} onChange={e=>setCur({...cur,tax:Number(e.target.value)})}/></label><label>Deposit, %<input type="number" value={cur.deposit} onChange={e=>setCur({...cur,deposit:Number(e.target.value)})}/></label></section>
     <section className="total"><div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
+    {user&&<div className="shareRow noPrint"><button className="secondary" onClick={shareEstimate}>🔗 Copy client link</button></div>}
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
 
-   {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
+   {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
    {screen==="prices"&&<section className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p>{prices.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{unitLabel(r.unit)}</small></div><label>Rate<input type="number" min="0" step="0.01" value={r.rate} onChange={e=>savePrices(prices.map(x=>x.id===r.id?{...x,rate:Number(e.target.value)}:x))}/></label></article>)}<button className="secondary full" onClick={()=>savePrices(defaults)}>Reset default prices</button>
 
