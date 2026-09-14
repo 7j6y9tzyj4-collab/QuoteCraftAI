@@ -14,7 +14,7 @@ export const defaults:PriceRule[]=[
 {id:"shower_niche_tile_each",name:"Tile shower niche",aliases:["tile shower niche","install tile in niche","обкласти нішу плиткою","плитка в душовій ніші"],unit:"each",rate:250},
 {id:"shower_bench_build_each",name:"Build shower bench",aliases:["build shower bench","construct shower bench","frame shower bench","зробити лавку в душі","побудувати shower bench"],unit:"each",rate:650},
 {id:"shower_bench_tile_each",name:"Tile shower bench",aliases:["tile shower bench","install tile on shower bench","обкласти лавку плиткою","плитка на shower bench"],unit:"each",rate:350},
-{id:"bathroom_mirror_install_each",name:"Install bathroom mirror",aliases:["install bathroom mirror","install mirror","mount bathroom mirror","встановити дзеркало у ванній","повісити дзеркало"],unit:"each",rate:175},
+{id:"bathroom_mirror_install_each",name:"Install bathroom mirror",aliases:["install bathroom mirror","install mirror","mount bathroom mirror","встановити дзеркало у ванній","повісити дзеркало"],unit:"each",rate:75},
 {id:"medicine_cabinet_install_each",name:"Install medicine cabinet",aliases:["install medicine cabinet","mount medicine cabinet","встановити medicine cabinet","встановити шафку з дзеркалом"],unit:"each",rate:300},
 {id:"towel_warmer_install_each",name:"Install towel warmer",aliases:["install towel warmer","towel warmer installation","встановити рушникосушку","встановити towel warmer"],unit:"each",rate:250},
 {id:"toilet_paper_holder_install_each",name:"Install toilet paper holder",aliases:["install toilet paper holder","mount toilet paper holder","встановити тримач туалетного паперу"],unit:"each",rate:75},
@@ -25,7 +25,7 @@ export const defaults:PriceRule[]=[
 {id:"gfci_install_each",name:"Install GFCI outlet",aliases:["install gfci outlet","replace gfci outlet","gfci receptacle","встановити gfci розетку","замінити gfci"],unit:"each",rate:150},
 {id:"dimmer_install_each",name:"Install dimmer switch",aliases:["install dimmer switch","replace switch with dimmer","dimmer installation","встановити димер","замінити вимикач на димер"],unit:"each",rate:125},
 {id:"recessed_light_install_each",name:"Install recessed light",aliases:["install recessed light","install can light","install wafer light","встановити recessed light","встановити точковий світильник"],unit:"each",rate:150},
-{id:"vanity_light_install_each",name:"Install vanity light",aliases:["install vanity light","bathroom vanity light","mirror light installation","встановити світильник над дзеркалом","встановити vanity light"],unit:"each",rate:175},
+{id:"vanity_light_install_each",name:"Install vanity light",aliases:["install vanity light","bathroom vanity light","mirror light installation","встановити світильник над дзеркалом","встановити vanity light"],unit:"each",rate:125},
 {id:"bath_fan_install_each",name:"Install bathroom exhaust fan",aliases:["install bathroom exhaust fan","install bath fan","bathroom fan installation","встановити витяжний вентилятор у ванній"],unit:"each",rate:225},
 {id:"electrical_box_relocate_each",name:"Relocate electrical box",aliases:["relocate electrical box","move electrical box","move outlet box","перенести електричну коробку","перенести коробку розетки"],unit:"each",rate:200},
 {id:"new_circuit_each",name:"Add new electrical circuit",aliases:["add new circuit","run new circuit from panel","dedicated circuit","додати нову електричну лінію","провести нову лінію від щита"],unit:"each",rate:650},
@@ -106,5 +106,5 @@ export const defaults:PriceRule[]=[
 {id:"door_install",name:"Install interior door",aliases:["interior door","міжкімнатні двері","встановити двері"],unit:"each",rate:350},
 {id:"baseboard_install",name:"Install baseboard",aliases:["baseboard","плінтус"],unit:"linear_ft",rate:3.0645},
 {id:"garbage_disposal_replace",name:"Replace garbage disposal",aliases:["garbage disposal","подрібнювач відходів"],unit:"each",rate:250},
-{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:175}
+{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:125}
 ];

@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import type {Estimate,EstimateStatus,Item,PriceRule,Unit} from "@/lib/types";
 import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
+import PriceEditor from "@/components/PriceEditor";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
@@ -631,23 +632,17 @@ export default function QuoteCraftApp(){
    setMessage("Estimate видалено.");
  };
 
- const savePrices=async(x:PriceRule[])=>{
+ const savePrices=async(x:PriceRule[]):Promise<string>=>{
+   if(x.some(p=>!Number.isFinite(p.rate)||p.rate<0))throw new Error("Ціна має бути числом від 0 і вище.");
+   if(!user)throw new Error("Увійди в акаунт для збереження цін.");
+   const {error}=await supabase.from("user_prices").upsert({
+     user_id:user.id,prices_data:x,updated_at:new Date().toISOString()
+   },{onConflict:"user_id"}).abortSignal(AbortSignal.timeout(15000));
+   if(error)throw new Error("Не вдалося зберегти ціни в акаунті. Зміни залишилися у формі; спробуй ще раз. "+error.message);
    setPrices(x);
-   localStorage.setItem(PK,JSON.stringify(x));
-
-   if(!user)return;
-
-   const {error}=await supabase
-     .from("user_prices")
-     .upsert({
-       user_id:user.id,
-       prices_data:x,
-       updated_at:new Date().toISOString()
-     },{onConflict:"user_id"});
-
-   if(error){
-     setMessage("Ціни збережено на пристрої, але не в хмарі: "+error.message);
-   }
+   try{localStorage.setItem(PK,JSON.stringify(x))}
+   catch{return "Ціни збережено в акаунті. Локальна копія недоступна."}
+   return "Ціни збережено в акаунті.";
  };
  const value=(e:Estimate)=>e.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);
 
@@ -1344,7 +1339,7 @@ export default function QuoteCraftApp(){
 
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
-   {screen==="prices"&&<section className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p>{prices.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{unitLabel(r.unit)}</small></div><label>Rate<input type="number" min="0" step="0.01" value={r.rate} onChange={e=>savePrices(prices.map(x=>x.id===r.id?{...x,rate:Number(e.target.value)}:x))}/></label></article>)}<button className="secondary full" onClick={()=>savePrices(defaults)}>Reset default prices</button>
+   {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
 
 <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
   <span className="eyebrow">ACCOUNT</span>
