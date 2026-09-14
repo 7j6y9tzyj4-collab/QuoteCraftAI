@@ -2,7 +2,11 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import type {Estimate,EstimateStatus,Item,PriceRule,Unit} from "@/lib/types";
 import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
+import PhotoMeasurements from "@/components/PhotoMeasurements";
+import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
+import {validPrice,bounds} from "@/lib/priceCatalog";
+import ServicePicker from "@/components/ServicePicker";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
@@ -633,7 +637,7 @@ export default function QuoteCraftApp(){
  };
 
  const savePrices=async(x:PriceRule[]):Promise<string>=>{
-   if(x.some(p=>!Number.isFinite(p.rate)||p.rate<0))throw new Error("Ціна має бути числом від 0 і вище.");
+   if(x.some(p=>!validPrice(p)))throw new Error("Ціна має бути числом від 0 і вище.");
    if(!user)throw new Error("Увійди в акаунт для збереження цін.");
    const {error}=await supabase.from("user_prices").upsert({
      user_id:user.id,prices_data:x,updated_at:new Date().toISOString()
@@ -884,7 +888,7 @@ export default function QuoteCraftApp(){
   finally{setPhotoBusy(false)}
  }
 
- async function generate(){
+ async function generate(measurementNotes?:string){
   const revision=jobRevision.current;
   if(!prompt.trim()&&!photos.length){setMessage("Спочатку опиши роботу.");return}
   setThinking(true);setMessage("");
@@ -892,7 +896,7 @@ export default function QuoteCraftApp(){
     const response=await fetch("/api/parse-estimate",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text:prompt,prices,photos:photos.map(p=>p.dataUrl)})
+      body:JSON.stringify({text:prompt,prices,photos:photos.map(p=>p.dataUrl),measurementNotes:measurementNotes||""})
     });
     const data=await response.json();
     if(!response.ok)throw new Error(data?.error||"AI request failed.");
@@ -916,7 +920,7 @@ export default function QuoteCraftApp(){
       };
     });
 
-    setCur(c=>({...c,items}));
+    setCur(c=>({...c,items,preliminary:Boolean(measurementNotes),measurementNotes:measurementNotes||undefined}));
     const custom=items.filter(i=>i.unitPrice===0).length;
     setMessage(custom?`${custom} робіт не знайдено в бібліотеці цін — перевір їх вручну.`:"AI розібрав опис. Перевір позиції та ціни.");
   }catch(error){
@@ -1051,6 +1055,7 @@ export default function QuoteCraftApp(){
    </head>
    <body>
      <h1>${esc(cur.project||"Estimate")}</h1>
+     ${cur.preliminary?`<p><strong>${esc(PRELIMINARY_NOTE)}</strong></p><p style="white-space:pre-wrap">${esc(cur.measurementNotes)}</p>`:""}
 
      <div class="meta">
        ${cur.client?`<div><strong>Client:</strong> ${esc(cur.client)}</div>`:""}
@@ -1241,17 +1246,21 @@ export default function QuoteCraftApp(){
       <div className="actions">
        <button className="secondary" disabled={photoBusy||thinking||photos.length>=4} onClick={()=>photoInput.current?.click()}>{photoBusy?"Готую фото…":"📷 Додати фото"}</button>
        {!listening?<button className="secondary" onClick={startVoice} disabled={transcribing||thinking}>{transcribing?"⏳ Розпізнаю…":"🎤 Voice"}</button>:<button className={mediaRecorderRef.current?"voice recording":"voice listening"} onClick={stopVoice}>{mediaRecorderRef.current?"⏹ Стоп і надіслати":"⏹ Stop"}</button>}
-       <button className="primary" onClick={generate} disabled={listening||thinking||transcribing||photoBusy}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
+       <button className="primary" onClick={()=>generate()} disabled={listening||thinking||transcribing||photoBusy}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
       </div>
+      {photos.length>0&&<PhotoMeasurements key={cur.id+prompt+photos.map(p=>p.id).join("|")} text={prompt} photos={photos.map(p=>p.dataUrl)} disabled={thinking||listening||transcribing||photoBusy} onApprove={notes=>void generate(notes)}/>}
       <p className="recHint">До 4 фото. Фото надсилаються на аналіз разом з описом і не зберігаються в кошторисі. Запис — до 90 секунд; далі можна додиктувати.</p>
       {transcribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
     <section className="panel grid noPrint"><label>Client<input value={cur.client} onChange={e=>setCur({...cur,client:e.target.value})}/></label><label>Project<input value={cur.project} onChange={e=>setCur({...cur,project:e.target.value})}/></label><label className="wide">Address<input value={cur.address} onChange={e=>setCur({...cur,address:e.target.value})}/></label></section>
 
+    {cur.preliminary&&<section className="panel"><b>Попередній кошторис — потрібні заміри на обʼєкті</b><p>{PRELIMINARY_NOTE}</p><details><summary>Підтверджені приблизні розміри</summary><p style={{whiteSpace:"pre-wrap"}}>{cur.measurementNotes}</p></details></section>}
     <section className="panel"><div className="head"><h2>Scope & pricing</h2><button className="add noPrint" onClick={add}>＋ Add item</button></div>
+      <ServicePicker prices={prices} onSelect={p=>setCur(c=>({...c,items:[...c.items,{id:crypto.randomUUID(),serviceId:p.id,description:p.name,quantity:1,unit:p.unit,unitPrice:p.rate}]}))}/>
       {cur.items.length===0?<p className="empty">AI-позиції з’являться тут.</p>:cur.items.map(i=><article className="item" key={i.id}>
        <div className="itemtop"><input value={i.description} onChange={e=>update(i.id,{description:e.target.value})}/><button className="remove noPrint" onClick={()=>remove(i.id)}>×</button></div>
+       {prices.find(p=>p.id===i.serviceId)&&<p className="muted noPrint">Діапазон у Prices: ${bounds(prices.find(p=>p.id===i.serviceId)!).min}–${bounds(prices.find(p=>p.id===i.serviceId)!).max} / {unitLabel(i.unit)}. Нижче — вибрана ціна для цього кошторису.</p>}
        {i.note&&<div className="itemNote">ℹ {i.note}</div>}
        {typeof i.confidence==="number"&&i.confidence<.7&&<div className="itemWarning">⚠ Low confidence — verify this item.</div>}
        <div className="itemgrid">

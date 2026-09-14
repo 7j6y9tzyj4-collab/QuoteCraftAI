@@ -8,7 +8,7 @@ global.window={addEventListener(){},removeEventListener(){}};
 function read(file){
  const name=path.resolve(file),m=new Module(name,module);m.paths=module.paths;
  const original=m.require.bind(m);
- m.require=id=>id==='react'?React:id==='react/jsx-runtime'?require(path.join(deps,'react/jsx-runtime')):id==='@/lib/defaults'?read('lib/defaults.ts'):original(id);
+ m.require=id=>id==='react'?React:id==='react/jsx-runtime'?require(path.join(deps,'react/jsx-runtime')):id.startsWith('@/lib/')?read(id.replace('@/', '')+'.ts'):original(id);
  m._compile(ts.transpileModule(fs.readFileSync(name,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText,name);return m.exports;
 }
 const Editor=read('components/PriceEditor.tsx').default,defaults=read('lib/defaults.ts').defaults;

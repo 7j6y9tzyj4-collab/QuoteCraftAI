@@ -20,6 +20,8 @@ export type Estimate={
   tax:number;
   deposit:number;
   createdAt:string;
+  preliminary?:boolean;
+  measurementNotes?:string;
   shareToken?:string;
   status?:EstimateStatus;
 };
@@ -29,4 +31,7 @@ export type PriceRule={
   aliases:string[];
   unit:Unit;
   rate:number;
+  rateMin?:number;
+  rateMax?:number;
+  category?:string;
 };

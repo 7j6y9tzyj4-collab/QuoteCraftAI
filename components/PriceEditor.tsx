@@ -1,6 +1,8 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import type {PriceRule} from "@/lib/types";
+import {chicagoPrices,applyChicagoPrices} from "@/lib/chicagoPrices";
+import {categories,categoryOf,bounds,validPrice,matches} from "@/lib/priceCatalog";
 import {defaults} from "@/lib/defaults";
 
 type Props={prices:PriceRule[];onSave:(prices:PriceRule[])=>Promise<string>};
@@ -8,6 +10,8 @@ const copy=(prices:PriceRule[])=>prices.map(p=>({...p,aliases:[...p.aliases]}));
 const recommended=new Set(["bathroom_mirror_install_each","vanity_light_install_each","light_fixture_replace"]);
 
 export default function PriceEditor({prices,onSave}:Props){
+ const [query,setQuery]=useState("");
+ const [category,setCategory]=useState("");
  const [draft,setDraft]=useState(()=>copy(prices));
  const [dirty,setDirty]=useState(false);
  const [saving,setSaving]=useState(false);
@@ -25,8 +29,8 @@ export default function PriceEditor({prices,onSave}:Props){
  function replace(next:PriceRule[]){setDraft(copy(next));setDirty(true);setStatus("");setInvalid([])}
  async function save(){
   if(saving)return;
-  if(invalid.length||draft.some(p=>!Number.isFinite(p.rate)||p.rate<0)){
-   setStatus("Заповни всі ціни: число від 0 і вище.");return;
+  if(invalid.length||draft.some(p=>!validPrice(p))){
+   setStatus("Перевір ціни: 0 ≤ від ≤ вибрана ставка ≤ до. Перевір також приховані пошуком позиції.");return;
   }
   setSaving(true);setStatus("");
   try{
@@ -38,16 +42,29 @@ export default function PriceEditor({prices,onSave}:Props){
  return <div>
   <p className="muted">Ставки для New estimate. Редагуй ціни й натисни «Зберегти ціни». Уже створені кошториси не перераховуються.</p>
   <p className="muted">Базові ставки: готове дзеркало — $75; звичайний світильник на готовому підключенні — $125. Нова проводка та складний монтаж рахуються окремо. Це узгоджені ставки, а не автоматична синхронізація з Homewyse.</p>
+  <details><summary>Звідки беруться ціни Чикаго</summary><p>Перевірені прайси місцевих handyman-компаній: Homer Fixed It та 5 Talents Renovations (у профілі Thumbtack вказано одного працівника). Це окремі пропозиції, а не статистика всього ринку. Перевірено 14.09.2026; оновлення не автоматичне.</p><p>У Homer мінімальний виїзд $250 — це умова тієї компанії, не доплата до кожної позиції нашого кошторису. Свої умови виїзду враховуй окремо. Неперевірені ставки не видаються за ціни з сайтів.</p></details>
+  <button className="secondary full" disabled={saving} onClick={()=>replace(applyChicagoPrices(draft))}>Застосувати перевірені ставки Чикаго (14 позицій)</button>
   <div className="actions">
-   <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>recommended.has(p.id)?{...p,rate:defaults.find(d=>d.id===p.id)!.rate}:p))}>Застосувати $75 / $125</button>
+   <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>recommended.has(p.id)?{...p,rate:defaults.find(d=>d.id===p.id)!.rate,rateMin:undefined,rateMax:undefined}:p))}>Застосувати $75 / $125</button>
    <button className="primary" disabled={saving||!dirty||invalid.length>0} onClick={save}>{saving?"Зберігаю…":"Зберегти ціни"}</button>
   </div>
   <p role="status" aria-live="polite">{status||(dirty?"Є незбережені зміни.":"Показано збережені ціни.")}</p>
-  {draft.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small>{r.unit}</small></div><label>Ціна, $<input aria-label={`Ціна: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={invalid.includes(r.id)?"":r.rate} onChange={e=>{
-   const raw=e.target.value;const rate=Number(raw);
-   setInvalid(v=>raw===""||!Number.isFinite(rate)||rate<0?[...v.filter(id=>id!==r.id),r.id]:v.filter(id=>id!==r.id));
-   setDraft(v=>v.map(p=>p.id===r.id?{...p,rate}:p));setDirty(true);setStatus("");
-  }}/></label></article>)}
+  <p className="muted">Діапазон — твій орієнтир за одиницю роботи. «Вибрана ставка» використовується у новому кошторисі. Старі ставки без діапазону показані як від = до.</p>
+  <div className="grid"><label>Пошук роботи<input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Фарбування, paint, розетка…"/></label><label>Категорія<select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Усі категорії</option>{Array.from(new Set([...categories,...draft.map(categoryOf)])).map(c=><option key={c}>{c}</option>)}</select></label></div>
+  {!draft.some(r=>(!category||categoryOf(r)===category)&&matches(r,query))&&<p>Нічого не знайдено. Зміни пошук або категорію.</p>}
+  {Array.from(new Set([...categories,...draft.map(categoryOf)])).filter(c=>!category||c===category).map(c=>{
+   const rows=draft.filter(r=>categoryOf(r)===c&&matches(r,query));
+   return rows.length>0&&<section key={c}><h3>{c} · {rows.length}</h3>{rows.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small style={{display:"block"}}>{r.aliases.find(a=>/[а-яіїєґ]/i.test(a))} · {r.unit}</small><b>${bounds(r).min}–${bounds(r).max}</b>
+   <label>Категорія<select disabled={saving} value={categoryOf(r)} onChange={e=>replace(draft.map(p=>p.id===r.id?{...p,category:e.target.value}:p))}>{Array.from(new Set([...categories,categoryOf(r)])).map(c=><option key={c}>{c}</option>)}</select></label>
+   {chicagoPrices[r.id]?<small style={{display:"block"}}><a href={chicagoPrices[r.id].url} target="_blank" rel="noreferrer">{chicagoPrices[r.id].source}</a> · прайс джерела: ${chicagoPrices[r.id].low}–${chicagoPrices[r.id].high}<br/>{chicagoPrices[r.id].scope}</small>:<small>Власна / базова ставка; ринкове джерело не перевірене.</small>}
+   {!validPrice(r)&&<p role="alert">Потрібно: від ≤ вибрана ставка ≤ до.</p>}</div><div>
+   {(["rateMin","rateMax","rate"] as const).map(field=><label key={field}>{field==="rateMin"?"Від, $":field==="rateMax"?"До, $":"Вибрана ставка, $"}<input aria-label={`${field}: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={invalid.includes(r.id+field)?"":field==="rate"?r.rate:field==="rateMin"?bounds(r).min:bounds(r).max} onChange={e=>{
+    const raw=e.target.value;const value=Number(raw);const key=r.id+field;
+    setInvalid(v=>raw===""||!Number.isFinite(value)||value<0?[...v.filter(id=>id!==key),key]:v.filter(id=>id!==key));
+    setDraft(v=>v.map(p=>p.id===r.id?{...p,rateMin:bounds(p).min,rateMax:bounds(p).max,[field]:value}:p));setDirty(true);setStatus("");
+   }}/></label>)}
+   </div></article>)}</section>;
+  })}
   <div className="actions">
    <button className="primary" disabled={saving||!dirty||invalid.length>0} onClick={save}>{saving?"Зберігаю…":"Зберегти ціни"}</button>
    <button className="secondary" disabled={saving||!dirty} onClick={()=>{setDraft(copy(prices));setDirty(false);setInvalid([]);setStatus("")}}>Скасувати зміни</button>

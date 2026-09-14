@@ -14,11 +14,16 @@ function route(file){
   const filename=path.resolve(file);
   const mod=new Module(filename,module);mod.filename=filename;mod.paths=module.paths;
   const original=mod.require.bind(mod);
-  mod.require=name=>name==='openai'?MockOpenAI:original(name);
+  mod.require=name=>name==='openai'?MockOpenAI:name==='@/lib/photoMeasurements'?helpers():original(name);
   mod._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}
   }).outputText,filename);
   return mod.exports.POST;
+}
+function helpers(){
+ const filename=path.resolve('lib/photoMeasurements.ts');
+ const m=new Module(filename,module);m.paths=module.paths;
+ m._compile(ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,filename);return m.exports;
 }
 async function main(){
   const parse=route('app/api/parse-estimate/route.ts');
@@ -38,6 +43,9 @@ async function main(){
   nextResult={items:[{serviceId:'CUSTOM',description:'Labor including painting',quantity:1,unit:'each',note:'Client supplies tile.',confidence:1,explicitRate:4000}],questions:[]};
   const fixed=await (await parse(request({text:'Paint room 25 by 18 feet height 8. Total labor 4000.'}))).json();
   assert.deepEqual(fixed,nextResult,'fixed labor must not be overwritten or double charged');
+  nextResult={items:[{serviceId:'paint_walls_sqft',description:'Paint reviewed wall',quantity:54,unit:'sqft',note:'Approximate',confidence:.6,explicitRate:null}],questions:[]};
+  const reviewed=await (await parse(request({text:'Paint room 25 by 18 feet height 8.',measurementNotes:'Reviewed wall length 9 ft width 6 ft gross rectangular area 54 sq ft.'}))).json();
+  assert.deepEqual(reviewed,nextResult,'reviewed surface must bypass whole-room override');
   nextResult={items:[],questions:['Що потрібно зробити на фото?']};
   assert.deepEqual(await (await parse(request({photos:['data:image/jpeg;base64,YQ==']}))).json(),nextResult);
   const form=new FormData();form.append('audio',new Blob([new Uint8Array(3*1024*1024+1)]),'voice.mp4');

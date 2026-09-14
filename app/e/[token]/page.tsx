@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Estimate, Unit } from "@/lib/types";
+import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PrintButton from "./PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,7 @@ export default async function SharedEstimatePage({
           <div>
             <span className="sharedEyebrow">ESTIMATE</span>
             <h1>{estimate.project || "Estimate"}</h1>
+            {estimate.preliminary&&<><p><strong>{PRELIMINARY_NOTE}</strong></p><p style={{whiteSpace:"pre-wrap"}}>{estimate.measurementNotes}</p></>}
             {estimate.client && <p>Client: {estimate.client}</p>}
             {estimate.address && <p>{estimate.address}</p>}
           </div>
