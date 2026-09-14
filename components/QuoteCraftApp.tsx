@@ -1,15 +1,21 @@
 "use client";
 import {useEffect,useMemo,useRef,useState} from "react";
 import type {Estimate,EstimateStatus,Item,PriceRule,Unit} from "@/lib/types";
+import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
+import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/calcTypes";
+import {calcDefaults} from "@/lib/calcPricing";
+import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
 
-const EK="qc-estimates-v1",PK="qc-prices-v1";
+const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CDK="qc-calc-draft-v1";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
+const DEFAULT_CALC_NOTES="This estimate is based on the information provided and a verbal description of the project. It does not include hidden or unforeseen damage, permits or inspection fees, or upgrades beyond the materials described. Final price may vary if conditions differ from what was described. Prices are valid for 30 days.";
+const freshCalcDraft=():CalcDraft=>({items:[],client:"",project:"",locationMultiplier:1,notes:DEFAULT_CALC_NOTES});
 
 type AIItem={
   serviceId:string;
@@ -18,14 +24,28 @@ type AIItem={
   unit:Unit;
   note:string|null;
   confidence:number;
+  explicitRate?:number|null;
 };
 
 export default function QuoteCraftApp(){
- const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices">("home");
+ const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices"|"calc">("home");
  const [all,setAll]=useState<Estimate[]>([]);
  const [prices,setPrices]=useState<PriceRule[]>(defaults);
  const [cur,setCur]=useState<Estimate>(fresh());
  const [prompt,setPrompt]=useState("");
+ const [photos,setPhotos]=useState<JobPhoto[]>([]);
+ const [photoBusy,setPhotoBusy]=useState(false);
+ const [questions,setQuestions]=useState<string[]>([]);
+ const jobRevision=useRef(0);
+ const photoInput=useRef<HTMLInputElement>(null);
+ useEffect(()=>{
+   jobRevision.current++;
+   setPhotos([]);setQuestions([]);setPrompt("");
+   return ()=>{
+     jobRevision.current++;
+     if(mediaRecorderRef.current?.state==="recording")mediaRecorderRef.current.stop();
+   };
+ },[cur.id]);
  const [thinking,setThinking]=useState(false);
  const [listening,setListening]=useState(false);
  const [message,setMessage]=useState("");
@@ -42,7 +62,338 @@ export default function QuoteCraftApp(){
  const mediaRecorderRef=useRef<MediaRecorder|null>(null);
  const audioChunksRef=useRef<Blob[]>([]);
 
- useEffect(()=>{setAll(load(EK,[]));setPrices(load(PK,defaults))},[]);
+ const [calcTasks,setCalcTasks]=useState<CalcTask[]>(calcDefaults);
+ const [calcItems,setCalcItems]=useState<CalcItem[]>([]);
+ const [calcClient,setCalcClient]=useState("");
+ const [calcProject,setCalcProject]=useState("");
+ const [calcLocationMultiplier,setCalcLocationMultiplier]=useState(1);
+ const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
+ const [calcPrompt,setCalcPrompt]=useState("");
+ const [calcThinking,setCalcThinking]=useState(false);
+ const [calcListening,setCalcListening]=useState(false);
+ const [calcTranscribing,setCalcTranscribing]=useState(false);
+ const [calcMessage,setCalcMessage]=useState("");
+ const [showCalcPricing,setShowCalcPricing]=useState(false);
+ const calcRecognitionRef=useRef<any>(null);
+ const calcBaseRef=useRef("");
+ const calcFinalRef=useRef("");
+ const calcMediaRecorderRef=useRef<MediaRecorder|null>(null);
+ const calcAudioChunksRef=useRef<Blob[]>([]);
+
+ useEffect(()=>{
+   setAll(load(EK,[]));
+   setPrices(load(PK,defaults));
+   setCalcTasks(load(CK,calcDefaults));
+   const draft=load<CalcDraft>(CDK,freshCalcDraft());
+   setCalcItems(draft.items||[]);
+   setCalcClient(draft.client||"");
+   setCalcProject(draft.project||"");
+   setCalcLocationMultiplier(draft.locationMultiplier??1);
+   setCalcNotes(draft.notes??DEFAULT_CALC_NOTES);
+ },[]);
+
+ useEffect(()=>{
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes};
+   localStorage.setItem(CDK,JSON.stringify(draft));
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes]);
+
+ const calcCategories=useMemo(()=>Array.from(new Set(calcTasks.map(t=>t.category))),[calcTasks]);
+ const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier),[calcItems,calcLocationMultiplier]);
+
+ const saveCalcTasks=(x:CalcTask[])=>{setCalcTasks(x);localStorage.setItem(CK,JSON.stringify(x))};
+
+ function applyCalcTask(item:CalcItem,task:CalcTask):CalcItem{
+   return{
+     ...item,
+     taskId:task.id,
+     name:task.name,
+     category:task.category,
+     unit:task.unit,
+     laborRate:task.laborRate,
+     materialRate:task.materialRate,
+     suppliesPct:task.suppliesPct,
+     suppliesFixed:task.suppliesFixed,
+     minPrice:task.minPrice,
+     difficultyMultipliers:task.difficultyMultipliers,
+     lowMult:task.lowMult,
+     highMult:task.highMult,
+     notes:task.notes
+   };
+ }
+
+ function updateCalcItem(id:string,patch:Partial<CalcItem>){
+   setCalcItems(items=>items.map(it=>{
+     if(it.id!==id)return it;
+     let next={...it,...patch};
+     if(patch.taskId&&patch.taskId!==it.taskId){
+       const task=calcTasks.find(t=>t.id===patch.taskId);
+       if(task)next=applyCalcTask(next,task);
+     }
+     return next;
+   }));
+ }
+
+ function removeCalcItem(id:string){
+   setCalcItems(items=>items.filter(it=>it.id!==id));
+ }
+
+ function addCalcItem(){
+   const task=calcTasks[0];
+   if(!task)return;
+   const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:"",category:"",unit:"each",quantity:1,difficulty:"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:""};
+   setCalcItems(items=>[...items,applyCalcTask(blank,task)]);
+ }
+
+ function clearCalc(){
+   if(calcItems.length&&!confirm("Почати новий розрахунок? Поточний буде очищено."))return;
+   setCalcItems([]);setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");
+ }
+
+ function needsCalcRecorderFallback(){
+  if(typeof window==="undefined")return false;
+  const ua=navigator.userAgent||"";
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+  const w=window as typeof window&{SpeechRecognition?:unknown;webkitSpeechRecognition?:unknown};
+  const hasLiveApi=Boolean(w.SpeechRecognition||w.webkitSpeechRecognition);
+  return isIOS||!hasLiveApi;
+ }
+
+ function startCalcVoice(){
+  if(needsCalcRecorderFallback())startCalcVoiceRecording();
+  else startCalcVoiceLive();
+ }
+
+ function stopCalcVoice(){
+  if(calcMediaRecorderRef.current)stopCalcVoiceRecording();
+  else stopCalcVoiceLive();
+ }
+
+ function startCalcVoiceLive(){
+  setCalcMessage("");
+  const w=window as typeof window&{SpeechRecognition?:new()=>any;webkitSpeechRecognition?:new()=>any};
+  const Ctor=w.SpeechRecognition||w.webkitSpeechRecognition;
+  if(!Ctor){setCalcMessage("Цей браузер не підтримує Voice. На Mac відкрий сайт у Chrome.");return}
+
+  const recognition=new Ctor();
+  calcRecognitionRef.current=recognition;
+  calcBaseRef.current=calcPrompt.trim();
+  calcFinalRef.current="";
+  recognition.lang="uk-UA";
+  recognition.continuous=true;
+  recognition.interimResults=true;
+
+  recognition.onstart=()=>setCalcListening(true);
+  recognition.onresult=(event:any)=>{
+    let interim="";
+    for(let i=event.resultIndex;i<event.results.length;i++){
+      const part=String(event.results[i][0].transcript||"").trim();
+      if(event.results[i].isFinal)calcFinalRef.current=(calcFinalRef.current+" "+part).trim();
+      else interim=(interim+" "+part).trim();
+    }
+    const spoken=[calcFinalRef.current,interim].filter(Boolean).join(" ");
+    setCalcPrompt([calcBaseRef.current,spoken].filter(Boolean).join(" ").trim());
+  };
+  recognition.onerror=(e:any)=>{
+    setCalcListening(false);
+    if(e?.error!=="aborted")setCalcMessage("Microphone error: "+String(e?.error||"unknown"));
+  };
+  recognition.onend=()=>{setCalcListening(false);calcRecognitionRef.current=null};
+  recognition.start();
+ }
+
+ function stopCalcVoiceLive(){calcRecognitionRef.current?.stop?.();setCalcListening(false)}
+
+ async function startCalcVoiceRecording(){
+  setCalcMessage("");
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const candidates=["audio/mp4","audio/webm;codecs=opus","audio/webm","audio/aac"];
+    const mimeType=candidates.find(t=>typeof MediaRecorder!=="undefined"&&MediaRecorder.isTypeSupported?.(t))||"";
+    const recorder=mimeType?new MediaRecorder(stream,{mimeType}):new MediaRecorder(stream);
+    calcMediaRecorderRef.current=recorder;
+    calcAudioChunksRef.current=[];
+
+    recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)calcAudioChunksRef.current.push(e.data)};
+    recorder.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      calcMediaRecorderRef.current=null;
+      setCalcListening(false);
+
+      const blob=new Blob(calcAudioChunksRef.current,{type:recorder.mimeType||"audio/mp4"});
+      calcAudioChunksRef.current=[];
+
+      if(blob.size<800){setCalcMessage("Запис надто короткий. Спробуй ще раз.");return}
+
+      setCalcTranscribing(true);
+      try{
+        const ext=(recorder.mimeType||"").includes("webm")?"webm":(recorder.mimeType||"").includes("aac")?"aac":"mp4";
+        const form=new FormData();
+        form.append("audio",blob,`voice.${ext}`);
+
+        const response=await fetch("/api/transcribe",{method:"POST",body:form});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data?.error||"Не вдалося розпізнати мову.");
+
+        const text=String(data.text||"").trim();
+        if(text)setCalcPrompt(p=>[p.trim(),text].filter(Boolean).join(" ").trim());
+        else setCalcMessage("Не вдалося розпізнати мову. Спробуй ще раз, говорячи чіткіше.");
+      }catch(err){
+        setCalcMessage(err instanceof Error?err.message:"Помилка транскрибування.");
+      }finally{
+        setCalcTranscribing(false);
+      }
+    };
+
+    recorder.start(1000);
+    setCalcListening(true);
+  }catch{
+    setCalcListening(false);
+    setCalcMessage("Не вдалося отримати доступ до мікрофона. Дозволь доступ у Налаштування → Safari → Мікрофон.");
+  }
+ }
+
+ function stopCalcVoiceRecording(){calcMediaRecorderRef.current?.stop?.()}
+
+ async function generateCalc(){
+  if(!calcPrompt.trim()){setCalcMessage("Спочатку опиши роботу.");return}
+  setCalcThinking(true);setCalcMessage("");
+  try{
+    const response=await fetch("/api/parse-calculator-estimate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text:calcPrompt,tasks:calcTasks})
+    });
+    const data=await response.json();
+    if(!response.ok)throw new Error(data?.error||"AI request failed.");
+
+    const aiItems=(data.items||[]) as CalcAIItem[];
+    const items:CalcItem[]=aiItems.map(ai=>{
+      const task=calcTasks.find(t=>t.id===ai.taskId);
+      const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
+      if(!task)return blank;
+      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",note:ai.note||undefined,confidence:ai.confidence};
+    });
+
+    setCalcItems(items);
+    const custom=items.filter(i=>!i.taskId).length;
+    setCalcMessage(custom?`${custom} робіт не знайдено в бібліотеці цін — оберіть завдання вручну.`:"AI розібрав опис. Перевір позиції, кількість і складність.");
+  }catch(error){
+    setCalcMessage(error instanceof Error?error.message:"AI error.");
+  }finally{
+    setCalcThinking(false);
+  }
+ }
+
+ function calcEstimateAsText(){
+   const lines:string[]=[];
+   lines.push("CONSTRUCTION ESTIMATE");
+   lines.push("======================");
+   lines.push("Client: "+(calcClient||"—"));
+   lines.push("Project: "+(calcProject||"—"));
+   lines.push("Location multiplier: "+calcLocationMultiplier);
+   lines.push("");
+   lines.push("LINE ITEMS");
+   lines.push("----------");
+   calcItems.forEach(li=>{
+     const c=computeCalcLine(li,calcLocationMultiplier);
+     lines.push(`${li.name} — ${li.quantity} ${unitLabel(li.unit)} (${li.difficulty})  →  ${money(c.lineTotal)}  [range ${money(c.low)}–${money(c.high)}]`);
+     if(li.note)lines.push("   note: "+li.note);
+   });
+   lines.push("");
+   lines.push("TOTALS");
+   lines.push("------");
+   lines.push("Labor: "+money(calcTotalsValue.labor));
+   lines.push("Materials: "+money(calcTotalsValue.materials));
+   lines.push("Supplies/equipment: "+money(calcTotalsValue.supplies));
+   lines.push("Subtotal: "+money(calcTotalsValue.lineTotal));
+   lines.push("Estimated range: "+money(calcTotalsValue.low)+" – "+money(calcTotalsValue.high));
+   lines.push("");
+   lines.push("NOTES / EXCLUSIONS");
+   lines.push("-------------------");
+   lines.push(calcNotes||"");
+   return lines.join("\n");
+ }
+
+ function copyCalcAsText(){
+   const text=calcEstimateAsText();
+   if(navigator.clipboard&&navigator.clipboard.writeText){
+     navigator.clipboard.writeText(text).then(
+       ()=>setCalcMessage("Кошторис скопійовано як текст."),
+       ()=>setCalcMessage(text)
+     );
+   }else{
+     setCalcMessage(text);
+   }
+ }
+
+ function printCalcEstimate(){
+   const printWindow=window.open("","_blank");
+   if(!printWindow){
+     alert("Safari заблокував нове вікно. Дозвольте pop-ups і спробуйте ще раз.");
+     return;
+   }
+
+   const esc=(value:unknown)=>String(value??"")
+     .replace(/&/g,"&amp;")
+     .replace(/</g,"&lt;")
+     .replace(/>/g,"&gt;")
+     .replace(/"/g,"&quot;")
+     .replace(/'/g,"&#039;");
+
+   const rows=calcItems.map(li=>{
+     const c=computeCalcLine(li,calcLocationMultiplier);
+     return`
+     <tr>
+       <td><strong>${esc(li.name)}</strong>${li.note?`<div class="note">${esc(li.note)}</div>`:""}</td>
+       <td>${esc(li.quantity)} ${esc(unitLabel(li.unit))}</td>
+       <td>${esc(li.difficulty)}</td>
+       <td>${esc(money(c.lineTotal))}</td>
+     </tr>`;
+   }).join("");
+
+   const html=`
+   <!doctype html>
+   <html>
+   <head>
+     <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width,initial-scale=1">
+     <title>${esc(calcProject||"Estimate")}</title>
+     <style>
+       body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828;margin:0;padding:24px}
+       h1{margin:0 0 8px}
+       .meta{line-height:1.6;margin-bottom:22px}
+       table{width:100%;border-collapse:collapse}
+       th,td{border-bottom:1px solid #d0d5dd;padding:10px 5px;text-align:left;vertical-align:top}
+       th{font-size:12px;color:#475467}
+       .note{font-size:11px;color:#667085;margin-top:4px}
+       .totals{width:290px;margin:24px 0 0 auto}
+       .totals div{display:flex;justify-content:space-between;padding:6px 0}
+       .grand{border-top:2px solid #101828;margin-top:6px;padding-top:12px!important;font-size:20px;font-weight:800}
+       @media print{body{padding:0}}
+     </style>
+   </head>
+   <body>
+     <h1>${esc(calcProject||"Estimate")}</h1>
+     <div class="meta">${calcClient?`<div><strong>Client:</strong> ${esc(calcClient)}</div>`:""}</div>
+     <table>
+       <thead><tr><th>Description</th><th>Quantity</th><th>Difficulty</th><th>Total</th></tr></thead>
+       <tbody>${rows}</tbody>
+     </table>
+     <div class="totals">
+       <div><span>Labor</span><span>${esc(money(calcTotalsValue.labor))}</span></div>
+       <div><span>Materials</span><span>${esc(money(calcTotalsValue.materials))}</span></div>
+       <div><span>Supplies</span><span>${esc(money(calcTotalsValue.supplies))}</span></div>
+       <div class="grand"><span>Subtotal</span><span>${esc(money(calcTotalsValue.lineTotal))}</span></div>
+       <div><strong>Estimated range</strong><strong>${esc(money(calcTotalsValue.low))} – ${esc(money(calcTotalsValue.high))}</strong></div>
+     </div>
+     <script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</script>
+   </body>
+   </html>`;
+
+   printWindow.document.open();
+   printWindow.document.write(html);
+   printWindow.document.close();
+ }
 
  useEffect(()=>{
    let active=true;
@@ -406,6 +757,7 @@ export default function QuoteCraftApp(){
  };
 
  function start(){
+  jobRevision.current++;
   recognitionRef.current?.abort?.();
   mediaRecorderRef.current?.stop?.();
   setCur(fresh());setPrompt("");setMessage("");setListening(false);setTranscribing(false);setScreen("new");
@@ -421,8 +773,8 @@ export default function QuoteCraftApp(){
  }
 
  function startVoice(){
-  if(needsRecorderFallback())startVoiceRecording();
-  else startVoiceLive();
+  // The same transcription path on iPhone and desktop understands mixed vocabulary.
+  startVoiceRecording();
  }
 
  function stopVoice(){
@@ -466,20 +818,29 @@ export default function QuoteCraftApp(){
  function stopVoiceLive(){recognitionRef.current?.stop?.();setListening(false)}
 
  async function startVoiceRecording(){
+  const revision=jobRevision.current;
   setMessage("");
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
     const candidates=["audio/mp4","audio/webm;codecs=opus","audio/webm","audio/aac"];
     const mimeType=candidates.find(t=>typeof MediaRecorder!=="undefined"&&MediaRecorder.isTypeSupported?.(t))||"";
     const recorder=mimeType?new MediaRecorder(stream,{mimeType}):new MediaRecorder(stream);
+    if(revision!==jobRevision.current){stream.getTracks().forEach(t=>t.stop());return}
     mediaRecorderRef.current=recorder;
     audioChunksRef.current=[];
+    let recordingBytes=0;
+    const limitTimer=window.setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
 
-    recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)audioChunksRef.current.push(e.data)};
+    recorder.ondataavailable=e=>{if(e.data&&e.data.size>0){
+      audioChunksRef.current.push(e.data);recordingBytes+=e.data.size;
+      if(recordingBytes>2800000&&recorder.state==="recording")recorder.stop();
+    }};
     recorder.onstop=async()=>{
       stream.getTracks().forEach(t=>t.stop());
+      window.clearTimeout(limitTimer);
       mediaRecorderRef.current=null;
       setListening(false);
+      if(revision!==jobRevision.current)return;
 
       const blob=new Blob(audioChunksRef.current,{type:recorder.mimeType||"audio/mp4"});
       audioChunksRef.current=[];
@@ -497,6 +858,7 @@ export default function QuoteCraftApp(){
         if(!response.ok)throw new Error(data?.error||"Не вдалося розпізнати мову.");
 
         const text=String(data.text||"").trim();
+        if(revision!==jobRevision.current)return;
         if(text)setPrompt(p=>[p.trim(),text].filter(Boolean).join(" ").trim());
         else setMessage("Не вдалося розпізнати мову. Спробуй ще раз, говорячи чіткіше.");
       }catch(err){
@@ -506,7 +868,7 @@ export default function QuoteCraftApp(){
       }
     };
 
-    recorder.start();
+    recorder.start(1000);
     setListening(true);
   }catch{
     setListening(false);
@@ -516,18 +878,34 @@ export default function QuoteCraftApp(){
 
  function stopVoiceRecording(){mediaRecorderRef.current?.stop?.()}
 
+ async function addPhotos(files:File[]){
+  const revision=jobRevision.current;
+  setPhotoBusy(true);setMessage("");
+  try{
+    if(photos.length+files.length>4)throw new Error("Можна додати до 4 фото.");
+    const prepared=await Promise.all(files.map(prepareJobPhoto));
+    if(revision===jobRevision.current)setPhotos(p=>[...p,...prepared]);
+  }catch(error){setMessage(error instanceof Error?error.message:"Не вдалося додати фото.")}
+  finally{setPhotoBusy(false)}
+ }
+
  async function generate(){
-  if(!prompt.trim()){setMessage("Спочатку опиши роботу.");return}
+  const revision=jobRevision.current;
+  if(!prompt.trim()&&!photos.length){setMessage("Спочатку опиши роботу.");return}
   setThinking(true);setMessage("");
   try{
     const response=await fetch("/api/parse-estimate",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text:prompt,prices})
+      body:JSON.stringify({text:prompt,prices,photos:photos.map(p=>p.dataUrl)})
     });
     const data=await response.json();
     if(!response.ok)throw new Error(data?.error||"AI request failed.");
 
+    if(revision!==jobRevision.current)return;
+    const pending=Array.isArray(data.questions)?data.questions:[];
+    setQuestions(pending);
+    if(pending.length){setMessage("Додай відповіді до опису голосом або текстом і натисни ще раз. Попередній кошторис поки не змінено.");return}
     const aiItems=(data.items||[]) as AIItem[];
     const items:Item[]=aiItems.map(ai=>{
       const service=prices.find(p=>p.id===ai.serviceId);
@@ -537,14 +915,14 @@ export default function QuoteCraftApp(){
         description:ai.description,
         quantity:Number(ai.quantity)||1,
         unit:ai.unit,
-        unitPrice:service?.rate||0,
+        unitPrice:typeof ai.explicitRate==="number"&&Number.isFinite(ai.explicitRate)&&ai.explicitRate>=0?ai.explicitRate:service?.rate||0,
         note:ai.note||undefined,
         confidence:ai.confidence
       };
     });
 
     setCur(c=>({...c,items}));
-    const custom=items.filter(i=>i.serviceId==="CUSTOM").length;
+    const custom=items.filter(i=>i.unitPrice===0).length;
     setMessage(custom?`${custom} робіт не знайдено в бібліотеці цін — перевір їх вручну.`:"AI розібрав опис. Перевір позиції та ціни.");
   }catch(error){
     setMessage(error instanceof Error?error.message:"AI error.");
@@ -849,7 +1227,7 @@ export default function QuoteCraftApp(){
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><span className="mark">Q⚡</span></header>
   <main>
    {screen==="home"&&<>
-    <section className="hero"><span>AI VERSION 1.0</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи, визначить кількість та одиниці. Ціни підставляються тільки з твоєї бібліотеки.</p><button className="primary huge" onClick={start}>＋ New estimate</button></section>
+    <section className="hero"><span>AI VERSION 1.0</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи, визначить кількість та одиниці. Ціни підставляються тільки з твоєї бібліотеки.</p><button className="primary huge" onClick={start}>＋ New estimate</button><div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>🧮 Calculator (labor + materials)</button></div></section>
     <section className="metrics"><article><span>Estimates</span><b>{all.length}</b></article><article><span>Quoted value</span><b>{money(all.reduce((s,e)=>s+value(e),0))}</b></article></section>
     <section className="panel"><div className="head"><h2>Recent estimates</h2><button onClick={()=>setScreen("saved")}>View all</button></div>{all.length===0?<p className="empty">Ще немає кошторисів.</p>:all.slice(0,3).map(e=><button className="estimate" key={e.id} onClick={()=>{setCur(e);setScreen("new")}}><span><b>{e.client||"Unnamed client"}</b><small>{e.project||"Estimate"}</small></span><strong>{money(value(e))}</strong></button>)}</section>
    </>}
@@ -858,12 +1236,19 @@ export default function QuoteCraftApp(){
     <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>New estimate{cur.status&&cur.status!=="draft"&&<span className={`badge badge-${cur.status}`}>{statusLabel(cur.status)}</span>}</b><button onClick={start}>Clear</button></div>
     <section className="assistant noPrint">
       <div className="assisttitle"><span>✨</span><div><b>Опиши роботу простою мовою</b><small>Українська, English або змішано</small></div></div>
-      <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Замінити кран на кухні, пофарбувати одну стіну, замінити вентилятор і покласти ламінат 35 square feet."/>
-      {message&&<div className="statusMessage">{message}</div>}
+      <textarea disabled={thinking} value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Замінити кран на кухні, пофарбувати одну стіну, замінити вентилятор і покласти ламінат 35 square feet."/>
+      <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value="";void addPhotos(files)}}/>
+      <div className="jobPhotos">{photos.map(p=><figure key={p.id}>
+        <img src={p.dataUrl} alt={p.name}/><button type="button" disabled={thinking} aria-label={`Видалити ${p.name}`} onClick={()=>setPhotos(v=>v.filter(x=>x.id!==p.id))}>×</button>
+      </figure>)}</div>
+      {questions.length>0&&<div className="statusMessage" role="status"><b>Потрібно уточнити</b><ul>{questions.map((q,i)=><li key={i}>{q}</li>)}</ul></div>}
+      {message&&<div className="statusMessage" role="status">{message}</div>}
       <div className="actions">
-       {!listening?<button className="secondary" onClick={startVoice} disabled={transcribing}>{transcribing?"⏳ Розпізнаю…":"🎤 Voice"}</button>:<button className={mediaRecorderRef.current?"voice recording":"voice listening"} onClick={stopVoice}>{mediaRecorderRef.current?"⏹ Стоп і надіслати":"⏹ Stop"}</button>}
-       <button className="primary" onClick={generate} disabled={listening||thinking||transcribing}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
+       <button className="secondary" disabled={photoBusy||thinking||photos.length>=4} onClick={()=>photoInput.current?.click()}>{photoBusy?"Готую фото…":"📷 Додати фото"}</button>
+       {!listening?<button className="secondary" onClick={startVoice} disabled={transcribing||thinking}>{transcribing?"⏳ Розпізнаю…":"🎤 Voice"}</button>:<button className={mediaRecorderRef.current?"voice recording":"voice listening"} onClick={stopVoice}>{mediaRecorderRef.current?"⏹ Стоп і надіслати":"⏹ Stop"}</button>}
+       <button className="primary" onClick={generate} disabled={listening||thinking||transcribing||photoBusy}>{thinking?"AI is analyzing…":"Generate estimate"}</button>
       </div>
+      <p className="recHint">До 4 фото. Фото надсилаються на аналіз разом з описом і не зберігаються в кошторисі. Запис — до 90 секунд; далі можна додиктувати.</p>
       {transcribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
@@ -887,6 +1272,74 @@ export default function QuoteCraftApp(){
     <section className="total"><div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
     {user&&<div className="shareRow noPrint"><button className="secondary" onClick={shareEstimate}>🔗 Copy client link</button></div>}
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
+   </>}
+
+   {screen==="calc"&&<>
+    <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>Calculator</b><button onClick={clearCalc}>Clear</button></div>
+    <section className="assistant noPrint">
+      <div className="assisttitle"><span>🧮</span><div><b>Опиши роботу простою мовою</b><small>Українська, English або змішано — порахує labor, materials і supplies</small></div></div>
+      <textarea value={calcPrompt} onChange={e=>setCalcPrompt(e.target.value)} placeholder="Покласти ламінат 1350 sqft, встановити плінтус і shoe molding 310 linear ft, пофарбувати кімнату 25 на 18 висота 8 футів."/>
+      {calcMessage&&<div className="statusMessage">{calcMessage}</div>}
+      <div className="actions">
+       {!calcListening?<button className="secondary" onClick={startCalcVoice} disabled={calcTranscribing}>{calcTranscribing?"⏳ Розпізнаю…":"🎤 Voice"}</button>:<button className={calcMediaRecorderRef.current?"voice recording":"voice listening"} onClick={stopCalcVoice}>{calcMediaRecorderRef.current?"⏹ Стоп і надіслати":"⏹ Stop"}</button>}
+       <button className="primary" onClick={generateCalc} disabled={calcListening||calcThinking||calcTranscribing}>{calcThinking?"AI is analyzing…":"Розрахувати"}</button>
+      </div>
+      {calcTranscribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
+    </section>
+
+    <section className="panel grid noPrint"><label>Client<input value={calcClient} onChange={e=>setCalcClient(e.target.value)}/></label><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label></section>
+
+    <section className="panel"><div className="head"><h2>Line items</h2><button className="add noPrint" onClick={addCalcItem}>＋ Add item</button></div>
+      {calcItems.length===0?<p className="empty">AI-позиції з'являться тут.</p>:calcItems.map(li=>{
+        const c=computeCalcLine(li,calcLocationMultiplier);
+        return <article className="item" key={li.id}>
+         <div className="itemtop">
+          <select value={li.taskId} onChange={e=>updateCalcItem(li.id,{taskId:e.target.value})}>
+           {!li.taskId&&<option value="">— Select task —</option>}
+           {calcCategories.map(cat=><optgroup label={cat} key={cat}>{calcTasks.filter(t=>t.category===cat).map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</optgroup>)}
+          </select>
+          <button className="remove noPrint" onClick={()=>removeCalcItem(li.id)}>×</button>
+         </div>
+         {li.note&&<div className="itemNote">ℹ {li.note}</div>}
+         {typeof li.confidence==="number"&&li.confidence<.7&&<div className="itemWarning">⚠ Low confidence — verify this item.</div>}
+         <div className="itemgrid">
+          <label>Quantity<input type="number" min="0" step="0.01" value={li.quantity} onChange={e=>updateCalcItem(li.id,{quantity:Number(e.target.value)})}/></label>
+          <label>Unit<input value={unitLabel(li.unit)} disabled/></label>
+          <label>Difficulty<select value={li.difficulty} onChange={e=>updateCalcItem(li.id,{difficulty:e.target.value as CalcDifficulty})}><option value="basic">Basic</option><option value="standard">Standard</option><option value="difficult">Difficult</option></select></label>
+          <div className="linetotal"><span>Total</span><b>{money(c.lineTotal)}</b></div>
+         </div>
+         <small>Labor {money(c.labor)} · Materials {money(c.materials)} · Supplies {money(c.supplies)} · Range {money(c.low)}–{money(c.high)}</small>
+        </article>;
+      })}
+    </section>
+
+    <section className="panel"><label>Notes &amp; exclusions<textarea value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label></section>
+
+    <section className="total">
+     <div><span>Labor</span><span>{money(calcTotalsValue.labor)}</span></div>
+     <div><span>Materials</span><span>{money(calcTotalsValue.materials)}</span></div>
+     <div><span>Supplies</span><span>{money(calcTotalsValue.supplies)}</span></div>
+     <div className="grand"><span>Subtotal</span><b>{money(calcTotalsValue.lineTotal)}</b></div>
+     <div><span>Estimated range</span><b>{money(calcTotalsValue.low)} – {money(calcTotalsValue.high)}</b></div>
+    </section>
+
+    <div className="actions noPrint"><button className="secondary" onClick={printCalcEstimate}>PDF / Print</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
+    <div className="actions noPrint" style={{marginTop:8}}><button className="secondary full" onClick={()=>setShowCalcPricing(s=>!s)}>{showCalcPricing?"Сховати ціни калькулятора":"⚙ Ціни калькулятора"}</button></div>
+
+    {showCalcPricing&&<section className="panel">
+      <span className="eyebrow">CALCULATOR PRICE LIBRARY</span>
+      <h2>Ціни для калькулятора</h2>
+      <p className="muted">Labor і material ставка за одиницю, окремо від бібліотеки цін в Estimates. Збережено тільки в цьому браузері.</p>
+      {calcCategories.map(cat=><div key={cat}>
+        <h3 className="calcCatHeading">{cat}</h3>
+        {calcTasks.filter(t=>t.category===cat).map(t=><article className="price calcPrice" key={t.id}>
+          <div><b>{t.name}</b><small>{unitLabel(t.unit)} · min {money(t.minPrice)}</small></div>
+          <label>Labor $<input type="number" min="0" step="0.01" value={t.laborRate} onChange={e=>saveCalcTasks(calcTasks.map(x=>x.id===t.id?{...x,laborRate:Number(e.target.value)}:x))}/></label>
+          <label>Material $<input type="number" min="0" step="0.01" value={t.materialRate} onChange={e=>saveCalcTasks(calcTasks.map(x=>x.id===t.id?{...x,materialRate:Number(e.target.value)}:x))}/></label>
+        </article>)}
+      </div>)}
+      <button className="secondary full" onClick={()=>saveCalcTasks(calcDefaults)}>Reset default prices</button>
+    </section>}
    </>}
 
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
@@ -926,6 +1379,6 @@ export default function QuoteCraftApp(){
 </div>
 </section>}
   </main>
-  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
+  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
  </div>
 }

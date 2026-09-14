@@ -3,13 +3,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 
 // Fallback transcription for browsers where the Web Speech API is missing or
 // unreliable (Safari on iOS and macOS). The client records audio with
 // MediaRecorder and uploads it here; Whisper handles Ukrainian reliably.
 export async function POST(req: NextRequest) {
   try {
+    if(!process.env.OPENAI_API_KEY){
+      return NextResponse.json({error:"Голосове розпізнавання ще не налаштоване на сервері."},{status:503});
+    }
+    const openai = new OpenAI({apiKey:process.env.OPENAI_API_KEY});
     const form = await req.formData();
     const file = form.get("audio");
 
@@ -17,14 +21,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Аудіо не отримано." }, { status: 400 });
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      return NextResponse.json({ error: "Аудіофайл завеликий." }, { status: 400 });
+    if (file.size > 3 * 1024 * 1024) {
+      return NextResponse.json({ error: "Запис завеликий. Запиши коротший фрагмент." }, { status: 400 });
     }
 
     const transcription = await openai.audio.transcriptions.create({
       file,
       model: "whisper-1",
       language: "uk",
+      prompt: "Ремонт: клазет, клозет, closet, бейсмент, basement, шуз, shoe molding, drywall, shower pan, vanity, backsplash, тубайфори, 2x4, плитка, фут, square feet, дюйм, inch.",
     });
 
     return NextResponse.json({ text: transcription.text || "" });
