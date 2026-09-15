@@ -710,7 +710,7 @@ export default function QuoteCraftApp(){
    const {error}=await supabase.auth.resetPasswordForEmail(
      email.trim(),
      {
-       redirectTo:"https://quotecraftai-app.vercel.app"
+       redirectTo:window.location.origin
      }
    );
 
@@ -1096,8 +1096,6 @@ export default function QuoteCraftApp(){
  };
 
 
- if(authLoading&&!user){
-  
  if(recoveryMode){
    return <div className="shell">
      <header>
@@ -1138,6 +1136,7 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
+ if(authLoading&&!user){
  return <div className="shell">
      <main>
        <section className="panel">

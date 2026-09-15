@@ -18,6 +18,8 @@ const INCH_UNIT_RE = /\binch\w*|дюйм\w*|інч\w*|"/i;
 const FOOT_UNIT_RE = /\bft\b|\bfoot\b|\bfeet\b|фут\w*/i;
 const FURNITURE_SCALE_RE =
   /шаф\w*|клозет\w*|closet\w*|тумбоч\w*|cabinet\w*|полиц\w*|shelf\w*|shelves|wardrobe\w*|гардероб\w*|vanity/i;
+const EXCLUDES_CEILING_RE =
+  /without\s+(?:the\s+)?ceiling|no\s+ceiling|без\s+стел\w*|стел\w*\s+не\s+(?:фарбувати|потрібно|треба)/i;
 
 function isInchesContext(normalized: string): boolean {
   return INCH_UNIT_RE.test(normalized) && !FOOT_UNIT_RE.test(normalized);
@@ -30,6 +32,7 @@ function isFurnitureScale(normalized: string): boolean {
 type RoomCalculation = {
   wallNet: number;
   ceiling: number;
+  excludesCeiling: boolean;
   note: string;
 };
 
@@ -89,6 +92,7 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
   return {
     wallNet,
     ceiling,
+    excludesCeiling: EXCLUDES_CEILING_RE.test(normalized),
     note:
       `Verified calculation: gross walls ${wallGross} sq ft` +
       (openingDetails.length ? `; ${openingDetails.join("; ")}` : "") +
@@ -104,7 +108,7 @@ function applyCalcMeasurements(result: any, text: string) {
   if (!room || !Array.isArray(result?.items)) return result;
 
   const normalized = text.toLowerCase();
-  const wantsCeiling = /ceiling|стел/.test(normalized);
+  const wantsCeiling = /ceiling|стел/.test(normalized) && !room.excludesCeiling;
   const wantsWalls = /wall|стін|кімнат|room|paint|фарб/.test(normalized);
 
   if (wantsWalls) {
