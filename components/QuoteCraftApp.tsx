@@ -14,7 +14,23 @@ import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/
 import {calcDefaults} from "@/lib/calcPricing";
 import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
 
-const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CDK="qc-calc-draft-v1";
+const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
+// Ціни калькулятора зберігаються як набір ВІДХИЛЕНЬ від calcDefaults, а не як повна копія
+// каталогу. Завдяки цьому нові роботи з'являються автоматично після оновлення застосунку,
+// а власні правки не губляться і не блокують оновлення.
+type CalcOverride={laborRate:number;materialRate:number};
+type CalcOverrides=Record<string,CalcOverride>;
+const mergeCalcTasks=(ov:CalcOverrides):CalcTask[]=>calcDefaults.map(t=>ov[t.id]?{...t,laborRate:ov[t.id].laborRate,materialRate:ov[t.id].materialRate}:t);
+const overridesFrom=(tasks:CalcTask[]):CalcOverrides=>{
+ const ov:CalcOverrides={};
+ tasks.forEach(t=>{
+  const d=calcDefaults.find(x=>x.id===t.id);
+  if(d&&(d.laborRate!==t.laborRate||d.materialRate!==t.materialRate))ov[t.id]={laborRate:t.laborRate,materialRate:t.materialRate};
+ });
+ return ov;
+};
+// Таблиці user_calc_prices може ще не бути — тоді просто працюємо локально, без помилки на екрані.
+const missingCalcTable=(e:{code?:string;message?:string}|null)=>!!e&&(e.code==="42P01"||/user_calc_prices/.test(e.message||""));
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
@@ -82,13 +98,21 @@ export default function QuoteCraftApp(){
  const calcRecognitionRef=useRef<any>(null);
  const calcBaseRef=useRef("");
  const calcFinalRef=useRef("");
+ const calcSyncTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const calcMediaRecorderRef=useRef<MediaRecorder|null>(null);
  const calcAudioChunksRef=useRef<Blob[]>([]);
 
  useEffect(()=>{
    setAll(load(EK,[]));
    setPrices(load(PK,defaults));
-   setCalcTasks(load(CK,calcDefaults));
+   let ov=load<CalcOverrides|null>(CKO,null);
+   if(!ov){
+     // міграція зі старого формату (повний каталог у localStorage)
+     const legacy=load<CalcTask[]|null>(CK,null);
+     ov=Array.isArray(legacy)&&legacy.length?overridesFrom(legacy):{};
+     try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
+   }
+   setCalcTasks(mergeCalcTasks(ov));
    const draft=load<CalcDraft>(CDK,freshCalcDraft());
    setCalcItems(draft.items||[]);
    setCalcClient(draft.client||"");
@@ -105,7 +129,20 @@ export default function QuoteCraftApp(){
  const calcCategories=useMemo(()=>Array.from(new Set(calcTasks.map(t=>t.category))),[calcTasks]);
  const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier),[calcItems,calcLocationMultiplier]);
 
- const saveCalcTasks=(x:CalcTask[])=>{setCalcTasks(x);localStorage.setItem(CK,JSON.stringify(x))};
+ const saveCalcTasks=(x:CalcTask[])=>{
+   setCalcTasks(x);
+   const ov=overridesFrom(x);
+   try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
+   if(!user)return;
+   if(calcSyncTimer.current)clearTimeout(calcSyncTimer.current);
+   // поля правляться посимвольно, тому в акаунт пишемо із затримкою після останньої правки
+   calcSyncTimer.current=setTimeout(async()=>{
+     const {error}=await supabase.from("user_calc_prices").upsert({
+       user_id:user.id,calc_overrides:ov,updated_at:new Date().toISOString()
+     },{onConflict:"user_id"});
+     if(error&&!missingCalcTable(error))setMessage("Ціни калькулятора не збереглися в акаунт: "+error.message);
+   },1500);
+ };
 
  function applyCalcTask(item:CalcItem,task:CalcTask):CalcItem{
    return{
@@ -573,6 +610,36 @@ export default function QuoteCraftApp(){
 
        if(uploadPriceError){
          setMessage("Не вдалося перенести ціни у хмару: "+uploadPriceError.message);
+       }
+     }
+
+     const {data:calcRow,error:calcError}=await supabase
+       .from("user_calc_prices")
+       .select("calc_overrides")
+       .eq("user_id",user.id)
+       .maybeSingle();
+
+     if(calcError&&!missingCalcTable(calcError)){
+       setMessage("Не вдалося завантажити ціни калькулятора: "+calcError.message);
+     }else if(calcRow?.calc_overrides){
+       const cloudOv=calcRow.calc_overrides as CalcOverrides;
+       setCalcTasks(mergeCalcTasks(cloudOv));
+       try{localStorage.setItem(CKO,JSON.stringify(cloudOv))}catch{}
+     }else if(!calcError){
+       const localOv=load<CalcOverrides>(CKO,{});
+
+       if(Object.keys(localOv).length){
+         const {error:uploadCalcError}=await supabase
+           .from("user_calc_prices")
+           .upsert({
+             user_id:user.id,
+             calc_overrides:localOv,
+             updated_at:new Date().toISOString()
+           },{onConflict:"user_id"});
+
+         if(uploadCalcError&&!missingCalcTable(uploadCalcError)){
+           setMessage("Не вдалося перенести ціни калькулятора у хмару: "+uploadCalcError.message);
+         }
        }
      }
 
@@ -1332,7 +1399,7 @@ export default function QuoteCraftApp(){
     {showCalcPricing&&<section className="panel">
       <span className="eyebrow">CALCULATOR PRICE LIBRARY</span>
       <h2>Ціни для калькулятора</h2>
-      <p className="muted">Labor і material ставка за одиницю, окремо від бібліотеки цін в Estimates. Збережено тільки в цьому браузері.</p>
+      <p className="muted">Labor і material ставка за одиницю, окремо від бібліотеки цін в Estimates. Зберігається в акаунт, тому діє і на телефоні. Зберігаються лише твої правки, тож нові роботи з&#39;являються тут самі після оновлення застосунку.</p>
       {calcCategories.map(cat=><div key={cat}>
         <h3 className="calcCatHeading">{cat}</h3>
         {calcTasks.filter(t=>t.category===cat).map(t=><article className="price calcPrice" key={t.id}>
@@ -1341,7 +1408,7 @@ export default function QuoteCraftApp(){
           <label>Material $<input type="number" min="0" step="0.01" value={t.materialRate} onChange={e=>saveCalcTasks(calcTasks.map(x=>x.id===t.id?{...x,materialRate:Number(e.target.value)}:x))}/></label>
         </article>)}
       </div>)}
-      <button className="secondary full" onClick={()=>saveCalcTasks(calcDefaults)}>Reset default prices</button>
+      <button className="secondary full" onClick={()=>saveCalcTasks(calcDefaults)}>Скинути мої правки до базових цін</button>
     </section>}
    </>}
 
