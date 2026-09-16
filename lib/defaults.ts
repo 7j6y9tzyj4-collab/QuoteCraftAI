@@ -62,7 +62,6 @@ export const defaults:PriceRule[]=[
 {id:"move_furniture_floor_room",name:"Move furniture for flooring",aliases:["move furniture for flooring","move furniture before floor installation","пересунути меблі для підлоги","винести меблі перед монтажем підлоги"],unit:"room",rate:100},
 {id:"drywall_install_sqft",name:"Install drywall",aliases:["install drywall","new drywall installation","встановити гіпсокартон","монтаж гіпсокартону"],unit:"sqft",rate:8},
 {id:"drywall_finish_sqft",name:"Tape mud and sand drywall",aliases:["tape mud and sand drywall","finish drywall","шпаклювати гіпсокартон","проклеїти і зашпаклювати гіпсокартон"],unit:"sqft",rate:6},
-{id:"baseboard_install_linear_ft",name:"Install baseboards",aliases:["install baseboards","baseboard installation","встановити плінтуси","монтаж плінтусів"],unit:"linear_ft",rate:4},
 {id:"door_casing_install_linear_ft",name:"Install door casing",aliases:["install door casing","door trim installation","встановити дверний наличник","монтаж дверної обналички"],unit:"linear_ft",rate:5},
 {id:"quarter_round_install_linear_ft",name:"Install quarter round",aliases:["install quarter round","quarter round installation","встановити quarter round","монтаж чвертькруглого молдингу"],unit:"linear_ft",rate:3},
 {id:"light_fixture_reinstall_each",name:"Reinstall light fixture",aliases:["reinstall light fixture","put light fixture back","повторно встановити світильник","поставити світильник назад"],unit:"each",rate:100},
@@ -104,7 +103,13 @@ export const defaults:PriceRule[]=[
 {id:"vanity_install",name:"Install bathroom vanity",aliases:["install vanity","встановити тумбу","тумба у ванну"],unit:"each",rate:350},
 {id:"drywall_minor",name:"Minor drywall repair",aliases:["drywall repair","ремонт гіпсокартону","шпаклювання"],unit:"each",rate:250},
 {id:"door_install",name:"Install interior door",aliases:["interior door","міжкімнатні двері","встановити двері"],unit:"each",rate:350},
-{id:"baseboard_install",name:"Install baseboard",aliases:["baseboard","плінтус"],unit:"linear_ft",rate:3.0645},
+{id:"baseboard_install",name:"Install baseboards",aliases:["baseboard","плінтус","install baseboards","install baseboard","baseboard installation","встановити плінтуси","встановити плінтус","монтаж плінтусів"],unit:"linear_ft",rate:3.0645},
 {id:"garbage_disposal_replace",name:"Replace garbage disposal",aliases:["garbage disposal","подрібнювач відходів"],unit:"each",rate:250},
-{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:125}
+{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:125},
+{id:"kitchen_backsplash_sqft",name:"Install kitchen backsplash",aliases:["install kitchen backsplash","kitchen backsplash","tile kitchen backsplash","backsplash на кухні","плитка фартух на кухні","кухонний фартух"],unit:"sqft",rate:23,rateMin:18,rateMax:30,category:"Плитка та гідроізоляція"},
+{id:"kitchen_sink_install_each",name:"Install kitchen sink",aliases:["install kitchen sink","kitchen sink installation","встановити кухонну мийку","монтаж кухонної мийки"],unit:"each",rate:500,rateMin:400,rateMax:600,category:"Сантехніка"},
+{id:"dishwasher_install_each",name:"Install dishwasher",aliases:["install dishwasher","dishwasher installation","hook up dishwasher","встановити посудомийну машину","підключити посудомийку"],unit:"each",rate:320,rateMin:250,rateMax:450,category:"Кухня"},
+{id:"range_hood_install_each",name:"Install range hood",aliases:["install range hood","range hood installation","install vent hood","встановити витяжку","монтаж кухонної витяжки"],unit:"each",rate:385,rateMin:300,rateMax:600,category:"Кухня"},
+{id:"kitchen_cabinet_remove_each",name:"Remove kitchen cabinet",aliases:["remove kitchen cabinet","kitchen cabinet demolition","demo kitchen cabinets","демонтувати кухонну шафку","зняти кухонні шафки"],unit:"each",rate:65,rateMin:45,rateMax:120,category:"Кухня"},
+{id:"kitchen_hardware_install_each",name:"Install cabinet hardware",aliases:["install cabinet hardware","install cabinet knobs","install cabinet pulls","встановити ручки на шафки","монтаж фурнітури шафок"],unit:"each",rate:15,rateMin:10,rateMax:25,category:"Кухня"}
 ];
