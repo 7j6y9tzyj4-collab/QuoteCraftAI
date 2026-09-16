@@ -1,5 +1,5 @@
 import type {PriceRule} from "./types";
-export type PriceReference={low:number;high:number;suggested:number;source:string;url:string;scope:string;checked:string;selection:string};
+export type PriceReference={low:number;high:number;suggested:number;source:string;url:string;scope:string;checked:string;selection:string;keepOwnRate?:boolean};
 const homer="https://www.homerfixeditall.com/pricing";
 const talents="https://www.thumbtack.com/il/chicago/electrical-repairs/5-talents-renovations/service/539904503615225868";
 const h=(low:number,high:number,suggested:number,scope:string,selection="Вибрана ставка всередині прайсу; не середня ціна міста."):PriceReference=>({low,high,suggested,scope,source:"Homer Fixed It · Chicago",url:homer,checked:"2026-09-14",selection});
@@ -97,7 +97,7 @@ export const chicagoPrices:Record<string,PriceReference>={
  baseboard_remove_linear_ft:{low:1.5,high:2.5,suggested:2,source:"Homewyse.com",url:"https://www.homewyse.com/services/cost_to_remove_molding.html",scope:"chicago-джерело не знайдено.",checked:"2026-09-16",selection:"Homewyse: $1.11-2.25/пог.фут; chicago-джерело не знайдено."},
  door_remove_each:{low:75,high:125,suggested:100,source:"Homewyse.com",url:"https://www.homewyse.com/services/cost_to_remove_interior_door.html",scope:"chicago-джерело не знайдено.",checked:"2026-09-16",selection:"Homewyse: $19.43-33.25 (лише полотно); chicago-джерело не знайдено."},
  caulk_trim_linear_ft:{low:1,high:2.5,suggested:1.5,source:"Homewyse.com",url:"https://www.homewyse.com/services/cost_to_caulk_perimeter_of_home.html",scope:"chicago-джерело не знайдено.",checked:"2026-09-16",selection:"Homewyse: зовнішня герметизація (proxy) $2.45-5.03/пог.фут; chicago-джерело не знайдено."},
- baseboard_install:{low:6,high:9.5,suggested:7.5,source:"Homewyse.com + Contractor+ Chicago",url:"https://www.homewyse.com/services/cost_to_install_baseboard.html",scope:"Contractor+ Chicago: дані непослідовні.",checked:"2026-09-16",selection:"Homewyse: $8.96-13.71/пог.фут (той самий підхід, що і baseboard_install_linear_ft); Contractor+ Chicago: дані непослідовні."},
+ baseboard_install:{low:6,high:9.5,suggested:7.5,source:"Homewyse.com + Contractor+ Chicago",url:"https://www.homewyse.com/services/cost_to_install_baseboard.html",scope:"Ринок показано для довідки; кнопка чиказьких ставок цю позицію не змінює — діє власна ставка.",checked:"2026-09-16",selection:"Homewyse: $8.96-13.71/пог.фут; Contractor+ Chicago: дані непослідовні. Власник свідомо тримає нижчу власну ставку, тому вона захищена від перезапису.",keepOwnRate:true},
  kitchen_backsplash_sqft:{low:18,high:30,suggested:23,source:"Homewyse.com + Homeyou Chicago",url:"https://www.homewyse.com/services/cost_to_install_tile_backsplash.html",scope:"Homeyou Chicago: праця плиточника ~$66-82/год.",checked:"2026-09-16",selection:"Homewyse: $28.31-49.78/sq ft разом з плиткою; тут плитку купує клієнт."},
  kitchen_sink_install_each:{low:400,high:600,suggested:500,source:"Homewyse.com + Angi / Assembly Squad Chicago",url:"https://www.homewyse.com/services/cost_to_install_kitchen_sink.html",scope:"Assembly Squad Chicago: чиказька праця на 15-25% вище національної.",checked:"2026-09-16",selection:"Homewyse: $472-569 праця і матеріали без мийки; мийку купує клієнт."},
  dishwasher_install_each:{low:250,high:450,suggested:320,source:"Homewyse.com + Angi / Thumbtack Chicago",url:"https://www.homewyse.com/services/cost_to_install_dishwasher.html",scope:"Angi / Thumbtack Chicago: ставки монтажників техніки.",checked:"2026-09-16",selection:"Сторінка Homewyse ($904-1678) включає саму машину, тому напряму не використана."},
@@ -119,5 +119,10 @@ export const chicagoPrices:Record<string,PriceReference>={
  frameless_glass_enclosure_install_each:{low:1200,high:1800,suggested:1400,source:"Homewyse.com + IMAGO Glass Inc. Chicago",url:"https://www.homewyse.com/services/cost_to_install_shower_enclosures.html",scope:"IMAGO Glass Chicago: $900-1300/панель.",checked:"2026-09-16",selection:"Homewyse: модульна огорожа (proxy) $888-1286; IMAGO Glass Chicago: $900-1300/панель."},
 };
 export function applyChicagoPrices(prices:PriceRule[]):PriceRule[]{
- return prices.map(p=>chicagoPrices[p.id]?{...p,rate:chicagoPrices[p.id].suggested,rateMin:chicagoPrices[p.id].low,rateMax:chicagoPrices[p.id].high}:p);
+ return prices.map(p=>{
+  const ref=chicagoPrices[p.id];
+  // keepOwnRate: показуємо ринкове джерело, але не перезаписуємо власну ставку власника.
+  if(!ref||ref.keepOwnRate)return p;
+  return {...p,rate:ref.suggested,rateMin:ref.low,rateMax:ref.high};
+ });
 }
