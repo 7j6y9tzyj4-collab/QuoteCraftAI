@@ -12,6 +12,7 @@ import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/calcTypes";
 import {calcDefaults} from "@/lib/calcPricing";
+import {legacyIdMap} from "@/lib/catalog";
 import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
@@ -21,6 +22,13 @@ const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-cal
 type CalcOverride={laborRate:number;materialRate:number};
 type CalcOverrides=Record<string,CalcOverride>;
 const mergeCalcTasks=(ov:CalcOverrides):CalcTask[]=>calcDefaults.map(t=>ov[t.id]?{...t,laborRate:ov[t.id].laborRate,materialRate:ov[t.id].materialRate}:t);
+// Каталоги зводили в один, і частина робіт змінила id. Правки, збережені під
+// старим id, переносимо на новий, інакше вони б мовчки перестали діяти.
+const migrateOverrides=(ov:CalcOverrides|null|undefined):CalcOverrides=>{
+ const out:CalcOverrides={};
+ Object.entries(ov||{}).forEach(([id,v])=>{out[legacyIdMap[id]||id]=v});
+ return out;
+};
 const overridesFrom=(tasks:CalcTask[]):CalcOverrides=>{
  const ov:CalcOverrides={};
  tasks.forEach(t=>{
@@ -110,8 +118,9 @@ export default function QuoteCraftApp(){
      // міграція зі старого формату (повний каталог у localStorage)
      const legacy=load<CalcTask[]|null>(CK,null);
      ov=Array.isArray(legacy)&&legacy.length?overridesFrom(legacy):{};
-     try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
    }
+   ov=migrateOverrides(ov);
+   try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
    setCalcTasks(mergeCalcTasks(ov));
    const draft=load<CalcDraft>(CDK,freshCalcDraft());
    setCalcItems(draft.items||[]);
@@ -622,7 +631,7 @@ export default function QuoteCraftApp(){
      if(calcError&&!missingCalcTable(calcError)){
        setMessage("Не вдалося завантажити ціни калькулятора: "+calcError.message);
      }else if(calcRow?.calc_overrides){
-       const cloudOv=calcRow.calc_overrides as CalcOverrides;
+       const cloudOv=migrateOverrides(calcRow.calc_overrides as CalcOverrides);
        setCalcTasks(mergeCalcTasks(cloudOv));
        try{localStorage.setItem(CKO,JSON.stringify(cloudOv))}catch{}
      }else if(!calcError){
