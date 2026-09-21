@@ -1,13 +1,13 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import type {PriceRule} from "@/lib/types";
-import {chicagoPrices,applyChicagoPrices} from "@/lib/chicagoPrices";
 import {categories,categoryOf,bounds,validPrice,matches} from "@/lib/priceCatalog";
-import {defaults} from "@/lib/defaults";
+import {defaults,applyApprovedCatalog} from "@/lib/defaults";
+import MaterialFields from "./MaterialFields";
+import {materialProducts} from "@/lib/materialProducts";
 
 type Props={prices:PriceRule[];onSave:(prices:PriceRule[])=>Promise<string>};
 const copy=(prices:PriceRule[])=>prices.map(p=>({...p,aliases:[...p.aliases]}));
-const recommended=new Set(["bathroom_mirror_install_each","vanity_light_install_each","light_fixture_replace"]);
 
 export default function PriceEditor({prices,onSave}:Props){
  const [query,setQuery]=useState("");
@@ -30,7 +30,7 @@ export default function PriceEditor({prices,onSave}:Props){
  async function save(){
   if(saving)return;
   if(invalid.length||draft.some(p=>!validPrice(p))){
-   setStatus("Перевір ціни: 0 ≤ від ≤ вибрана ставка ≤ до. Перевір також приховані пошуком позиції.");return;
+   setStatus("Перевір роботу й матеріали: заповни всі три ціни, 0 ≤ від ≤ вибрана ставка ≤ до. Перевір також приховані пошуком позиції.");return;
   }
   setSaving(true);setStatus("");
   try{
@@ -41,13 +41,11 @@ export default function PriceEditor({prices,onSave}:Props){
  }
  return <div>
   <p className="muted">Ставки для New estimate. Редагуй ціни й натисни «Зберегти ціни». Уже створені кошториси не перераховуються.</p>
-  <p className="muted">Базові ставки: готове дзеркало — $75; звичайний світильник на готовому підключенні — $125. Нова проводка та складний монтаж рахуються окремо. Це узгоджені ставки, а не автоматична синхронізація з Homewyse.</p>
-  <details><summary>Звідки беруться ціни</summary><p>Базове джерело — Homewyse.com (національні середні), кожна позиція звірена з чикагським джерелом: Angi Chicago, Homeyou Chicago, Contractor+ Chicago, iConduit Electric, Plumbing Price Guide Chicago та інші. Джерело, діапазон і дату перевірки видно під кожною позицією окремо.</p><p>Частину позицій раніше звірено з прайсами місцевих handyman-компаній (Homer Fixed It, 5 Talents Renovations) — це окремі пропозиції, а не статистика всього ринку. Там, де чикагської ціни саме по цій роботі не опубліковано, у джерелі це прямо сказано, а ставку пораховано з місцевої погодинної.</p><p>Оновлення не автоматичне. У Homer мінімальний виїзд $250 — це умова тієї компанії, не доплата до кожної позиції нашого кошторису; свої умови виїзду враховуй окремо.</p></details>
-  <button className="secondary full" disabled={saving} onClick={()=>replace(applyChicagoPrices(draft))}>Застосувати перевірені ставки Чикаго ({Object.values(chicagoPrices).filter(r=>!r.keepOwnRate).length} позицій)</button>
-  <div className="actions">
-   <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>recommended.has(p.id)?{...p,rate:defaults.find(d=>d.id===p.id)!.rate,rateMin:undefined,rateMax:undefined}:p))}>Застосувати $75 / $125</button>
-   <button className="primary" disabled={saving||!dirty||invalid.length>0} onClick={save}>{saving?"Зберігаю…":"Зберегти ціни"}</button>
-  </div>
+  <p className="muted">ZIP 60171 · Робота й матеріали окремо. Узгоджені ставки роботи — твій базовий прайс, не автоматичний імпорт із Homewyse. Невідомі матеріали не прирівнюються до нуля.</p>
+  <button className="secondary full" disabled={saving} onClick={()=>replace(applyApprovedCatalog(draft))}>Застосувати узгоджений каталог 60171</button>
+  <p className="muted">Ця кнопка замінює базові позиції, зберігаючи додані власні роботи. Перевір зміни й натисни «Зберегти ціни».</p>
+  <details><summary>Джерела цін матеріалів</summary><p>Ціни за упаковку, без доставки й податку. Перевір дату й доступність за посиланням. Кількість матеріалів залежить від розмірів, моделі та витрати.</p>{materialProducts.map(p=><p key={p.id}><a href={p.url} target="_blank" rel="noreferrer">{p.name}</a> — ${p.price} / {p.pack} · {p.checked}<br/><small>{p.note}</small></p>)}</details>
+  <button className="primary" disabled={saving||!dirty||invalid.length>0} onClick={save}>{saving?"Зберігаю…":"Зберегти ціни"}</button>
   <p role="status" aria-live="polite">{status||(dirty?"Є незбережені зміни.":"Показано збережені ціни.")}</p>
   <p className="muted">Діапазон — твій орієнтир за одиницю роботи. «Вибрана ставка» використовується у новому кошторисі. Старі ставки без діапазону показані як від = до.</p>
   <div className="grid"><label>Пошук роботи<input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Фарбування, paint, розетка…"/></label><label>Категорія<select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Усі категорії</option>{Array.from(new Set([...categories,...draft.map(categoryOf)])).map(c=><option key={c}>{c}</option>)}</select></label></div>
@@ -56,9 +54,10 @@ export default function PriceEditor({prices,onSave}:Props){
    const rows=draft.filter(r=>categoryOf(r)===c&&matches(r,query));
    return rows.length>0&&<section key={c}><h3>{c} · {rows.length}</h3>{rows.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small style={{display:"block"}}>{r.aliases.find(a=>/[а-яіїєґ]/i.test(a))} · {r.unit}</small><b>${bounds(r).min}–${bounds(r).max}</b>
    <label>Категорія<select disabled={saving} value={categoryOf(r)} onChange={e=>replace(draft.map(p=>p.id===r.id?{...p,category:e.target.value}:p))}>{Array.from(new Set([...categories,categoryOf(r)])).map(c=><option key={c}>{c}</option>)}</select></label>
-   {chicagoPrices[r.id]?<small style={{display:"block"}}><a href={chicagoPrices[r.id].url} target="_blank" rel="noreferrer">{chicagoPrices[r.id].source}</a> · прайс джерела: ${chicagoPrices[r.id].low}–${chicagoPrices[r.id].high}<br/>{chicagoPrices[r.id].scope}</small>:<small>Власна / базова ставка; ринкове джерело не перевірене.</small>}
-   {!validPrice(r)&&<p role="alert">Потрібно: від ≤ вибрана ставка ≤ до.</p>}</div><div>
-   {(["rateMin","rateMax","rate"] as const).map(field=><label key={field}>{field==="rateMin"?"Від, $":field==="rateMax"?"До, $":"Вибрана ставка, $"}<input aria-label={`${field}: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={invalid.includes(r.id+field)?"":field==="rate"?r.rate:field==="rateMin"?bounds(r).min:bounds(r).max} onChange={e=>{
+   <small>{r.laborNote??"Збережена власна ставка роботи."}</small>
+   <MaterialFields disabled={saving} value={r} onChange={v=>{setDraft(d=>d.map(p=>p.id===r.id?{...p,...v}:p));setDirty(true);setStatus("")}}/>
+   {!validPrice(r)&&<p role="alert">Для роботи й оцінених матеріалів потрібно: 0 ≤ від ≤ вибрана ціна ≤ до.</p>}</div><div>
+   {(["rateMin","rateMax","rate"] as const).map(field=><label key={field}>{field==="rateMin"?"Робота від, $":field==="rateMax"?"Робота до, $":"Вибрана ставка роботи, $"}<input aria-label={`${field}: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={invalid.includes(r.id+field)?"":field==="rate"?r.rate:field==="rateMin"?bounds(r).min:bounds(r).max} onChange={e=>{
     const raw=e.target.value;const value=Number(raw);const key=r.id+field;
     setInvalid(v=>raw===""||!Number.isFinite(value)||value<0?[...v.filter(id=>id!==key),key]:v.filter(id=>id!==key));
     setDraft(v=>v.map(p=>p.id===r.id?{...p,rateMin:bounds(p).min,rateMax:bounds(p).max,[field]:value}:p));setDirty(true);setStatus("");

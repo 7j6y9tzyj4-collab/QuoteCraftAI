@@ -6,6 +6,16 @@ export type Item={
   quantity:number;
   unit:Unit;
   unitPrice:number;
+  laborScope?:string;
+  materialBasisQuantity?:number;
+  laborMin?:number;
+  laborMax?:number;
+  materialRate?:number;
+  materialMin?:number;
+  materialMax?:number;
+  materialStatus?:"unknown"|"partial"|"priced"|"none";
+  customerMaterials?:boolean;
+  materialNote?:string;
   note?:string;
   confidence?:number;
 };
@@ -34,4 +44,11 @@ export type PriceRule={
   rateMin?:number;
   rateMax?:number;
   category?:string;
+  materialRate?:number;
+  materialMin?:number;
+  materialMax?:number;
+  materialStatus?:"unknown"|"partial"|"priced"|"none";
+  materialNote?:string;
+  laborNote?:string;
+  catalogVersion?:number;
 };

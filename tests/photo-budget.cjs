@@ -15,13 +15,7 @@ async function main(){
  assert.equal(normalizeSurvey(raw,true).surfaces[0].lengthLowFt,8);
  assert.equal(normalizeSurvey({...raw,surfaces:[{...raw.surfaces[0],lengthLowFt:12}]},true).surfaces[0].lengthLowFt,null,'reject reversed bounds');
  assert.equal(areaFt(9,6),54);assert.throws(()=>areaFt(Infinity,6));
- const {applyChicagoPrices,chicagoPrices}=read('lib/chicagoPrices.ts');
- const defaults=read('lib/defaults.ts').defaults;
- assert.equal(Object.keys(chicagoPrices).length,14);
- assert.ok(Object.keys(chicagoPrices).every(id=>defaults.some(p=>p.id===id)));
- const own={id:'CUSTOM',name:'My work',rate:42,aliases:[],unit:'each'};
- assert.equal(applyChicagoPrices([own])[0].rate,42);
- assert.equal(applyChicagoPrices(defaults).find(p=>p.id==='bathroom_mirror_install_each').rate,75);
+ // Current catalog/reset coverage is in materials.cjs and material-editor.cjs.
  const Component=read('components/PhotoMeasurements.tsx').default;
  let view,approved='';
  global.fetch=async()=>({ok:true,json:async()=>raw});

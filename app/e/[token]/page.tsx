@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Estimate, Unit } from "@/lib/types";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
+import {estimateAmounts,lineAmounts} from "@/lib/estimateMath";
 import PrintButton from "./PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +44,8 @@ export default async function SharedEstimatePage({
   }
 
   const estimate = data.estimate_data as Estimate;
-  const subtotal = estimate.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const discount = Math.min(subtotal, estimate.discount || 0);
-  const tax = ((subtotal - discount) * (estimate.tax || 0)) / 100;
-  const total = subtotal - discount + tax;
-  const deposit = (total * (estimate.deposit || 0)) / 100;
+  const amounts=estimateAmounts(estimate);
+  const {subtotal,discount,tax,total,deposit}=amounts;
 
   return (
     <main className="shared">
@@ -78,18 +76,24 @@ export default async function SharedEstimatePage({
                 <td>
                   <strong>{item.description}</strong>
                   {item.note && <div className="sharedNote">{item.note}</div>}
+                  {item.laborScope&&<div className="sharedNote">{item.laborScope}</div>}
+                  {item.materialNote&&!item.customerMaterials&&<div className="sharedNote">Матеріали: {item.materialNote}</div>}
                 </td>
                 <td>
                   {item.quantity} {unitLabel(item.unit)}
                 </td>
-                <td>{money(item.unitPrice)}</td>
-                <td>{money(item.quantity * item.unitPrice)}</td>
+                <td>{money(item.unitPrice)} робота<br/>{item.customerMaterials?"Матеріали клієнта":item.materialStatus==="unknown"?"Матеріали не оцінено":`${money(item.materialRate??0)} матеріали${item.materialStatus==="partial"?" (частина комплекту)":""}`}</td>
+                <td>{money(lineAmounts(item).total)}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
+        {amounts.unknown>0&&<p>ПОПЕРЕДНІЙ ПІДСУМОК: матеріали для {amounts.unknown} позицій оцінено не повністю. Включено лише відому частину.</p>}
         <div className="sharedTotals">
+          <div><span>Робота</span><span>{money(amounts.labor)}</span></div>
+          <div><span>Оцінені матеріали</span><span>{money(amounts.materials)}</span></div>
+          <div><span>Діапазон до знижки й податку</span><span>{money(amounts.min)}–{money(amounts.max)}</span></div>
           <div>
             <span>Проміжна сума</span>
             <span>{money(subtotal)}</span>

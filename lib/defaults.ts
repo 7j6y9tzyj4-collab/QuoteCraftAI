@@ -1,6 +1,8 @@
 import type {PriceRule} from "./types";
 
-export const defaults:PriceRule[]=[
+import {materialDefaults} from "./materialDefaults";
+import {approvedRule} from "./approvedRates";
+const legacy:PriceRule[]=[
 {id:"vanity_top_install_each",name:"Install vanity top",aliases:["install vanity top","vanity countertop installation","встановити стільницю vanity","монтаж стільниці у ванній"],unit:"each",rate:250},
 {id:"bathroom_sink_install_each",name:"Install bathroom sink",aliases:["install bathroom sink","install vanity sink","bathroom sink installation","встановити умивальник","встановити sink у vanity"],unit:"each",rate:225},
 {id:"vanity_backsplash_sqft",name:"Install vanity backsplash",aliases:["install vanity backsplash","bathroom backsplash","tile backsplash behind vanity","встановити backsplash біля vanity","плитка над тумбою"],unit:"sqft",rate:18},
@@ -62,6 +64,7 @@ export const defaults:PriceRule[]=[
 {id:"move_furniture_floor_room",name:"Move furniture for flooring",aliases:["move furniture for flooring","move furniture before floor installation","пересунути меблі для підлоги","винести меблі перед монтажем підлоги"],unit:"room",rate:100},
 {id:"drywall_install_sqft",name:"Install drywall",aliases:["install drywall","new drywall installation","встановити гіпсокартон","монтаж гіпсокартону"],unit:"sqft",rate:8},
 {id:"drywall_finish_sqft",name:"Tape mud and sand drywall",aliases:["tape mud and sand drywall","finish drywall","шпаклювати гіпсокартон","проклеїти і зашпаклювати гіпсокартон"],unit:"sqft",rate:6},
+{id:"baseboard_install_linear_ft",name:"Install baseboards",aliases:["install baseboards","baseboard installation","встановити плінтуси","монтаж плінтусів"],unit:"linear_ft",rate:4},
 {id:"door_casing_install_linear_ft",name:"Install door casing",aliases:["install door casing","door trim installation","встановити дверний наличник","монтаж дверної обналички"],unit:"linear_ft",rate:5},
 {id:"quarter_round_install_linear_ft",name:"Install quarter round",aliases:["install quarter round","quarter round installation","встановити quarter round","монтаж чвертькруглого молдингу"],unit:"linear_ft",rate:3},
 {id:"light_fixture_reinstall_each",name:"Reinstall light fixture",aliases:["reinstall light fixture","put light fixture back","повторно встановити світильник","поставити світильник назад"],unit:"each",rate:100},
@@ -103,13 +106,70 @@ export const defaults:PriceRule[]=[
 {id:"vanity_install",name:"Install bathroom vanity",aliases:["install vanity","встановити тумбу","тумба у ванну"],unit:"each",rate:350},
 {id:"drywall_minor",name:"Minor drywall repair",aliases:["drywall repair","ремонт гіпсокартону","шпаклювання"],unit:"each",rate:250},
 {id:"door_install",name:"Install interior door",aliases:["interior door","міжкімнатні двері","встановити двері"],unit:"each",rate:350},
-{id:"baseboard_install",name:"Install baseboards",aliases:["baseboard","плінтус","install baseboards","install baseboard","baseboard installation","встановити плінтуси","встановити плінтус","монтаж плінтусів"],unit:"linear_ft",rate:3.0645},
+{id:"baseboard_install",name:"Install baseboard",aliases:["baseboard","плінтус"],unit:"linear_ft",rate:3.0645},
 {id:"garbage_disposal_replace",name:"Replace garbage disposal",aliases:["garbage disposal","подрібнювач відходів"],unit:"each",rate:250},
-{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:125},
-{id:"kitchen_backsplash_sqft",name:"Install kitchen backsplash",aliases:["install kitchen backsplash","kitchen backsplash","tile kitchen backsplash","backsplash на кухні","плитка фартух на кухні","кухонний фартух"],unit:"sqft",rate:23,rateMin:18,rateMax:30,category:"Плитка та гідроізоляція"},
-{id:"kitchen_sink_install_each",name:"Install kitchen sink",aliases:["install kitchen sink","kitchen sink installation","встановити кухонну мийку","монтаж кухонної мийки"],unit:"each",rate:500,rateMin:400,rateMax:600,category:"Сантехніка"},
-{id:"dishwasher_install_each",name:"Install dishwasher",aliases:["install dishwasher","dishwasher installation","hook up dishwasher","встановити посудомийну машину","підключити посудомийку"],unit:"each",rate:320,rateMin:250,rateMax:450,category:"Кухня"},
-{id:"range_hood_install_each",name:"Install range hood",aliases:["install range hood","range hood installation","install vent hood","встановити витяжку","монтаж кухонної витяжки"],unit:"each",rate:385,rateMin:300,rateMax:600,category:"Кухня"},
-{id:"kitchen_cabinet_remove_each",name:"Remove kitchen cabinet",aliases:["remove kitchen cabinet","kitchen cabinet demolition","demo kitchen cabinets","демонтувати кухонну шафку","зняти кухонні шафки"],unit:"each",rate:65,rateMin:45,rateMax:120,category:"Кухня"},
-{id:"kitchen_hardware_install_each",name:"Install cabinet hardware",aliases:["install cabinet hardware","install cabinet knobs","install cabinet pulls","встановити ручки на шафки","монтаж фурнітури шафок"],unit:"each",rate:15,rateMin:10,rateMax:25,category:"Кухня"}
+{id:"light_fixture_replace",name:"Replace light fixture",aliases:["light fixture","світильник","люстра"],unit:"each",rate:125}
 ];
+
+const added:PriceRule[]=[
+{id:"wood_frame_sqft",name:"Каркас 2×4, площа однієї сторони",aliases:["wood stud framing","каркас стіни"],unit:"sqft",rate:3.72,rateMin:2.38,rateMax:5.06},
+{id:"insulation_r19_sqft",name:"Монтаж утеплення R-19",aliases:["R19 batt insulation","утеплення"],unit:"sqft",rate:1.10,rateMin:.71,rateMax:1.50},
+{id:"lvp_stair_each",name:"Монтаж LVP на сходинку",aliases:["lvp stair","ламінат на сходи"],unit:"each",rate:60,rateMin:45,rateMax:75},
+{id:"crown_molding_lf",name:"Монтаж crown molding",aliases:["crown molding","стельовий плінтус"],unit:"linear_ft",rate:4.50,rateMin:3,rateMax:6},
+{id:"tile_patch_each",name:"Заміна окремої плитки",aliases:["replace single tile","заміна плитки"],unit:"each",rate:112.5,rateMin:75,rateMax:150},
+{id:"tile_regrout_lf",name:"Перезатирання швів плитки",aliases:["regrout joints","перезатирка швів"],unit:"linear_ft",rate:4.50,rateMin:3,rateMax:6},
+{id:"shower_valve_trim_each",name:"Душовий клапан і trim, відкритий доступ",aliases:["shower valve and trim open access","клапан і накладка душу"],unit:"each",rate:375,rateMin:300,rateMax:450},
+{id:"light_new_wiring_each",name:"Монтаж світильника з новою проводкою",aliases:["light new wiring","світильник нова проводка"],unit:"each",rate:275,rateMin:200,rateMax:350},
+{id:"bath_fan_new_duct_each",name:"Вентилятор з новим повітропроводом",aliases:["bath fan new duct","вентилятор новий повітропровід"],unit:"each",rate:450,rateMin:350,rateMax:550},
+{id:"exterior_door_each",name:"Монтаж вхідних дверей",aliases:["exterior door","вхідні двері"],unit:"each",rate:475,rateMin:350,rateMax:600},
+{id:"storm_door_each",name:"Монтаж storm door",aliases:["storm door","зовнішні захисні двері"],unit:"each",rate:200,rateMin:150,rateMax:250},
+{id:"door_adjust_each",name:"Регулювання дверей",aliases:["adjust door","регулювання дверей"],unit:"each",rate:87.5,rateMin:50,rateMax:125},
+{id:"door_handle_each",name:"Ручка в готові отвори",aliases:["door handle existing holes","дверна ручка"],unit:"each",rate:55,rateMin:35,rateMax:75},
+{id:"shelf_ready_each",name:"Монтаж готової полиці до 4 ft",aliases:["install shelf","монтаж полиці"],unit:"each",rate:70,rateMin:40,rateMax:100},
+{id:"cabinet_handle_each",name:"Монтаж меблевої ручки",aliases:["cabinet handle","меблева ручка"],unit:"each",rate:7.50,rateMin:5,rateMax:10},
+{id:"cabinet_remove_each",name:"Демонтаж шафки",aliases:["remove cabinet","демонтаж шафки"],unit:"each",rate:37.50,rateMin:25,rateMax:50},
+{id:"cleanup_person_hour",name:"Винесення й прибирання, людино-година",aliases:["cleanup carry debris","винести сміття прибирання"],unit:"hour",rate:55,rateMin:50,rateMax:60},
+{id:"paint_window_trim_lf",name:"Фарбування віконної лиштви",aliases:["paint window trim","фарбування віконної лиштви"],unit:"linear_ft",rate:3.72,rateMin:2.38,rateMax:5.05},
+{id:"paint_sill_each",name:"Фарбування підвіконня до 4 ft",aliases:["paint sill","фарбування підвіконня"],unit:"each",rate:40,rateMin:30,rateMax:50},
+{id:"paint_shoe_lf",name:"Фарбування shoe molding",aliases:["paint shoe molding","фарбування шузмолдинг"],unit:"linear_ft",rate:1.25,rateMin:1,rateMax:1.50},
+
+{id:"prime_surface_sqft",name:"Ґрунтування, один шар",aliases:["ґрунтування","prime surface"],unit:"sqft",rate:.40,rateMin:.30,rateMax:.50},
+{id:"skim_coat_sqft",name:"Суцільне шпаклювання",aliases:["skim coat","суцільне шпаклювання"],unit:"sqft",rate:.94,rateMin:.85,rateMax:1.03},
+{id:"drywall_finish_joint_lf",name:"Стрічка, шпаклівка, шліфування стиків",aliases:["finish drywall joints","шпаклювання стиків"],unit:"linear_ft",rate:1.50,rateMin:1.36,rateMax:1.65},
+{id:"drywall_crack_each",name:"Ремонт невеликої тріщини",aliases:["repair small crack","ремонт тріщини"],unit:"each",rate:75,rateMin:50,rateMax:100},
+{id:"subfloor_osb_sqft",name:"Монтаж OSB",aliases:["OSB subfloor","монтаж осб"],unit:"sqft",rate:2.65,rateMin:1.70,rateMax:3.60},
+{id:"waterproof_board_seams_lf",name:"Герметизація швів гідроізоляційних плит",aliases:["waterproof board seams","герметизація швів плит"],unit:"linear_ft",rate:3,rateMin:2.50,rateMax:3.50},
+{id:"sheet_membrane_sqft",name:"Монтаж листової гідроізоляційної мембрани",aliases:["sheet waterproof membrane","листова мембрана"],unit:"sqft",rate:4.20,rateMin:3.63,rateMax:4.78},
+{id:"prefab_shower_pan_sqft",name:"Монтаж стандартного готового душового піддона",aliases:["prefab shower pan","готовий душовий піддон"],unit:"sqft",rate:22.50,rateMin:22.50,rateMax:22.50,laborNote:"$300 / 13.333 sq ft для прикладу 60×32 in. Для іншого піддона перевір ставку."},
+{id:"prefab_niche_each",name:"Монтаж готової ніші до 12×24 in, ущільнення",aliases:["prefab niche","готова ніша"],unit:"each",rate:137.5,rateMin:100,rateMax:175},
+{id:"prefab_bench_each",name:"Монтаж готової лавки до 36 in, ущільнення",aliases:["prefab shower bench","готова лавка"],unit:"each",rate:200,rateMin:150,rateMax:250},
+{id:"standard_shower_door_each",name:"Монтаж стандартних поворотних душових дверей",aliases:["standard pivot shower door","стандартні душові двері"],unit:"each",rate:299.5,rateMin:192,rateMax:407},
+{id:"acrylic_tub_each",name:"Монтаж акрилової ванни",aliases:["acrylic tub","акрилова ванна"],unit:"each",rate:475,rateMin:350,rateMax:600},
+{id:"cabinet_box_each",name:"Монтаж зібраної шафки",aliases:["assembled cabinet","монтаж шафки"],unit:"each",rate:125,rateMin:100,rateMax:150},
+{id:"paint_trim_lf",name:"Фарбування лиштви",aliases:["paint casing","фарбування лиштви"],unit:"linear_ft",rate:2.1,rateMin:1.34,rateMax:2.86},
+{id:"paint_cabinet_sqft",name:"Фарбування шаф, площа поверхні",aliases:["paint cabinets","фарбування шаф"],unit:"sqft",rate:7.26,rateMin:4.65,rateMax:9.87}
+];
+export const defaults:PriceRule[]=[...legacy.map(approvedRule).filter(p=>!p.laborNote?.startsWith("Стара базова")||p.id==="bathroom_mirror_install_each"),...added.map(p=>({...p,catalogVersion:2,materialStatus:"unknown" as const,laborNote:p.laborNote??"Узгоджена ставка роботи для 60171; матеріали окремо."}))];
+export function applyApprovedCatalog(current:PriceRule[]):PriceRule[]{
+ const ids=new Set([...defaults,...legacy].map(p=>p.id));
+ return [...defaults.map(p=>({...p,aliases:[...p.aliases]})),...current.filter(p=>!ids.has(p.id))];
+}
+
+const scopeNotes:Record<string,string>={
+ wall_tile_sqft:"Робота включає монтаж backer, укладання й затирку: не додавай ці роботи повторно.",
+ vanity_backsplash_sqft:"Робота включає монтаж backer, укладання й затирку: не додавай ці роботи повторно.",
+ vanity_remove_each:"Вже відключена тумба; відключення й вивезення окремо.",
+ bathtub_remove_each:"Звичайна ванна, не чавунна; вивезення окремо.",
+ vanity_install:"Встановлення тумби до 48 in; сантехніка окремо.",
+ floor_transition_each:"Поріг до 4 ft.",
+ paint_door_each:"Фарбування дверного полотна з двох боків.",
+ drywall_patch_addon_minor:"Латка до 6 in, без фарбування.",
+ drywall_patch_addon_medium:"Латка 6–12 in, без фарбування.",
+ door_install:"Стандартні міжкімнатні prehung двері.",
+ cement_board_install_sqft:"Не додавай, якщо монтаж backer уже включено до плиткових робіт."
+};
+for(const rule of defaults)if(scopeNotes[rule.id])rule.laborNote+=" "+scopeNotes[rule.id];
+
+for(let n=0;n<defaults.length;n++)defaults[n]=materialDefaults(defaults[n]);
+
+const mirror=defaults.find(p=>p.id==="bathroom_mirror_install_each");if(mirror)mirror.laborNote="Узгоджена базова ставка монтажу готового дзеркала: $75. Дзеркало й кріплення окремо.";
