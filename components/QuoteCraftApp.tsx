@@ -22,6 +22,20 @@ const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-cal
 type CalcOverride={laborRate:number;materialRate:number};
 type CalcOverrides=Record<string,CalcOverride>;
 const mergeCalcTasks=(ov:CalcOverrides):CalcTask[]=>calcDefaults.map(t=>ov[t.id]?{...t,laborRate:ov[t.id].laborRate,materialRate:ov[t.id].materialRate}:t);
+// Ціни, збережені під старим id, переносимо на новий і накладаємо на повний
+// каталог: так нові роботи зʼявляються самі, а власні ставки й додані вручну
+// позиції зберігаються.
+const mergeSavedPrices=(saved:PriceRule[]|null|undefined):PriceRule[]=>{
+ const byId:Record<string,PriceRule>={};
+ (saved||[]).forEach(p=>{const id=legacyIdMap[p.id]||p.id;byId[id]={...p,id}});
+ const merged=defaults.map(d=>{
+  const own=byId[d.id];
+  return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax}:d;
+ });
+ const custom=Object.values(byId).filter(p=>!defaults.some(d=>d.id===p.id));
+ return merged.concat(custom);
+};
+
 // Каталоги зводили в один, і частина робіт змінила id. Правки, збережені під
 // старим id, переносимо на новий, інакше вони б мовчки перестали діяти.
 const migrateOverrides=(ov:CalcOverrides|null|undefined):CalcOverrides=>{
@@ -112,7 +126,9 @@ export default function QuoteCraftApp(){
 
  useEffect(()=>{
    setAll(load(EK,[]));
-   setPrices(load(PK,defaults));
+   const savedPrices=mergeSavedPrices(load<PriceRule[]|null>(PK,null));
+   setPrices(savedPrices);
+   try{localStorage.setItem(PK,JSON.stringify(savedPrices))}catch{}
    let ov=load<CalcOverrides|null>(CKO,null);
    if(!ov){
      // міграція зі старого формату (повний каталог у localStorage)
@@ -490,8 +506,9 @@ export default function QuoteCraftApp(){
          const row=payload.new as {prices_data?:PriceRule[]};
 
          if(row?.prices_data){
-           setPrices(row.prices_data);
-           localStorage.setItem(PK,JSON.stringify(row.prices_data));
+           const merged=mergeSavedPrices(row.prices_data);
+           setPrices(merged);
+           localStorage.setItem(PK,JSON.stringify(merged));
          }
        }
      )
@@ -518,7 +535,7 @@ export default function QuoteCraftApp(){
      }
 
      if(data?.prices_data){
-       const latest=data.prices_data as PriceRule[];
+       const latest=mergeSavedPrices(data.prices_data as PriceRule[]);
        setPrices(latest);
        localStorage.setItem(PK,JSON.stringify(latest));
      }
@@ -603,7 +620,7 @@ export default function QuoteCraftApp(){
      if(priceError){
        setMessage("Не вдалося завантажити ціни: "+priceError.message);
      }else if(priceRow?.prices_data){
-       const cloudPrices=priceRow.prices_data as PriceRule[];
+       const cloudPrices=mergeSavedPrices(priceRow.prices_data as PriceRule[]);
        setPrices(cloudPrices);
        localStorage.setItem(PK,JSON.stringify(cloudPrices));
      }else{
