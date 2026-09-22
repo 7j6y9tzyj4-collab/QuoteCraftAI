@@ -52,3 +52,10 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .jobPhotos{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.jobPhotos figure{position:relative;margin:0}.jobPhotos img{width:110px;height:110px;object-fit:cover;border-radius:12px}.jobPhotos button{position:absolute;right:3px;top:3px;background:#fff;color:#111;border-radius:50%;width:30px;height:30px}
 
 .photoSurvey{margin:18px 0;padding:16px;border:1px solid #b8c6df;border-radius:16px;background:#f8faff}.photoSurvey button{margin:10px 0}.photoSurvey .grid{display:grid;gap:12px}.photoSurvey small{display:block;margin:8px 0}
+
+.materialFields { margin:16px 0;padding:14px;border:1px solid #d0d8e8;border-radius:12px;min-width:0; }
+.materialFields legend {font-weight:700;}
+.customerMaterials {display:flex;align-items:center;gap:10px;margin:16px 0;}
+.customerMaterials input {width:20px;height:20px;}
+.price {align-items:start;}
+.materialFields .grid3 {grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
