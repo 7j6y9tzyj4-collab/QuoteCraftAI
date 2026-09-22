@@ -339,7 +339,8 @@ export default function QuoteCraftApp(){
 
     const aiItems=(data.items||[]) as CalcAIItem[];
     const items:CalcItem[]=aiItems.map(ai=>{
-      const task=calcTasks.find(t=>t.id===ai.taskId);
+      const aiId=legacyIdMap[ai.taskId]||ai.taskId; // AI може повернути старий id
+      const task=calcTasks.find(t=>t.id===aiId);
       const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
       if(!task)return blank;
       return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",note:ai.note||undefined,confidence:ai.confidence};
