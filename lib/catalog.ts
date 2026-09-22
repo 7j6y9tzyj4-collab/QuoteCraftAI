@@ -223,7 +223,16 @@ export const legacyIdMap:Record<string,string>={
  "trim_baseboard_remove": "baseboard_remove_linear_ft",
  "trim_shoe_molding_install": "quarter_round_install_linear_ft",
  "paint_trim_linear_ft": "paint_baseboards_linear_ft",
- "baseboard_install_linear_ft": "baseboard_install"
+ "baseboard_install_linear_ft": "baseboard_install",
+ // id з каталогу GPT (60171), що дублюють наші позиції тією ж одиницею виміру
+ "cabinet_box_each": "kitchen_cabinet_install",
+ "cabinet_handle_each": "kitchen_hardware_install_each",
+ "cabinet_remove_each": "kitchen_cabinet_remove_each",
+ "insulation_r19_sqft": "drywall_insulation_wall",
+ "paint_trim_lf": "paint_baseboards_linear_ft",
+ "sheet_membrane_sqft": "tile_waterproofing_sqft",
+ "shower_valve_trim_each": "shower_trim_install_each",
+ "standard_shower_door_each": "shower_glass_door_install_each"
 };
 
 export const catalogById=(id:string):CatalogTask|undefined=>

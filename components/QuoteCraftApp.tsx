@@ -27,7 +27,11 @@ const mergeCalcTasks=(ov:CalcOverrides):CalcTask[]=>calcDefaults.map(t=>ov[t.id]
 // позиції зберігаються.
 const mergeSavedPrices=(saved:PriceRule[]|null|undefined):PriceRule[]=>{
  const byId:Record<string,PriceRule>={};
- (saved||[]).forEach(p=>{const id=legacyIdMap[p.id]||p.id;byId[id]={...p,id}});
+ // Спершу позиції під старими id, потім під актуальними: якщо збережено обидві,
+ // діє ставка з актуального id (власна), а стара копія лише зливається.
+ const saved_=saved||[];
+ saved_.filter(p=>legacyIdMap[p.id]).forEach(p=>{const id=legacyIdMap[p.id];byId[id]={...p,id}});
+ saved_.filter(p=>!legacyIdMap[p.id]).forEach(p=>{byId[p.id]={...p}});
  const merged=defaults.map(d=>{
   const own=byId[d.id];
   return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax}:d;
