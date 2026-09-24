@@ -49,9 +49,9 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
     normalized.match(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/i);
 
   const heightMatch =
-    normalized.match(/(?:height|висот\w*)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i) ||
-    normalized.match(/(\d+(?:\.\d+)?)\s*(?:ft|feet|фут\w*)\s*(?:height|висот\w*)/i) ||
-    normalized.match(/(?:height|висот\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)/i);
+    normalized.match(/(?:height|ceiling\w*|висот\w*|стел\w*)\s*(?:is|=|:)?\s*(\d+(?:\.\d+)?)/i) ||
+    normalized.match(/(\d+(?:\.\d+)?)\s*(?:ft|feet|фут\w*|in|inch\w*|дюйм\w*)?\s*(?:height|ceiling\w*|висот\w*|стел\w*)/i) ||
+    normalized.match(/(?:height|ceiling\w*|висот\w*|стел\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)(?!\s*(?:x|на|by|\.?\d))/i);
 
   if (!roomMatch || !heightMatch) return null;
 

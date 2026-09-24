@@ -16,6 +16,8 @@ export type Item={
   materialStatus?:"unknown"|"partial"|"priced"|"none";
   customerMaterials?:boolean;
   materialNote?:string;
+  /** базове оздоблення / прилад за одиницю (allowance) */
+  finishRate?:number;
   note?:string;
   confidence?:number;
 };
@@ -34,6 +36,8 @@ export type Estimate={
   measurementNotes?:string;
   shareToken?:string;
   status?:EstimateStatus;
+  /** рахувати базове оздоблення в сумі (за замовчуванням так) */
+  includeFinish?:boolean;
 };
 export type PriceRule={
   id:string;
@@ -51,4 +55,9 @@ export type PriceRule={
   materialNote?:string;
   laborNote?:string;
   catalogVersion?:number;
+  finishRate?:number;
+  finishNote?:string;
+  /** власник змінив матеріали / оздоблення вручну — не перезаписувати з каталогу */
+  materialOwn?:boolean;
+  finishOwn?:boolean;
 };

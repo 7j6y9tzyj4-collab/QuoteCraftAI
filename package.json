@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "verify": "node --experimental-strip-types scripts/verify-rates.ts",
+    "verify": "node --experimental-strip-types --import ./scripts/ts-resolve.mjs scripts/verify-rates.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"

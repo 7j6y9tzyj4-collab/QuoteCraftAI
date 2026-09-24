@@ -9,6 +9,7 @@ export type CalcTask={
   unit:Unit;
   laborRate:number;
   materialRate:number;
+  finishRate?:number;
   suppliesPct:number;
   suppliesFixed:number;
   minPrice:number;
@@ -29,6 +30,7 @@ export type CalcItem={
   difficulty:CalcDifficulty;
   laborRate:number;
   materialRate:number;
+  finishRate?:number;
   suppliesPct:number;
   suppliesFixed:number;
   minPrice:number;
@@ -44,6 +46,7 @@ export type CalcTotals={
   labor:number;
   materials:number;
   supplies:number;
+  finish:number;
   lineTotal:number;
   low:number;
   high:number;
@@ -57,6 +60,7 @@ export type CalcDraft={
   notes:string;
   discountType?:"percent"|"amount";
   discountValue?:number;
+  includeFinish?:boolean;
 };
 
 export type CalcAIItem={

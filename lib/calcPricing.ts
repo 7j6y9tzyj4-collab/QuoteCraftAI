@@ -16,6 +16,7 @@ export const calcDefaults:CalcTask[]=catalog.map(t=>({
   unit:t.unit,
   laborRate:t.laborRate,
   materialRate:t.materialRate,
+  finishRate:t.finishRate||0,
   suppliesPct:t.suppliesPct,
   suppliesFixed:t.suppliesFixed,
   minPrice:t.minPrice,

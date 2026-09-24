@@ -6,7 +6,7 @@ import PhotoMeasurements from "@/components/PhotoMeasurements";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
-import {estimateTotals,itemTotal,itemMaterialRate} from "@/lib/estimateTotals";
+import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
@@ -26,10 +26,10 @@ const tasksFromPrices=(prices:PriceRule[]):CalcTask[]=>{
  const byId=new Map(prices.map(p=>[p.id,p]));
  const fromCatalog=calcDefaults.map(t=>{
   const p=byId.get(t.id);
-  return p?{...t,laborRate:Number(p.rate)||0,materialRate:typeof p.materialRate==="number"?p.materialRate:t.materialRate,suppliesPct:0,suppliesFixed:0}:t;
+  return p?{...t,laborRate:Number(p.rate)||0,materialRate:typeof p.materialRate==="number"?p.materialRate:t.materialRate,finishRate:typeof p.finishRate==="number"?p.finishRate:(t.finishRate||0),suppliesPct:0,suppliesFixed:0}:t;
  });
  const custom=prices.filter(p=>!calcDefaults.some(t=>t.id===p.id)).map(p=>({
-  id:p.id,category:categoryOf(p),name:p.name,unit:p.unit,laborRate:Number(p.rate)||0,materialRate:p.materialRate||0,suppliesPct:0,suppliesFixed:0,minPrice:0,
+  id:p.id,category:categoryOf(p),name:p.name,unit:p.unit,laborRate:Number(p.rate)||0,materialRate:p.materialRate||0,finishRate:p.finishRate||0,suppliesPct:0,suppliesFixed:0,minPrice:0,
   difficultyMultipliers:{basic:0.9,standard:1,difficult:1.2},lowMult:0.9,highMult:1.15,notes:"",source:"Власна позиція з Prices."
  }));
  return fromCatalog.concat(custom);
@@ -46,7 +46,10 @@ const mergeSavedPrices=(saved:PriceRule[]|null|undefined):PriceRule[]=>{
  saved_.filter(p=>!legacyIdMap[p.id]).forEach(p=>{byId[p.id]={...p}});
  const merged=defaults.map(d=>{
   const own=byId[d.id];
-  return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax,materialRate:typeof own.materialRate==="number"?own.materialRate:d.materialRate}:d;
+  // матеріали й оздоблення — з каталогу (ціни магазинів), якщо власник не змінював їх вручну
+  return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax,
+   ...(own.materialOwn&&typeof own.materialRate==="number"?{materialRate:own.materialRate,materialOwn:true}:{}),
+   ...(own.finishOwn&&typeof own.finishRate==="number"?{finishRate:own.finishRate,finishOwn:true}:{})}:d;
  });
  const custom=Object.values(byId).filter(p=>!defaults.some(d=>d.id===p.id));
  return merged.concat(custom);
@@ -63,11 +66,11 @@ const migrateOverrides=(ov:CalcOverrides|null|undefined):CalcOverrides=>{
 const applyLegacyCalcOverrides=(prices:PriceRule[],ov:CalcOverrides):PriceRule[]=>{
  const m=migrateOverrides(ov);
  if(!Object.keys(m).length)return prices;
- return prices.map(p=>m[p.id]?{...p,rate:m[p.id].laborRate,materialRate:m[p.id].materialRate,rateMin:Math.min(p.rateMin??m[p.id].laborRate,m[p.id].laborRate),rateMax:Math.max(p.rateMax??m[p.id].laborRate,m[p.id].laborRate)}:p);
+ return prices.map(p=>m[p.id]?{...p,rate:m[p.id].laborRate,rateMin:Math.min(p.rateMin??m[p.id].laborRate,m[p.id].laborRate),rateMax:Math.max(p.rateMax??m[p.id].laborRate,m[p.id].laborRate)}:p);
 };
 const missingCalcTable=(e:{code?:string;message?:string}|null)=>!!e&&(e.code==="42P01"||/user_calc_prices/.test(e.message||""));
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
-const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
+const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft",includeFinish:true});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
 const DEFAULT_CALC_NOTES="Additional conditions: This estimate includes labor and an editable allowance for basic installation materials (adhesive/thinset, waterproof boards, floor underlayment boards, shower pan/base, drain and plumbing rough materials, grout, silicone, sealants and small consumables). Final material cost may change based on product choice, final layout and conditions found after demolition.\n\nTile, vanity, faucet, mirror, shower glass/door, light fixtures, fan, finish accessories, appliances, permits, dumpster/disposal, and any hidden damage behind walls or under the floor are separate unless specifically included above. Finish materials are purchased by the customer. Small consumables (fasteners, sealant, putty, etc.) are purchased by the contractor and reimbursed by the customer based on receipts. Payment can be made in cash, by check, or via Zelle.\n\nAny additional work beyond this estimate will be billed separately; the customer will be informed in advance to approve the cost before proceeding. Final labor may change if ductwork, plumbing, electrical, rotten subfloor, mold, or other hidden issues are found after demolition. Prices are valid for 30 days.";
@@ -125,6 +128,8 @@ export default function QuoteCraftApp(){
  // Пакетна знижка — на працю, як у кошторисах власника (матеріали не знижуються)
  const [calcDiscountType,setCalcDiscountType]=useState<"percent"|"amount">("percent");
  const [calcDiscountValue,setCalcDiscountValue]=useState(0);
+ // базове оздоблення (плитка, прилади за цінами магазинів) — у сумі за замовчуванням
+ const [calcIncludeFinish,setCalcIncludeFinish]=useState(true);
  const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
  const [calcPrompt,setCalcPrompt]=useState("");
  const [calcThinking,setCalcThinking]=useState(false);
@@ -156,13 +161,14 @@ export default function QuoteCraftApp(){
    setCalcLocationMultiplier(draft.locationMultiplier??1);
    setCalcDiscountType(draft.discountType??"percent");
    setCalcDiscountValue(Number(draft.discountValue)||0);
+   setCalcIncludeFinish(draft.includeFinish!==false);
    setCalcNotes(draft.notes??DEFAULT_CALC_NOTES);
  },[]);
 
  useEffect(()=>{
-   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue};
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish};
    localStorage.setItem(CDK,JSON.stringify(draft));
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish]);
 
  const calcTasks=useMemo(()=>tasksFromPrices(prices),[prices]);
  // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
@@ -171,7 +177,7 @@ export default function QuoteCraftApp(){
    const pkg=all.filter(c=>/повний ремонт/i.test(c));
    return [...pkg,...all.filter(c=>!pkg.includes(c))];
  },[calcTasks]);
- const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier),[calcItems,calcLocationMultiplier]);
+ const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier,calcIncludeFinish),[calcItems,calcLocationMultiplier,calcIncludeFinish]);
  const calcDiscount=useMemo(()=>{
    const v=Math.max(0,Number(calcDiscountValue)||0);
    const raw=calcDiscountType==="percent"?calcTotalsValue.labor*v/100:v;
@@ -189,6 +195,7 @@ export default function QuoteCraftApp(){
      unit:task.unit,
      laborRate:task.laborRate,
      materialRate:task.materialRate,
+     finishRate:task.finishRate||0,
      suppliesPct:task.suppliesPct,
      suppliesFixed:task.suppliesFixed,
      minPrice:task.minPrice,
@@ -376,7 +383,7 @@ export default function QuoteCraftApp(){
    lines.push("LINE ITEMS");
    lines.push("----------");
    calcItems.forEach(li=>{
-     const c=computeCalcLine(li,calcLocationMultiplier);
+     const c=computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish);
      lines.push(`${li.name} — ${li.quantity} ${unitLabel(li.unit)} (${li.difficulty})  →  ${money(c.lineTotal)}  [range ${money(c.low)}–${money(c.high)}]`);
      if(li.note)lines.push("   note: "+li.note);
    });
@@ -385,7 +392,8 @@ export default function QuoteCraftApp(){
    lines.push("------");
    lines.push("Labor: "+money(calcTotalsValue.labor));
    lines.push("Materials: "+money(calcTotalsValue.materials));
-   lines.push("Supplies/equipment: "+money(calcTotalsValue.supplies));
+   if(calcTotalsValue.finish>0)lines.push("Finish allowance (basic grade): "+money(calcTotalsValue.finish));
+   if(calcTotalsValue.supplies>0)lines.push("Supplies/equipment: "+money(calcTotalsValue.supplies));
    lines.push("Subtotal: "+money(calcTotalsValue.lineTotal));
    if(calcDiscount>0){lines.push(calcDiscountLabel+": -"+money(calcDiscount));lines.push("Total: "+money(calcGrandTotal));}
    lines.push("Estimated range: "+money(Math.max(0,calcTotalsValue.low-calcDiscount))+" – "+money(Math.max(0,calcTotalsValue.high-calcDiscount)));
@@ -410,7 +418,7 @@ export default function QuoteCraftApp(){
 
  const [calcPdfBusy,setCalcPdfBusy]=useState(false);
  async function makeCalcPdf(){
-   return buildCalcPdf({client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,items:calcItems,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes});
+   return buildCalcPdf({client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,items:calcItems,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,includeFinish:calcIncludeFinish,notes:calcNotes});
  }
  // Завантажити PDF — на комп'ютері; Надіслати — на телефоні відкриває меню
  // «Поділитись» (Messages, WhatsApp, Mail), де ця кнопка є, інакше просто зберігає.
@@ -461,7 +469,7 @@ export default function QuoteCraftApp(){
      .replace(/'/g,"&#039;");
 
    const rows=calcItems.map(li=>{
-     const c=computeCalcLine(li,calcLocationMultiplier);
+     const c=computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish);
      return`
      <tr>
        <td><strong>${esc(li.name)}</strong>${li.note?`<div class="note">${esc(li.note)}</div>`:""}</td>
@@ -502,7 +510,8 @@ export default function QuoteCraftApp(){
      <div class="totals">
        <div><span>Labor</span><span>${esc(money(calcTotalsValue.labor))}</span></div>
        <div><span>Materials</span><span>${esc(money(calcTotalsValue.materials))}</span></div>
-       <div><span>Supplies</span><span>${esc(money(calcTotalsValue.supplies))}</span></div>
+       ${calcTotalsValue.finish>0?`<div><span>Finish allowance (basic grade)</span><span>${esc(money(calcTotalsValue.finish))}</span></div>`:""}
+       ${calcTotalsValue.supplies>0?`<div><span>Supplies</span><span>${esc(money(calcTotalsValue.supplies))}</span></div>`:""}
        <div${calcDiscount>0?"":' class="grand"'}><span>Subtotal</span><span>${esc(money(calcTotalsValue.lineTotal))}</span></div>
        ${calcDiscount>0?`<div><span>${esc(calcDiscountLabel)}</span><span>−${esc(money(calcDiscount))}</span></div><div class="grand"><span>Total</span><span>${esc(money(calcGrandTotal))}</span></div>`:""}
        <div><strong>Estimated range</strong><strong>${esc(money(Math.max(0,calcTotalsValue.low-calcDiscount)))} – ${esc(money(Math.max(0,calcTotalsValue.high-calcDiscount)))}</strong></div>
@@ -722,7 +731,8 @@ export default function QuoteCraftApp(){
    };
  },[user]);
 
- const estTotals=useMemo(()=>estimateTotals(cur.items),[cur.items]);
+ const estIncludeFinish=cur.includeFinish!==false;
+ const estTotals=useMemo(()=>estimateTotals(cur.items,estIncludeFinish),[cur.items,estIncludeFinish]);
  const subtotal=estTotals.subtotal;
  const discount=Math.min(subtotal,cur.discount||0);
  const tax=(subtotal-discount)*(cur.tax||0)/100;
@@ -785,7 +795,7 @@ export default function QuoteCraftApp(){
    catch{return "Ціни збережено в акаунті. Локальна копія недоступна."}
    return "Ціни збережено в акаунті.";
  };
- const value=(e:Estimate)=>estimateTotals(e.items).subtotal;
+ const value=(e:Estimate)=>estimateTotals(e.items,e.includeFinish!==false).subtotal;
 
 
  const signUp=async()=>{
@@ -1053,6 +1063,7 @@ export default function QuoteCraftApp(){
         unit:ai.unit,
         unitPrice:typeof ai.explicitRate==="number"&&Number.isFinite(ai.explicitRate)&&ai.explicitRate>=0?ai.explicitRate:service?.rate||0,
         materialRate:service?.materialRate||0,
+        finishRate:service?.finishRate||0,
         note:ai.note||undefined,
         confidence:ai.confidence
       };
@@ -1142,8 +1153,8 @@ export default function QuoteCraftApp(){
          ${item.note?`<div class="note">${esc(item.note)}</div>`:""}
        </td>
        <td>${esc(item.quantity)} ${esc(unitLabel(item.unit))}</td>
-       <td>${esc(money(item.unitPrice))}${itemMaterialRate(item)>0?` + ${esc(money(itemMaterialRate(item)))} mat.`:""}</td>
-       <td>${esc(money(itemTotal(item)))}</td>
+       <td>${esc(money(item.unitPrice))}${itemMaterialRate(item)>0?` + ${esc(money(itemMaterialRate(item)))} mat.`:""}${estIncludeFinish&&itemFinishRate(item)>0?` + ${esc(money(itemFinishRate(item)))} finish`:""}</td>
+       <td>${esc(money(itemTotal(item,estIncludeFinish)))}</td>
      </tr>
    `).join("");
 
@@ -1213,7 +1224,7 @@ export default function QuoteCraftApp(){
      </table>
 
      <div class="totals">
-       ${estTotals.materials>0?`<div><span>Labor</span><span>${esc(money(estTotals.labor))}</span></div><div><span>Materials</span><span>${esc(money(estTotals.materials))}</span></div>`:""}
+       ${estTotals.materials>0||estTotals.finish>0?`<div><span>Labor</span><span>${esc(money(estTotals.labor))}</span></div><div><span>Materials</span><span>${esc(money(estTotals.materials))}</span></div>${estTotals.finish>0?`<div><span>Finish allowance (basic grade)</span><span>${esc(money(estTotals.finish))}</span></div>`:""}`:""}
        <div><span>Subtotal</span><span>${esc(money(subtotal))}</span></div>
        <div><span>Discount</span><span>−${esc(money(discount))}</span></div>
        <div><span>Tax</span><span>${esc(money(tax))}</span></div>
@@ -1395,7 +1406,7 @@ export default function QuoteCraftApp(){
 
     {cur.preliminary&&<section className="panel"><b>Попередній кошторис — потрібні заміри на обʼєкті</b><p>{PRELIMINARY_NOTE}</p><details><summary>Підтверджені приблизні розміри</summary><p style={{whiteSpace:"pre-wrap"}}>{cur.measurementNotes}</p></details></section>}
     <section className="panel"><div className="head"><h2>Scope & pricing</h2><button className="add noPrint" onClick={add}>＋ Add item</button></div>
-      <ServicePicker prices={prices} onSelect={p=>setCur(c=>({...c,items:[...c.items,{id:crypto.randomUUID(),serviceId:p.id,description:p.name,quantity:1,unit:p.unit,unitPrice:p.rate,materialRate:p.materialRate||0}]}))}/>
+      <ServicePicker prices={prices} onSelect={p=>setCur(c=>({...c,items:[...c.items,{id:crypto.randomUUID(),serviceId:p.id,description:p.name,quantity:1,unit:p.unit,unitPrice:p.rate,materialRate:p.materialRate||0,finishRate:p.finishRate||0}]}))}/>
       {cur.items.length===0?<p className="empty">AI-позиції з’являться тут.</p>:cur.items.map(i=><article className="item" key={i.id}>
        <div className="itemtop"><input value={i.description} onChange={e=>update(i.id,{description:e.target.value})}/><button className="remove noPrint" onClick={()=>remove(i.id)}>×</button></div>
        {prices.find(p=>p.id===i.serviceId)&&<p className="muted noPrint">Діапазон у Prices: ${bounds(prices.find(p=>p.id===i.serviceId)!).min}–${bounds(prices.find(p=>p.id===i.serviceId)!).max} / {unitLabel(i.unit)}. Нижче — вибрана ціна для цього кошторису.</p>}
@@ -1406,13 +1417,15 @@ export default function QuoteCraftApp(){
         <label>Unit<select value={i.unit} onChange={e=>update(i.id,{unit:e.target.value as Unit})}><option value="each">each</option><option value="sqft">sq ft</option><option value="hour">hour</option><option value="linear_ft">linear ft</option><option value="room">room</option></select></label>
         <label>Праця, $/од<input type="number" min="0" step="0.01" value={i.unitPrice} onChange={e=>update(i.id,{unitPrice:Number(e.target.value)})}/></label>
         <label>Матеріали, $/од<input type="number" min="0" step="0.01" value={itemMaterialRate(i)} onChange={e=>update(i.id,{materialRate:Math.max(0,Number(e.target.value)||0)})}/></label>
-        <div className="linetotal"><span>Total</span><b>{money(itemTotal(i))}</b></div>
-       </div><small>{i.quantity} {unitLabel(i.unit)} × ({money(i.unitPrice)}{itemMaterialRate(i)>0?` + ${money(itemMaterialRate(i))} матеріали`:""})</small>
+        <label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={itemFinishRate(i)} onChange={e=>update(i.id,{finishRate:Math.max(0,Number(e.target.value)||0)})}/></label>
+        <div className="linetotal"><span>Total</span><b>{money(itemTotal(i,estIncludeFinish))}</b></div>
+       </div><small>{i.quantity} {unitLabel(i.unit)} × ({money(i.unitPrice)} праця{itemMaterialRate(i)>0?` + ${money(itemMaterialRate(i))} матеріали`:""}{estIncludeFinish&&itemFinishRate(i)>0?` + ${money(itemFinishRate(i))} оздоблення`:""})</small>
       </article>)}
     </section>
 
     <section className="panel grid3 noPrint"><label>Discount, $<input type="number" value={cur.discount} onChange={e=>setCur({...cur,discount:Number(e.target.value)})}/></label><label>Tax, %<input type="number" value={cur.tax} onChange={e=>setCur({...cur,tax:Number(e.target.value)})}/></label><label>Deposit, %<input type="number" value={cur.deposit} onChange={e=>setCur({...cur,deposit:Number(e.target.value)})}/></label></section>
-    <section className="total">{estTotals.materials>0&&<><div><span>Праця</span><span>{money(estTotals.labor)}</span></div><div><span>Матеріали</span><span>{money(estTotals.materials)}</span></div></>}<div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
+    <label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"8px 0"}}><input type="checkbox" checked={estIncludeFinish} onChange={e=>setCur({...cur,includeFinish:e.target.checked})}/>Включити базове оздоблення (плитка, прилади, світильники за цінами Home Depot / Floor &amp; Decor)</label>
+    <section className="total">{(estTotals.materials>0||estTotals.finish>0)&&<><div><span>Праця</span><span>{money(estTotals.labor)}</span></div><div><span>Матеріали</span><span>{money(estTotals.materials)}</span></div>{estTotals.finish>0&&<div><span>Оздоблення (базове)</span><span>{money(estTotals.finish)}</span></div>}</>}<div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
     {user&&<div className="shareRow noPrint"><button className="secondary" onClick={shareEstimate}>🔗 Copy client link</button></div>}
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
@@ -1434,7 +1447,7 @@ export default function QuoteCraftApp(){
 
     <section className="panel"><div className="head"><h2>Line items</h2><button className="add noPrint" onClick={addCalcItem}>＋ Add item</button></div>
       {calcItems.length===0?<p className="empty">AI-позиції з'являться тут.</p>:calcItems.map(li=>{
-        const c=computeCalcLine(li,calcLocationMultiplier);
+        const c=computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish);
         return <article className="item" key={li.id}>
          <div className="itemtop">
           <select value={li.taskId} onChange={e=>updateCalcItem(li.id,{taskId:e.target.value})}>
@@ -1451,17 +1464,19 @@ export default function QuoteCraftApp(){
           <label>Difficulty<select value={li.difficulty} onChange={e=>updateCalcItem(li.id,{difficulty:e.target.value as CalcDifficulty})}><option value="basic">Basic</option><option value="standard">Standard</option><option value="difficult">Difficult</option></select></label>
           <div className="linetotal"><span>Total</span><b>{money(c.lineTotal)}</b></div>
          </div>
-         <small>Labor {money(c.labor)} · Materials {money(c.materials)} · Supplies {money(c.supplies)} · Range {money(c.low)}–{money(c.high)}</small>
+         <small>Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
         </article>;
       })}
     </section>
 
     <section className="panel"><label>Notes &amp; exclusions<textarea rows={8} value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label>{calcNotes!==DEFAULT_CALC_NOTES&&<button className="secondary full noPrint" onClick={()=>setCalcNotes(DEFAULT_CALC_NOTES)}>Повернути стандартний текст умов</button>}</section>
 
+    <label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"8px 0"}}><input type="checkbox" checked={calcIncludeFinish} onChange={e=>setCalcIncludeFinish(e.target.checked)}/>Включити базове оздоблення (плитка, прилади, світильники за цінами Home Depot / Floor &amp; Decor)</label>
     <section className="total">
      <div><span>Labor</span><span>{money(calcTotalsValue.labor)}</span></div>
      <div><span>Materials</span><span>{money(calcTotalsValue.materials)}</span></div>
-     <div><span>Supplies</span><span>{money(calcTotalsValue.supplies)}</span></div>
+     {calcTotalsValue.finish>0&&<div><span>Finish allowance (basic grade)</span><span>{money(calcTotalsValue.finish)}</span></div>}
+     {calcTotalsValue.supplies>0&&<div><span>Supplies</span><span>{money(calcTotalsValue.supplies)}</span></div>}
      <div className={calcDiscount>0?undefined:"grand"}><span>Subtotal</span><b>{money(calcTotalsValue.lineTotal)}</b></div>
      {calcDiscount>0&&<><div><span>{calcDiscountLabel}</span><span>−{money(calcDiscount)}</span></div><div className="grand"><span>Total</span><b>{money(calcGrandTotal)}</b></div></>}
      <div><span>Estimated range</span><b>{money(Math.max(0,calcTotalsValue.low-calcDiscount))} – {money(Math.max(0,calcTotalsValue.high-calcDiscount))}</b></div>

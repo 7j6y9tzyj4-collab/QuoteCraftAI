@@ -54,7 +54,8 @@ export default function PriceEditor({prices,onSave}:Props){
   {!draft.some(r=>(!category||categoryOf(r)===category)&&matches(r,query))&&<p>Нічого не знайдено. Зміни пошук або категорію.</p>}
   {Array.from(new Set([...categories,...draft.map(categoryOf)])).filter(c=>!category||c===category).map(c=>{
    const rows=draft.filter(r=>categoryOf(r)===c&&matches(r,query));
-   return rows.length>0&&<section key={c}><h3>{c} · {rows.length}</h3>{rows.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small style={{display:"block"}}>{r.aliases.find(a=>/[а-яіїєґ]/i.test(a))} · {r.unit}</small><b>${bounds(r).min}–${bounds(r).max}</b>{(r.materialRate??0)>0&&<small> · праця {r.rate} + матеріали {r.materialRate} = {Math.round((r.rate+(r.materialRate||0))*100)/100}/{r.unit}</small>}
+   return rows.length>0&&<section key={c}><h3>{c} · {rows.length}</h3>{rows.map(r=><article className="price" key={r.id}><div><b>{r.name}</b><small style={{display:"block"}}>{r.aliases.find(a=>/[а-яіїєґ]/i.test(a))} · {r.unit}</small><b>${bounds(r).min}–${bounds(r).max}</b>{((r.materialRate??0)>0||(r.finishRate??0)>0)&&<small> · праця {r.rate} + матеріали {r.materialRate||0}{(r.finishRate??0)>0?` + оздоблення ${r.finishRate}`:""} = {Math.round((r.rate+(r.materialRate||0)+(r.finishRate||0))*100)/100}/{r.unit}</small>}
+   {(r.materialNote||r.finishNote)&&<details><summary style={{fontSize:13}}>З чого складаються матеріали</summary>{r.materialNote&&<small style={{display:"block"}}>Матеріали: {r.materialNote}</small>}{r.finishNote&&<small style={{display:"block"}}>Оздоблення: {r.finishNote}</small>}</details>}
    <label>Категорія<select disabled={saving} value={categoryOf(r)} onChange={e=>replace(draft.map(p=>p.id===r.id?{...p,category:e.target.value}:p))}>{Array.from(new Set([...categories,categoryOf(r)])).map(c=><option key={c}>{c}</option>)}</select></label>
    {chicagoPrices[r.id]?<small style={{display:"block"}}><a href={chicagoPrices[r.id].url} target="_blank" rel="noreferrer">{chicagoPrices[r.id].source}</a> · прайс джерела: ${chicagoPrices[r.id].low}–${chicagoPrices[r.id].high}<br/>{chicagoPrices[r.id].scope}</small>:<small>Власна / базова ставка; ринкове джерело не перевірене.</small>}
    {!validPrice(r)&&<p role="alert">Потрібно: від ≤ вибрана ставка ≤ до.</p>}</div><div>
@@ -65,7 +66,11 @@ export default function PriceEditor({prices,onSave}:Props){
    }}/></label>)}
    <label>Матеріали, $/од<input aria-label={`materialRate: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={r.materialRate??0} onChange={e=>{
     const value=Math.max(0,Number(e.target.value)||0);
-    setDraft(v=>v.map(p=>p.id===r.id?{...p,materialRate:value}:p));setDirty(true);setStatus("");
+    setDraft(v=>v.map(p=>p.id===r.id?{...p,materialRate:value,materialOwn:true}:p));setDirty(true);setStatus("");
+   }}/></label>
+   <label>Оздоблення, $/од<input aria-label={`finishRate: ${r.name}`} type="number" min="0" step="0.01" disabled={saving} value={r.finishRate??0} onChange={e=>{
+    const value=Math.max(0,Number(e.target.value)||0);
+    setDraft(v=>v.map(p=>p.id===r.id?{...p,finishRate:value,finishOwn:true}:p));setDirty(true);setStatus("");
    }}/></label>
    </div></article>)}</section>;
   })}

@@ -15,6 +15,7 @@ export type CalcPdfInput={
   discountLabel:string;
   grandTotal:number;
   notes:string;
+  includeFinish?:boolean;
 };
 
 const COMPANY_NAME="K&V House Renovation";
@@ -65,7 +66,7 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   doc.setTextColor(0);y+=6;
 
   const body=input.items.map(li=>{
-    const c=computeCalcLine(li,input.locationMultiplier);
+    const c=computeCalcLine(li,input.locationMultiplier,input.includeFinish!==false);
     // службові примітки про перевірену геометрію клієнту не показуємо
     const note=li.note&&!/^Verified /.test(li.note)?li.note:"";
     const desc=note?`${li.name}\n${note}`:li.name;
@@ -98,6 +99,7 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   };
   line("Labor",money(input.totals.labor));
   line("Materials",money(input.totals.materials));
+  if(input.totals.finish>0)line("Finish allowance (basic grade)",money(input.totals.finish));
   if(input.totals.supplies>0)line("Supplies / equipment",money(input.totals.supplies));
   if(input.discount>0){
     line("Subtotal",money(input.totals.lineTotal));
@@ -108,7 +110,8 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   }
   line("Estimated range",`${money(Math.max(0,input.totals.low-input.discount))} – ${money(Math.max(0,input.totals.high-input.discount))}`);
 
-  const notes=input.notes.trim();
+  const allowance=input.totals.finish>0?"Finish allowance: tile, fixtures and lights are included at basic grade based on Home Depot and Floor & Decor prices checked in September 2026. The final amount is adjusted to the customer's actual selection and receipts.":"";
+  const notes=[allowance,input.notes.trim()].filter(Boolean).join("\n\n");
   if(notes){
     y+=10;
     doc.setFont(font,"bold");doc.setFontSize(10);

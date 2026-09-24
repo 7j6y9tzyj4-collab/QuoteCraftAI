@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { estimateTotals, itemTotal, itemMaterialRate } from "@/lib/estimateTotals";
+import { estimateTotals, itemTotal, itemMaterialRate, itemFinishRate } from "@/lib/estimateTotals";
 import type { Estimate, Unit } from "@/lib/types";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PrintButton from "./PrintButton";
@@ -44,7 +44,8 @@ export default async function SharedEstimatePage({
   }
 
   const estimate = data.estimate_data as Estimate;
-  const totals = estimateTotals(estimate.items);
+  const includeFinish = estimate.includeFinish !== false;
+  const totals = estimateTotals(estimate.items, includeFinish);
   const subtotal = totals.subtotal;
   const discount = Math.min(subtotal, estimate.discount || 0);
   const tax = ((subtotal - discount) * (estimate.tax || 0)) / 100;
@@ -84,15 +85,15 @@ export default async function SharedEstimatePage({
                 <td>
                   {item.quantity} {unitLabel(item.unit)}
                 </td>
-                <td>{money(item.unitPrice)}{itemMaterialRate(item) > 0 ? ` + ${money(itemMaterialRate(item))} мат.` : ""}</td>
-                <td>{money(itemTotal(item))}</td>
+                <td>{money(item.unitPrice)}{itemMaterialRate(item) > 0 ? ` + ${money(itemMaterialRate(item))} мат.` : ""}{includeFinish && itemFinishRate(item) > 0 ? ` + ${money(itemFinishRate(item))} оздобл.` : ""}</td>
+                <td>{money(itemTotal(item, includeFinish))}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div className="sharedTotals">
-          {totals.materials > 0 && (<><div><span>Праця</span><span>{money(totals.labor)}</span></div><div><span>Матеріали</span><span>{money(totals.materials)}</span></div></>)}
+          {(totals.materials > 0 || totals.finish > 0) && (<><div><span>Праця</span><span>{money(totals.labor)}</span></div><div><span>Матеріали</span><span>{money(totals.materials)}</span></div>{totals.finish > 0 && <div><span>Оздоблення (базове, орієнтовно)</span><span>{money(totals.finish)}</span></div>}</>)}
           <div>
             <span>Проміжна сума</span>
             <span>{money(subtotal)}</span>
