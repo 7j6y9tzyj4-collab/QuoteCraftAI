@@ -40,6 +40,8 @@ export type CalcItem={
   notes:string;
   note?:string;
   confidence?:number;
+  /** ставку праці введено вручну в цьому рядку (прайс не змінюється) */
+  laborOwn?:boolean;
   /** оздоблення змінене вручну в цьому рядку */
   finishOwn?:boolean;
 };
@@ -73,4 +75,7 @@ export type CalcAIItem={
   difficulty:CalcDifficulty;
   note:string|null;
   confidence:number;
+  /** ціна праці, яку власник назвав у тексті */
+  statedPrice?:number|null;
+  statedPriceType?:"per_unit"|"total"|null;
 };

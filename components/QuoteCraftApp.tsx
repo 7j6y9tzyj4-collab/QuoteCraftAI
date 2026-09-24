@@ -12,7 +12,8 @@ import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/calcTypes";
-import {buildCalcPdf,pdfFileName} from "@/lib/calcPdf";
+import {buildCalcPdf,buildShoppingPdf,pdfFileName} from "@/lib/calcPdf";
+import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
 import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
@@ -191,6 +192,8 @@ export default function QuoteCraftApp(){
      ...item,
      taskId:task.id,
      name:task.name,
+     laborOwn:undefined,
+     finishOwn:undefined,
      category:task.category,
      unit:task.unit,
      laborRate:task.laborRate,
@@ -356,11 +359,18 @@ export default function QuoteCraftApp(){
       const aiId=legacyIdMap[ai.taskId]||ai.taskId; // AI може повернути старий id
       const task=calcTasks.find(t=>t.id===aiId);
       const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
-      if(!task)return blank;
+      if(!task){const sp=Number(ai.statedPrice);return sp>0?{...blank,laborRate:Math.round((ai.statedPriceType==="total"?sp/(blank.quantity||1):sp)*100)/100,laborOwn:true}:blank}
       // пакетні ставки — вже пакетні: «basic» на них не застосовуємо (підстраховка до серверної перевірки)
       const difficulty=/^(br|kp)_/.test(task.id)&&ai.difficulty==="basic"?"standard":(ai.difficulty||"standard");
       const supplied=(ai as any).customerSupplied===true;
-      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{})};
+      const item:CalcItem={...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{})};
+      // ціна, яку власник сам назвав у тексті, — своя ставка цього рядка
+      const sp=Number(ai.statedPrice);
+      if(sp>0){
+        const rate=ai.statedPriceType==="total"?sp/(item.quantity||1):sp;
+        return{...item,laborRate:Math.round(rate*100)/100,laborOwn:true,difficulty:"standard",minPrice:0};
+      }
+      return item;
     });
 
     setCalcItems(items);
@@ -420,6 +430,20 @@ export default function QuoteCraftApp(){
  const [calcPdfBusy,setCalcPdfBusy]=useState(false);
  async function makeCalcPdf(){
    return buildCalcPdf({client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,items:calcItems,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,includeFinish:calcIncludeFinish,notes:calcNotes});
+ }
+ // Список закупівлі для власника: усі роботи, округлено до цілих упаковок
+ async function downloadShoppingPdf(){
+   if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
+   setCalcPdfBusy(true);
+   try{
+     const list=buildShoppingList(calcItems.map(i=>({taskId:i.taskId,name:i.name,quantity:i.quantity,finishRate:i.finishRate})),calcIncludeFinish);
+     if(!list.stores.length){setCalcMessage("Для цих позицій немає переліку товарів.");return}
+     const blob=await buildShoppingPdf({project:calcProject,client:calcClient,list});
+     const url=URL.createObjectURL(blob);
+     const a=document.createElement("a");a.href=url;a.download=pdfFileName("Shopping list "+(calcProject||""),calcClient);document.body.appendChild(a);a.click();a.remove();
+     setTimeout(()=>URL.revokeObjectURL(url),10000);
+   }catch(e){setCalcMessage("Не вдалося зробити список: "+(e instanceof Error?e.message:String(e)))}
+   finally{setCalcPdfBusy(false)}
  }
  // Завантажити PDF — на комп'ютері; Надіслати — на телефоні відкриває меню
  // «Поділитись» (Messages, WhatsApp, Mail), де ця кнопка є, інакше просто зберігає.
@@ -1463,10 +1487,14 @@ export default function QuoteCraftApp(){
           <label>Quantity<input type="number" min="0" step="0.01" value={li.quantity} onChange={e=>updateCalcItem(li.id,{quantity:Number(e.target.value)})}/></label>
           <label>Unit<input value={unitLabel(li.unit)} disabled/></label>
           <label>Difficulty<select value={li.difficulty} onChange={e=>updateCalcItem(li.id,{difficulty:e.target.value as CalcDifficulty})}><option value="basic">Basic</option><option value="standard">Standard</option><option value="difficult">Difficult</option></select></label>
-          {((li.finishRate||0)>0||li.finishOwn)&&<label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={li.finishRate||0} onChange={e=>updateCalcItem(li.id,{finishRate:Math.max(0,Number(e.target.value)||0),finishOwn:true})}/></label>}
+          {/* Власні ставки прямо в кошторисі — діють лише на цей рядок, прайс не змінюють.
+              Ввів свою ціну праці → складність Standard і без мінімальної ціни: рахується рівно qty × ставка. */}
+          <label>Праця, $/од<input type="number" min="0" step="0.01" value={li.laborRate} onChange={e=>updateCalcItem(li.id,{laborRate:Math.max(0,Number(e.target.value)||0),difficulty:"standard",minPrice:0,laborOwn:true})}/></label>
+          <label>Матеріали, $/од<input type="number" min="0" step="0.01" value={li.materialRate} onChange={e=>updateCalcItem(li.id,{materialRate:Math.max(0,Number(e.target.value)||0),minPrice:0})}/></label>
+          <label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={li.finishRate||0} onChange={e=>updateCalcItem(li.id,{finishRate:Math.max(0,Number(e.target.value)||0),finishOwn:true,minPrice:0})}/></label>
           <div className="linetotal"><span>Total</span><b>{money(c.lineTotal)}</b></div>
          </div>
-         <small>Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
+         <small>{li.laborOwn&&"✎ своя ставка · "}Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
         </article>;
       })}
     </section>
@@ -1484,7 +1512,7 @@ export default function QuoteCraftApp(){
      <div><span>Estimated range</span><b>{money(Math.max(0,calcTotalsValue.low-calcDiscount))} – {money(Math.max(0,calcTotalsValue.high-calcDiscount))}</b></div>
     </section>
 
-    <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button></div>
+    <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}

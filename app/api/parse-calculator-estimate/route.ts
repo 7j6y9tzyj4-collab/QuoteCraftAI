@@ -27,6 +27,16 @@ function isInchesContext(normalized: string): boolean {
   return INCH_UNIT_RE.test(normalized) && !FOOT_UNIT_RE.test(normalized);
 }
 
+// Ціну власника беремо лише якщо це число справді є в тексті — AI не може її вигадати.
+function keepOnlyStatedPrices(result:any,text:string){
+  const nums=new Set((text.replace(/(\d),(\d{3})/g,"$1$2").match(/\d+(?:[.,]\d+)?/g)||[]).map(n=>Number(n.replace(",","."))));
+  for(const it of result?.items||[]){
+    const p=Number(it.statedPrice);
+    if(!(p>0)||!nums.has(p)||(it.statedPriceType!=="per_unit"&&it.statedPriceType!=="total")){it.statedPrice=null;it.statedPriceType=null}
+    if(typeof it.note==="string")it.note=it.note.replace(/\s*\(?(price|quoted|agreed)[^.;)]*\$\s?\d[\d,.]*[^.;)]*\)?[.;]?/gi,"").trim().replace(/^./,(c:string)=>c.toUpperCase())||null;
+  }
+}
+
 function isFurnitureScale(normalized: string): boolean {
   return FURNITURE_SCALE_RE.test(normalized);
 }
@@ -202,6 +212,7 @@ export async function POST(request:NextRequest){
             "Preserve uncertain details in note and lower confidence.",
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
+            "OWNER'S STATED PRICES: when the speaker states his own labor price for a job (\"walls at $14\", \"по 14 доларів\", \"door for $120\", \"за 680\"), put that number in statedPrice and set statedPriceType to per_unit (price per sq ft / lin ft / each / hour) or total (lump sum for the whole line). Otherwise statedPrice and statedPriceType are null. Never invent a price and never copy a price into description or note. When one stated price covers several jobs (\"skim coat and paint the ceiling at $8\"), return ONE item for it with that price and do not add separate items for the other jobs it covers. A stated price is labor only; materials and finish are still priced from the list.",
             "CUSTOMER-SUPPLIED ITEMS: never write supplied, customer-supplied or provided by customer in a description or note unless the speaker explicitly said the customer buys or supplies that item. The estimate prices basic finish materials separately.",
             "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
@@ -251,9 +262,11 @@ export async function POST(request:NextRequest){
                     unit:{type:"string",enum:["each","sqft","hour","linear_ft","room"]},
                     difficulty:{type:"string",enum:["basic","standard","difficult"]},
                     note:{type:["string","null"]},
-                    confidence:{type:"number",minimum:0,maximum:1}
+                    confidence:{type:"number",minimum:0,maximum:1},
+                    statedPrice:{type:["number","null"]},
+                    statedPriceType:{type:["string","null"],enum:["per_unit","total",null]}
                   },
-                  required:["taskId","description","quantity","unit","difficulty","note","confidence"]
+                  required:["taskId","description","quantity","unit","difficulty","note","confidence","statedPrice","statedPriceType"]
                 }
               }
             },
@@ -273,6 +286,7 @@ export async function POST(request:NextRequest){
     const verified=bathroom.applied&&calculateBathroomAreas(text)?parsed:applyCalcMeasurements(parsed,text);
 
     applyCustomerSupplied(verified,text,"taskId");
+    keepOnlyStatedPrices(verified,text);
     return NextResponse.json(verified);
   }catch(error){
     console.error(error);

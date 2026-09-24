@@ -312,3 +312,20 @@ export function recipeCost(id:string):MaterialCost|null{
   resolve(id,1,install,finish);
   return {install:r2(install.cost),finish:r2(finish.cost),installNote:install.lines.join("; "),finishNote:finish.lines.join("; ")};
 }
+
+// ---------- список закупівлі: скільки упаковок кожного товару на весь кошторис ----------
+export type PackNeed={install:Record<string,number>;finish:Record<string,number>};
+function collect(id:string,mult:number,out:PackNeed,depth=0){
+  const r=recipes[id];
+  if(!r||depth>3)return;
+  for(const [pid,q] of r.install||[])out.install[pid]=(out.install[pid]||0)+q*mult;
+  for(const [pid,q] of r.finish||[])out.finish[pid]=(out.finish[pid]||0)+q*mult;
+  for(const [ref,m] of r.ref||[])collect(ref,mult*m,out,depth+1);
+}
+/** Упаковки товарів на `qty` одиниць роботи `id` (дробові, без округлення). null — рецепта нема. */
+export function recipePacks(id:string,qty:number):PackNeed|null{
+  if(!recipes[id])return null;
+  const out:PackNeed={install:{},finish:{}};
+  collect(id,qty,out);
+  return out;
+}

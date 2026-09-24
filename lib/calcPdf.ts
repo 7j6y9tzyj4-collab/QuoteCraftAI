@@ -1,5 +1,6 @@
 import type {CalcItem,CalcTotals} from "./calcTypes";
 import {computeCalcLine} from "./calcEngine";
+import type {ShoppingList} from "./shoppingList";
 
 // PDF будується напряму (jsPDF + autotable), без друку через браузер, тому
 // його можна зберегти або надіслати клієнту з телефона. Шрифт DejaVu — щоб
@@ -128,6 +129,59 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
     const lines=doc.splitTextToSize(notes,W-2*M) as string[];
     lines.forEach(l=>{if(y>doc.internal.pageSize.getHeight()-M){doc.addPage();y=M}doc.text(l,M,y);y+=12});
     doc.setTextColor(0);
+  }
+  return doc.output("blob");
+}
+
+// Список закупівлі — для власника, не для клієнта.
+export async function buildShoppingPdf(input:{project:string;client:string;list:ShoppingList}):Promise<Blob>{
+  const {jsPDF}=await import("jspdf");
+  const autoTable=(await import("jspdf-autotable")).default;
+  const doc=new jsPDF({unit:"pt",format:"letter"});
+  let font="helvetica";
+  try{
+    if(!fontCache){
+      const [reg,bold]=await Promise.all([loadFont("/fonts/DejaVuSans.ttf"),loadFont("/fonts/DejaVuSans-Bold.ttf")]);
+      fontCache={reg,bold};
+    }
+    doc.addFileToVFS("DejaVuSans.ttf",fontCache.reg);doc.addFont("DejaVuSans.ttf","DejaVu","normal");
+    doc.addFileToVFS("DejaVuSans-Bold.ttf",fontCache.bold);doc.addFont("DejaVuSans-Bold.ttf","DejaVu","bold");
+    font="DejaVu";
+  }catch{}
+  const M=48,W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  let y=M;
+  doc.setFont(font,"bold");doc.setFontSize(18);
+  doc.text("Shopping list",M,y);y+=20;
+  doc.setFont(font,"normal");doc.setFontSize(10);doc.setTextColor(80);
+  [input.project,input.client?`Client: ${input.client}`:"",`Date: ${new Date().toLocaleDateString("en-US")}`].filter(Boolean).forEach(t=>{doc.text(t,M,y);y+=14});
+  doc.setTextColor(0);y+=6;
+  const {list}=input;
+  for(const st of list.stores){
+    if(y>H-M-80){doc.addPage();y=M}
+    doc.setFont(font,"bold");doc.setFontSize(12);
+    doc.text(`${st.store} — ${money(st.subtotal)}`,M,y);y+=6;
+    autoTable(doc,{
+      startY:y,
+      head:[["Product","Pack","Qty","Price","Sum",""]],
+      body:st.rows.map(r=>[r.name,r.pack,String(r.packs),money(r.price),money(r.cost),r.kind==="finish"?"finish":""]),
+      margin:{left:M,right:M},
+      styles:{font,fontSize:8.5,cellPadding:4,overflow:"linebreak",valign:"top"},
+      headStyles:{fillColor:[16,24,40],textColor:255,fontStyle:"bold"},
+      columnStyles:{1:{cellWidth:80},2:{cellWidth:34,halign:"right"},3:{cellWidth:56,halign:"right"},4:{cellWidth:62,halign:"right"},5:{cellWidth:40,textColor:120}},
+      rowPageBreak:"avoid",
+    });
+    y=(doc as any).lastAutoTable.finalY+20;
+  }
+  if(y>H-M-40){doc.addPage();y=M}
+  doc.setFont(font,"bold");doc.setFontSize(12);
+  doc.text("Total",W-M-200,y);doc.text(money(list.total),W-M,y,{align:"right"});y+=22;
+  const notes:string[]=["Quantities are rounded up to whole packs; tile already includes 10% waste. Prices: Home Depot / Floor & Decor, checked September 2026."];
+  if(list.packageInstall.length)notes.push("Bathroom/kitchen package items: installation materials (thinset, grout, waterproofing, cement board, fittings) are priced as a lump sum in the estimate and are not itemized here — only the finish products are listed.");
+  if(list.notCovered.length)notes.push("No product list for: "+list.notCovered.join(", ")+".");
+  doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(60);
+  for(const n of notes){
+    for(const l of doc.splitTextToSize(n,W-2*M) as string[]){if(y>H-M){doc.addPage();y=M}doc.text(l,M,y);y+=12}
+    y+=4;
   }
   return doc.output("blob");
 }
