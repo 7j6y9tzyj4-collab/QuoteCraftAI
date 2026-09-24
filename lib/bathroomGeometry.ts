@@ -24,16 +24,26 @@ export function calculateBathroomAreas(text:string):BathroomAreas|null{
   if(W>L){const t=L;L=W;W=t}
   const depthMatch=n.match(/(?:shower\s+depth|depth|глибин\w*)[^0-9]{0,10}(\d+(?:\.\d+)?)\s*(inch\w*|in\b|"|дюйм\w*|ft|feet|фут\w*)?/);
   const depthDiv=depthMatch?(/^(inch|in|"|дюйм)/.test(depthMatch[2]||"")?12:/^(ft|feet|фут)/.test(depthMatch[2]||"")?1:d):1;
-  const depth=depthMatch?Number(depthMatch[1])/depthDiv:30/12;
-  const showerWalls=(W+2*depth)*H;
-  const pan=W*depth;
+  let depth=depthMatch?Number(depthMatch[1])/depthDiv:30/12;
+  // Окремий душ «shower 40x36 inches» — ширина × глибина; без цього вважаємо
+  // нішу під ванну по короткій стіні кімнати.
+  const sm=n.match(/shower\s+(?:stall\s+|size\s+)?(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)\s*(inch\w*|in\b|"|дюйм\w*|ft|feet|фут\w*)?/);
+  let showerW=W;
+  if(sm){
+    const div=/^(inch|in|"|дюйм)/.test(sm[3]||"")?12:/^(ft|feet|фут)/.test(sm[3]||"")?1:d;
+    showerW=Number(sm[1])/div;depth=Number(sm[2])/div;
+  }
+  // «2 shower walls» / «2-wall» / «дві стіни» — кутовий душ зі склом на дві сторони
+  const twoWalls=/\b(2|two|дв[іа])[\s-]*(shower\s+)?walls?\b|2-wall|двостінн/.test(n);
+  const showerWalls=(twoWalls?showerW+depth:showerW+2*depth)*H;
+  const pan=showerW*depth;
   const floorTotal=L*W;
   const floorOutside=Math.max(0,floorTotal-pan);
   const ceiling=floorTotal;
   const paintArea=Math.max(0,2*(L+W)*H-showerWalls-20)+ceiling;
   const r=(x:number)=>Math.round(x*100)/100;
   return {showerWalls:r(showerWalls),pan:r(pan),floorTotal:r(floorTotal),floorOutside:r(floorOutside),paintArea:r(paintArea),ceiling:r(ceiling),
-    note:`Verified bathroom geometry: ${r(L)} x ${r(W)} ft, height ${r(H)} ft, shower depth ${r(depth)} ft; shower walls ${r(showerWalls)} sq ft; pan ${r(pan)} sq ft; floor outside shower ${r(floorOutside)} sq ft; paint area incl. ceiling ${r(paintArea)} sq ft.`};
+    note:`Verified bathroom geometry: ${r(L)} x ${r(W)} ft, height ${r(H)} ft, shower ${r(showerW)} x ${r(depth)} ft (${twoWalls?2:3} tiled walls); shower walls ${r(showerWalls)} sq ft; pan ${r(pan)} sq ft; floor outside shower ${r(floorOutside)} sq ft; paint area incl. ceiling ${r(paintArea)} sq ft.`};
 }
 
 const SHOWER_WALL_IDS=["br_waterproof_panels_sqft","br_wall_tile_sqft","br_cement_board_wall_sqft","br_waterproof_membrane_sqft","br_demo_wall_tile_sqft","br_prime_sqft"];
@@ -76,6 +86,9 @@ const STANDALONE_TO_PACKAGE:Record<string,string|{wall:string;floor:string}>={
   medicine_cabinet_install_each:"br_medicine_cabinet",
   bathroom_accessories_set_each:"br_accessories",
   shower_glass_door_install_each:"br_shower_door_install",
+  shower_glass_panel_install_each:"br_glass_enclosure_2wall_install",
+  frameless_glass_enclosure_install_each:"br_glass_enclosure_2wall_install",
+  demo_general_sqft:"br_demo_partition_wall",
   bath_fan_replace:"br_fan_replace",
   bath_fan_install_each:"br_fan_replace",
   light_fixture_replace:"br_light_replace",
@@ -127,7 +140,11 @@ export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|
   });
   const g=calculateBathroomAreas(text);
   if(!g)return {applied:true};
-  const set=(ids:string[],qty:number)=>{result.items.forEach((i:any)=>{if(ids.includes(id(i))){i.quantity=qty;i.unit="sqft";i.note=g.note;i.confidence=1}})};
+  // Якщо в описі площа названа явно («50 sq ft») і AI її взяв — не перекриваємо.
+  const explicit=new Set<number>();
+  for(const m of text.toLowerCase().replace(/,/g,".").matchAll(/(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square feet|кв\.?\s*фут\w*)/g))explicit.add(Math.round(Number(m[1])*100)/100);
+  const isExplicit=(q:number)=>[...explicit].some(e=>Math.abs(e-q)<0.5);
+  const set=(ids:string[],qty:number)=>{result.items.forEach((i:any)=>{if(ids.includes(id(i))){if(isExplicit(Number(i.quantity)))return;i.quantity=qty;i.unit="sqft";i.note=g.note;i.confidence=1}})};
   set(SHOWER_WALL_IDS,g.showerWalls);set(PAN_IDS,g.pan);set(FLOOR_OUTSIDE_IDS,g.floorOutside);set(FLOOR_TOTAL_IDS,g.floorTotal);set(PAINT_IDS,g.paintArea);
   // The AI sometimes drops the wall tile when panels are also mentioned.
   const n=text.toLowerCase();
