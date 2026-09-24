@@ -11,6 +11,7 @@ import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/calcTypes";
+import {buildCalcPdf,pdfFileName} from "@/lib/calcPdf";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
 import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
@@ -61,7 +62,7 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
-const DEFAULT_CALC_NOTES="This estimate is based on the information provided and a verbal description of the project. It does not include hidden or unforeseen damage, permits or inspection fees, or upgrades beyond the materials described. Final price may vary if conditions differ from what was described. Prices are valid for 30 days.";
+const DEFAULT_CALC_NOTES="Additional conditions: This estimate includes labor and an editable allowance for basic installation materials (adhesive/thinset, waterproof boards, floor underlayment boards, shower pan/base, drain and plumbing rough materials, grout, silicone, sealants and small consumables). Final material cost may change based on product choice, final layout and conditions found after demolition.\n\nTile, vanity, faucet, mirror, shower glass/door, light fixtures, fan, finish accessories, appliances, permits, dumpster/disposal, and any hidden damage behind walls or under the floor are separate unless specifically included above. Finish materials are purchased by the customer or reimbursed based on receipts.\n\nFinal labor may change if ductwork, plumbing, electrical, rotten subfloor, mold, or other hidden issues are found after demolition. Prices are valid for 30 days.";
 const freshCalcDraft=():CalcDraft=>({items:[],client:"",project:"",locationMultiplier:1,notes:DEFAULT_CALC_NOTES,discountType:"percent",discountValue:0});
 
 type AIItem={
@@ -411,6 +412,44 @@ export default function QuoteCraftApp(){
    }
  }
 
+ const [calcPdfBusy,setCalcPdfBusy]=useState(false);
+ async function makeCalcPdf(){
+   return buildCalcPdf({client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,items:calcItems,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes});
+ }
+ // Завантажити PDF — на комп'ютері; Надіслати — на телефоні відкриває меню
+ // «Поділитись» (Messages, WhatsApp, Mail), де ця кнопка є, інакше просто зберігає.
+ async function downloadCalcPdf(){
+   if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
+   setCalcPdfBusy(true);
+   try{
+     const blob=await makeCalcPdf();
+     const url=URL.createObjectURL(blob);
+     const a=document.createElement("a");a.href=url;a.download=pdfFileName(calcProject,calcClient);document.body.appendChild(a);a.click();a.remove();
+     setTimeout(()=>URL.revokeObjectURL(url),10000);
+   }catch(e){setCalcMessage("Не вдалося зробити PDF: "+(e instanceof Error?e.message:String(e)))}
+   finally{setCalcPdfBusy(false)}
+ }
+ async function shareCalcPdf(){
+   if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
+   setCalcPdfBusy(true);
+   try{
+     const blob=await makeCalcPdf();
+     const file=new File([blob],pdfFileName(calcProject,calcClient),{type:"application/pdf"});
+     const nav=navigator as Navigator&{canShare?:(d:ShareData)=>boolean};
+     if(nav.share&&nav.canShare&&nav.canShare({files:[file]})){
+       await nav.share({files:[file],title:calcProject||"Estimate"});
+     }else{
+       const url=URL.createObjectURL(blob);
+       const a=document.createElement("a");a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+       setTimeout(()=>URL.revokeObjectURL(url),10000);
+       setCalcMessage("Цей браузер не вміє ділитися файлами — PDF збережено в Завантаження.");
+     }
+   }catch(e){
+     const msg=e instanceof Error?e.message:String(e);
+     if(!/abort/i.test(msg))setCalcMessage("Не вдалося надіслати PDF: "+msg);
+   }finally{setCalcPdfBusy(false)}
+ }
+
  function printCalcEstimate(){
    const printWindow=window.open("","_blank");
    if(!printWindow){
@@ -472,6 +511,7 @@ export default function QuoteCraftApp(){
        ${calcDiscount>0?`<div><span>${esc(calcDiscountLabel)}</span><span>−${esc(money(calcDiscount))}</span></div><div class="grand"><span>Total</span><span>${esc(money(calcGrandTotal))}</span></div>`:""}
        <div><strong>Estimated range</strong><strong>${esc(money(Math.max(0,calcTotalsValue.low-calcDiscount)))} – ${esc(money(Math.max(0,calcTotalsValue.high-calcDiscount)))}</strong></div>
      </div>
+     ${calcNotes.trim()?`<div class="notes" style="margin-top:24px;font-size:12px;line-height:1.5;color:#333;white-space:pre-wrap;border-top:1px solid #ddd;padding-top:12px"><strong>Notes &amp; exclusions</strong><br/>${esc(calcNotes.trim())}</div>`:""}
      <script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</script>
    </body>
    </html>`;
@@ -1428,7 +1468,7 @@ export default function QuoteCraftApp(){
       })}
     </section>
 
-    <section className="panel"><label>Notes &amp; exclusions<textarea value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label></section>
+    <section className="panel"><label>Notes &amp; exclusions<textarea rows={8} value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label>{calcNotes!==DEFAULT_CALC_NOTES&&<button className="secondary full noPrint" onClick={()=>setCalcNotes(DEFAULT_CALC_NOTES)}>Повернути стандартний текст умов</button>}</section>
 
     <section className="total">
      <div><span>Labor</span><span>{money(calcTotalsValue.labor)}</span></div>
@@ -1439,7 +1479,8 @@ export default function QuoteCraftApp(){
      <div><span>Estimated range</span><b>{money(Math.max(0,calcTotalsValue.low-calcDiscount))} – {money(Math.max(0,calcTotalsValue.high-calcDiscount))}</b></div>
     </section>
 
-    <div className="actions noPrint"><button className="secondary" onClick={printCalcEstimate}>PDF / Print</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
+    <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button></div>
+    <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary full" onClick={()=>setShowCalcPricing(s=>!s)}>{showCalcPricing?"Сховати ціни калькулятора":"⚙ Ціни калькулятора"}</button></div>
 
     {showCalcPricing&&<section className="panel">
