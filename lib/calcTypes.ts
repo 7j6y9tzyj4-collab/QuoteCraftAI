@@ -55,6 +55,8 @@ export type CalcDraft={
   project:string;
   locationMultiplier:number;
   notes:string;
+  discountType?:"percent"|"amount";
+  discountValue?:number;
 };
 
 export type CalcAIItem={

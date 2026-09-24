@@ -62,7 +62,7 @@ const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
 const DEFAULT_CALC_NOTES="This estimate is based on the information provided and a verbal description of the project. It does not include hidden or unforeseen damage, permits or inspection fees, or upgrades beyond the materials described. Final price may vary if conditions differ from what was described. Prices are valid for 30 days.";
-const freshCalcDraft=():CalcDraft=>({items:[],client:"",project:"",locationMultiplier:1,notes:DEFAULT_CALC_NOTES});
+const freshCalcDraft=():CalcDraft=>({items:[],client:"",project:"",locationMultiplier:1,notes:DEFAULT_CALC_NOTES,discountType:"percent",discountValue:0});
 
 type AIItem={
   serviceId:string;
@@ -114,6 +114,9 @@ export default function QuoteCraftApp(){
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
  const [calcLocationMultiplier,setCalcLocationMultiplier]=useState(1);
+ // Пакетна знижка — на працю, як у кошторисах власника (матеріали не знижуються)
+ const [calcDiscountType,setCalcDiscountType]=useState<"percent"|"amount">("percent");
+ const [calcDiscountValue,setCalcDiscountValue]=useState(0);
  const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
  const [calcPrompt,setCalcPrompt]=useState("");
  const [calcThinking,setCalcThinking]=useState(false);
@@ -147,16 +150,25 @@ export default function QuoteCraftApp(){
    setCalcClient(draft.client||"");
    setCalcProject(draft.project||"");
    setCalcLocationMultiplier(draft.locationMultiplier??1);
+   setCalcDiscountType(draft.discountType??"percent");
+   setCalcDiscountValue(Number(draft.discountValue)||0);
    setCalcNotes(draft.notes??DEFAULT_CALC_NOTES);
  },[]);
 
  useEffect(()=>{
-   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes};
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue};
    localStorage.setItem(CDK,JSON.stringify(draft));
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue]);
 
  const calcCategories=useMemo(()=>Array.from(new Set(calcTasks.map(t=>t.category))),[calcTasks]);
  const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier),[calcItems,calcLocationMultiplier]);
+ const calcDiscount=useMemo(()=>{
+   const v=Math.max(0,Number(calcDiscountValue)||0);
+   const raw=calcDiscountType==="percent"?calcTotalsValue.labor*v/100:v;
+   return Math.min(Math.round(raw*100)/100,calcTotalsValue.labor);
+ },[calcDiscountType,calcDiscountValue,calcTotalsValue.labor]);
+ const calcGrandTotal=Math.max(0,calcTotalsValue.lineTotal-calcDiscount);
+ const calcDiscountLabel=calcDiscountType==="percent"?`Package discount (${calcDiscountValue}% of labor)`:"Package discount";
 
  const saveCalcTasks=(x:CalcTask[])=>{
    setCalcTasks(x);
@@ -378,7 +390,8 @@ export default function QuoteCraftApp(){
    lines.push("Materials: "+money(calcTotalsValue.materials));
    lines.push("Supplies/equipment: "+money(calcTotalsValue.supplies));
    lines.push("Subtotal: "+money(calcTotalsValue.lineTotal));
-   lines.push("Estimated range: "+money(calcTotalsValue.low)+" – "+money(calcTotalsValue.high));
+   if(calcDiscount>0){lines.push(calcDiscountLabel+": -"+money(calcDiscount));lines.push("Total: "+money(calcGrandTotal));}
+   lines.push("Estimated range: "+money(Math.max(0,calcTotalsValue.low-calcDiscount))+" – "+money(Math.max(0,calcTotalsValue.high-calcDiscount)));
    lines.push("");
    lines.push("NOTES / EXCLUSIONS");
    lines.push("-------------------");
@@ -455,8 +468,9 @@ export default function QuoteCraftApp(){
        <div><span>Labor</span><span>${esc(money(calcTotalsValue.labor))}</span></div>
        <div><span>Materials</span><span>${esc(money(calcTotalsValue.materials))}</span></div>
        <div><span>Supplies</span><span>${esc(money(calcTotalsValue.supplies))}</span></div>
-       <div class="grand"><span>Subtotal</span><span>${esc(money(calcTotalsValue.lineTotal))}</span></div>
-       <div><strong>Estimated range</strong><strong>${esc(money(calcTotalsValue.low))} – ${esc(money(calcTotalsValue.high))}</strong></div>
+       <div${calcDiscount>0?"":' class="grand"'}><span>Subtotal</span><span>${esc(money(calcTotalsValue.lineTotal))}</span></div>
+       ${calcDiscount>0?`<div><span>${esc(calcDiscountLabel)}</span><span>−${esc(money(calcDiscount))}</span></div><div class="grand"><span>Total</span><span>${esc(money(calcGrandTotal))}</span></div>`:""}
+       <div><strong>Estimated range</strong><strong>${esc(money(Math.max(0,calcTotalsValue.low-calcDiscount)))} – ${esc(money(Math.max(0,calcTotalsValue.high-calcDiscount)))}</strong></div>
      </div>
      <script>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</script>
    </body>
@@ -1388,7 +1402,7 @@ export default function QuoteCraftApp(){
       {calcTranscribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
-    <section className="panel grid noPrint"><label>Client<input value={calcClient} onChange={e=>setCalcClient(e.target.value)}/></label><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label></section>
+    <section className="panel grid noPrint"><label>Client<input value={calcClient} onChange={e=>setCalcClient(e.target.value)}/></label><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label><label>Знижка на роботу<select value={calcDiscountType} onChange={e=>setCalcDiscountType(e.target.value as "percent"|"amount")}><option value="percent">відсоток, %</option><option value="amount">сума, $</option></select></label><label>{calcDiscountType==="percent"?"Знижка, %":"Знижка, $"}<input type="number" min="0" step={calcDiscountType==="percent"?"1":"10"} value={calcDiscountValue} onChange={e=>setCalcDiscountValue(Math.max(0,Number(e.target.value)||0))}/></label></section>
 
     <section className="panel"><div className="head"><h2>Line items</h2><button className="add noPrint" onClick={addCalcItem}>＋ Add item</button></div>
       {calcItems.length===0?<p className="empty">AI-позиції з'являться тут.</p>:calcItems.map(li=>{
@@ -1420,8 +1434,9 @@ export default function QuoteCraftApp(){
      <div><span>Labor</span><span>{money(calcTotalsValue.labor)}</span></div>
      <div><span>Materials</span><span>{money(calcTotalsValue.materials)}</span></div>
      <div><span>Supplies</span><span>{money(calcTotalsValue.supplies)}</span></div>
-     <div className="grand"><span>Subtotal</span><b>{money(calcTotalsValue.lineTotal)}</b></div>
-     <div><span>Estimated range</span><b>{money(calcTotalsValue.low)} – {money(calcTotalsValue.high)}</b></div>
+     <div className={calcDiscount>0?undefined:"grand"}><span>Subtotal</span><b>{money(calcTotalsValue.lineTotal)}</b></div>
+     {calcDiscount>0&&<><div><span>{calcDiscountLabel}</span><span>−{money(calcDiscount)}</span></div><div className="grand"><span>Total</span><b>{money(calcGrandTotal)}</b></div></>}
+     <div><span>Estimated range</span><b>{money(Math.max(0,calcTotalsValue.low-calcDiscount))} – {money(Math.max(0,calcTotalsValue.high-calcDiscount))}</b></div>
     </section>
 
     <div className="actions noPrint"><button className="secondary" onClick={printCalcEstimate}>PDF / Print</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
