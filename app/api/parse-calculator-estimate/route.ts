@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import {NextRequest,NextResponse} from "next/server";
+import {applyBathroomMeasurements,calculateBathroomAreas} from "@/lib/bathroomGeometry";
 
 type CalcTaskLite={
   id:string;
@@ -98,74 +99,6 @@ function calculateRoomAreas(text: string): RoomCalculation | null {
       (openingDetails.length ? `; ${openingDetails.join("; ")}` : "") +
       `; net walls ${wallNet} sq ft; ceiling ${ceiling} sq ft.`,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Bathroom geometry for the package (br_*) items. The AI is bad at this math
-// (it returned 26 sq ft of shower walls for a 106x60x91 bathroom), so when the
-// speaker gives bathroom dimensions we compute every area deterministically
-// the same way the owner's own spreadsheets do:
-//   shower walls  = (short side + 2 * shower depth) * height   (3-wall alcove)
-//   pan footprint = short side * shower depth
-//   floor outside = L * W - pan footprint
-//   paint area    = 2 * (L + W) * H - shower walls - door (20 sq ft) + ceiling
-// ---------------------------------------------------------------------------
-type BathroomAreas={showerWalls:number;pan:number;floorTotal:number;floorOutside:number;paintArea:number;ceiling:number;note:string};
-
-function calculateBathroomAreas(text:string):BathroomAreas|null{
-  const n=text.toLowerCase().replace(/,/g,".").replace(/[×х]/g,"x");
-  if(!/bath|ванн|shower|душ/.test(n))return null;
-  const room=n.match(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/);
-  const h=n.match(/(?:ceiling|height|стел\w*|висот\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)/)||n.match(/(\d+(?:\.\d+)?)\s*(?:in|inch\w*|ft|feet|фут\w*|дюйм\w*)?\s*(?:ceiling|height|стел\w*|висот\w*)/);
-  if(!room||!h)return null;
-  const inches=/\binch\w*|дюйм\w*|"|\bin\b/.test(n)&&!/\bft\b|\bfeet\b|фут\w*/.test(n);
-  const d=inches?12:1;
-  let L=Number(room[1])/d,W=Number(room[2])/d;const H=Number(h[1])/d;
-  if(![L,W,H].every(Number.isFinite)||L<=0||W<=0||H<=0)return null;
-  if(W>L){const t=L;L=W;W=t}
-  const depthMatch=n.match(/(?:shower\s+depth|depth|глибин\w*)[^0-9]{0,10}(\d+(?:\.\d+)?)\s*(inch\w*|in\b|"|дюйм\w*|ft|feet|фут\w*)?/);
-  const depthDiv=depthMatch?(/^(inch|in|"|дюйм)/.test(depthMatch[2]||"")?12:/^(ft|feet|фут)/.test(depthMatch[2]||"")?1:d):1;
-  const depth=depthMatch?Number(depthMatch[1])/depthDiv:30/12;
-  const showerWalls=(W+2*depth)*H;
-  const pan=W*depth;
-  const floorTotal=L*W;
-  const floorOutside=Math.max(0,floorTotal-pan);
-  const ceiling=floorTotal;
-  const paintArea=Math.max(0,2*(L+W)*H-showerWalls-20)+ceiling;
-  const r=(x:number)=>Math.round(x*100)/100;
-  return {showerWalls:r(showerWalls),pan:r(pan),floorTotal:r(floorTotal),floorOutside:r(floorOutside),paintArea:r(paintArea),ceiling:r(ceiling),
-    note:`Verified bathroom geometry: ${r(L)} x ${r(W)} ft, height ${r(H)} ft, shower depth ${r(depth)} ft; shower walls ${r(showerWalls)} sq ft; pan ${r(pan)} sq ft; floor outside shower ${r(floorOutside)} sq ft; paint area incl. ceiling ${r(paintArea)} sq ft.`};
-}
-
-const SHOWER_WALL_IDS=["br_waterproof_panels_sqft","br_wall_tile_sqft","br_cement_board_wall_sqft","br_waterproof_membrane_sqft","br_demo_wall_tile_sqft","br_prime_sqft"];
-const PAN_IDS=["br_pan_mosaic_sqft","br_ceiling_tile_sqft"];
-const FLOOR_OUTSIDE_IDS=["br_floor_tile_sqft","br_cement_board_floor_sqft","br_floor_underlayment_sqft"];
-const FLOOR_TOTAL_IDS=["br_demo_floor_sqft"];
-const PAINT_IDS=["br_wall_repair_sqft","br_paint_sqft"];
-const DIFFICULT_RE=/cramped|tight|awkward|difficult|hard access|custom|built-in|складн|тісн|незручн/;
-
-function applyBathroomMeasurements(result:any,text:string){
-  if(!Array.isArray(result?.items))return result;
-  const hasPackage=result.items.some((i:any)=>/^(br|kp)_/.test(String(i?.taskId||"")));
-  if(!hasPackage)return result;
-  // Package rates are already the owner's bundled prices — the AI must not
-  // discount them further with "basic"; "difficult" only on the speaker's words.
-  const allowDifficult=DIFFICULT_RE.test(text.toLowerCase());
-  result.items.forEach((i:any)=>{
-    if(/^(br|kp)_/.test(String(i?.taskId||""))&&(i.difficulty==="basic"||(i.difficulty==="difficult"&&!allowDifficult)))i.difficulty="standard";
-  });
-  const g=calculateBathroomAreas(text);
-  if(!g)return result;
-  const set=(ids:string[],qty:number)=>{result.items.forEach((i:any)=>{if(ids.includes(i.taskId)){i.quantity=qty;i.unit="sqft";i.note=g.note;i.confidence=1}})};
-  set(SHOWER_WALL_IDS,g.showerWalls);set(PAN_IDS,g.pan);set(FLOOR_OUTSIDE_IDS,g.floorOutside);set(FLOOR_TOTAL_IDS,g.floorTotal);set(PAINT_IDS,g.paintArea);
-  // The AI sometimes drops the wall tile when panels are also mentioned.
-  const n=text.toLowerCase();
-  const has=(id:string)=>result.items.some((i:any)=>i.taskId===id);
-  if(/tile.{0,30}(shower )?wall|плитк\w*.{0,30}стін|стін\w*.{0,30}плитк/.test(n)&&!has("br_wall_tile_sqft")&&has("br_waterproof_panels_sqft")){
-    const idx=result.items.findIndex((i:any)=>i.taskId==="br_waterproof_panels_sqft");
-    result.items.splice(idx+1,0,{taskId:"br_wall_tile_sqft",description:"Tile 3 shower walls to ceiling",quantity:g.showerWalls,unit:"sqft",difficulty:"standard",note:g.note,confidence:1});
-  }
-  return result;
 }
 
 // Maps the geometry above onto the calculator's own catalog IDs
@@ -268,7 +201,7 @@ export async function POST(request:NextRequest){
             "Preserve uncertain details in note and lower confidence.",
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
-            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items.",
+            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
             "MEASUREMENT RULE: Never calculate paintable wall area as length times width times height. That is cubic volume, not square footage.",
             "For a rectangular room with length L, width W, and height H, calculate wall area as 2 * (L + W) * H.",
@@ -334,8 +267,8 @@ export async function POST(request:NextRequest){
     }
 
     const parsed=JSON.parse(raw);
-    const bathroom=applyBathroomMeasurements(parsed,text);
-    const verified=calculateBathroomAreas(text)?bathroom:applyCalcMeasurements(bathroom,text);
+    const bathroom=applyBathroomMeasurements(parsed,text,"taskId");
+    const verified=bathroom.applied&&calculateBathroomAreas(text)?parsed:applyCalcMeasurements(parsed,text);
 
     return NextResponse.json(verified);
   }catch(error){
