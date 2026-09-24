@@ -40,6 +40,8 @@ export type CalcItem={
   notes:string;
   note?:string;
   confidence?:number;
+  /** оздоблення змінене вручну в цьому рядку */
+  finishOwn?:boolean;
 };
 
 export type CalcTotals={

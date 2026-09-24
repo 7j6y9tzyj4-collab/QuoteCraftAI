@@ -92,6 +92,7 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
     styles:{font,fontSize:8.5,cellPadding:4,overflow:"linebreak",valign:"top"},
     headStyles:{fillColor:[16,24,40],textColor:255,fontStyle:"bold",halign:"left"},
     columnStyles:cols,
+    rowPageBreak:"avoid",
   });
 
   y=(doc as any).lastAutoTable.finalY+16;

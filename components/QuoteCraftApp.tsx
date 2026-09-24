@@ -1462,6 +1462,7 @@ export default function QuoteCraftApp(){
           <label>Quantity<input type="number" min="0" step="0.01" value={li.quantity} onChange={e=>updateCalcItem(li.id,{quantity:Number(e.target.value)})}/></label>
           <label>Unit<input value={unitLabel(li.unit)} disabled/></label>
           <label>Difficulty<select value={li.difficulty} onChange={e=>updateCalcItem(li.id,{difficulty:e.target.value as CalcDifficulty})}><option value="basic">Basic</option><option value="standard">Standard</option><option value="difficult">Difficult</option></select></label>
+          {((li.finishRate||0)>0||li.finishOwn)&&<label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={li.finishRate||0} onChange={e=>updateCalcItem(li.id,{finishRate:Math.max(0,Number(e.target.value)||0),finishOwn:true})}/></label>}
           <div className="linetotal"><span>Total</span><b>{money(c.lineTotal)}</b></div>
          </div>
          <small>Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
