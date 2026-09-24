@@ -127,6 +127,7 @@ const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
   {re:/glass (shower )?enclosure|2-wall glass|скляну? кабін/,id:"br_glass_enclosure_2wall_install",desc:"Install 2-wall glass shower enclosure"},
   {re:/glass door|двері душу|скляні двері/,id:"br_shower_door_install",desc:"Install shower glass door"},
   {re:/niche|ніш/,id:"br_niche",desc:"Build and tile shower niche"},
+  {re:/mosaic|мозаїк/,id:"br_pan_mosaic_sqft",desc:"Mosaic on shower pan"},
   {re:/\bfan\b|вентилятор/,id:"br_fan_replace",desc:"Replace bath fan"},
   {re:/mirror|дзеркал/,id:"br_mirror_install",desc:"Install mirror"},
   {re:/light fixture|світильник/,id:"br_light_replace",desc:"Replace light fixture",qty:/(\d+)\s*light/},
@@ -150,7 +151,7 @@ function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
   for(const e of ENSURE){
     if(!e.re.test(n)||has(e.id)||(alt[e.id]||[]).some(has))continue;
     const q=e.qty?Number((n.match(e.qty)||[])[1])||1:1;
-    result.items.push({[idKey]:e.id,description:e.desc,quantity:q,unit:"each",difficulty:"standard",note:null,confidence:0.8});
+    result.items.push({[idKey]:e.id,description:e.desc,quantity:q,unit:/_sqft$/.test(e.id)?"sqft":"each",difficulty:"standard",note:null,confidence:0.8});
   }
 }
 
@@ -161,6 +162,19 @@ export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|
   if(!hasPackage)return {applied:false};
   remapToPackage(result,idKey);
   ensurePackageItems(result,text,idKey);
+  // Разові роботи на ванну — завжди кількість 1 («2 shower walls» — не кількість).
+  const LS_ONE=new Set(["br_demo_bathroom_full","br_wall_prep","br_floor_prep","br_ceiling_prep","br_wallpaper_prep","br_baseboard_install_paint","br_trim","br_electrical_allowance","br_plumbing_sub","br_demo_partition_wall","br_mud_pan_build","br_prefab_pan_install","br_curbless_pan","br_plastic_tray_install","br_glass_enclosure_2wall_install","br_shower_door_install","br_ceiling_drywall","br_ceiling_prep_paint","br_ceiling_repair_other_room","br_tub_install","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin","br_demo_soffit","br_vanity_install_single","br_vanity_install_double","br_vanity_connect","br_valve_replace","br_valve_relocate","br_shower_system_install","br_drain_connect","br_drain_relocate","br_fan_replace","br_toilet_remove","br_toilet_reinstall","br_toilet_install_new","br_mirror_install","br_mirror_replace","br_medicine_cabinet","br_accessories","br_tall_cabinet_medicine","br_window_detail","br_window_return_trim","br_wood_frame_tub","br_tub_pipes","br_tub_drain","kp_cabinets_demo","kp_baseboard_repair_paint"]);
+  result.items.forEach((i:any)=>{if(LS_ONE.has(id(i)))i.quantity=1});
+  // Повний демонтаж уже включає плитку, ванну, тумбу — окремі демонтажі прибираємо.
+  const hasId=(x:string)=>result.items.some((i:any)=>id(i)===x);
+  if(hasId("br_demo_bathroom_full")){
+    const included=new Set(["br_demo_wall_tile_sqft","br_demo_floor_sqft","br_demo_drywall_behind_tile_sqft","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin"]);
+    result.items=result.items.filter((i:any)=>!included.has(id(i)));
+  }
+  // Знос перегородки вже включає латання — AI-шна «латка стелі» зайва.
+  if(hasId("br_demo_partition_wall")&&!/corridor|hallway|коридор/.test(text.toLowerCase())){
+    result.items=result.items.filter((i:any)=>id(i)!=="br_ceiling_repair_other_room");
+  }
   // AI інколи дублює пакетну позицію (напр. «Install shower system» ще раз як
   // «removal included») — однакові id з однаковою кількістю лишаємо один раз.
   const seen=new Set<string>();
@@ -187,9 +201,10 @@ export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|
   // The AI sometimes drops the wall tile when panels are also mentioned.
   const n=text.toLowerCase();
   const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
-  if(/tile.{0,30}(shower )?wall|плитк\w*.{0,30}стін|стін\w*.{0,30}плитк/.test(n)&&!has("br_wall_tile_sqft")&&has("br_waterproof_panels_sqft")){
-    const idx=result.items.findIndex((i:any)=>id(i)==="br_waterproof_panels_sqft");
-    result.items.splice(idx+1,0,{[idKey]:"br_wall_tile_sqft",description:"Tile 3 shower walls to ceiling",quantity:g.showerWalls,unit:"sqft",difficulty:"standard",note:g.note,confidence:1});
+  if(/tile.{0,30}(shower )?wall|плитк\w*.{0,30}стін|стін\w*.{0,30}плитк/.test(n)&&!has("br_wall_tile_sqft")){
+    const anchorIdx=result.items.findIndex((i:any)=>["br_waterproof_panels_sqft","br_waterproof_membrane_sqft","br_cement_board_wall_sqft"].includes(id(i)));
+    const item={[idKey]:"br_wall_tile_sqft",description:"Tile shower walls to ceiling",quantity:g.showerWalls,unit:"sqft",difficulty:"standard",note:g.note,confidence:1};
+    if(anchorIdx>=0)result.items.splice(anchorIdx+1,0,item);else result.items.push(item);
   }
   return {applied:true};
 }
