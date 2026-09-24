@@ -51,7 +51,7 @@ const PAN_IDS=["br_pan_mosaic_sqft","br_ceiling_tile_sqft"];
 const FLOOR_OUTSIDE_IDS=["br_floor_tile_sqft","br_cement_board_floor_sqft","br_floor_underlayment_sqft"];
 const FLOOR_TOTAL_IDS=["br_demo_floor_sqft"];
 const PAINT_IDS=["br_wall_repair_sqft","br_paint_sqft"];
-const DIFFICULT_RE=/cramped|tight|awkward|difficult|hard access|custom|built-in|складн|тісн|незручн/;
+const DIFFICULT_RE=/cramped|tight|awkward|difficult|hard access|\bcustom\b(?![-\s]?supplied)|built-in|складн|тісн|незручн/;
 
 
 // Коли AI вже вибрав пакетні позиції, решту робіт того ж кошторису він іноді

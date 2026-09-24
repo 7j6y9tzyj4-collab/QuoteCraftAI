@@ -4,7 +4,7 @@
 
 const GROUPS:Array<{words:RegExp;match:RegExp}>=[
   {words:/tile|плитк|мозаїк|mosaic/,match:/tile|mosaic|плитк|мозаїк|backsplash/},
-  {words:/vanit|тумб/,match:/vanity/},
+  {words:/vanit|тумб/,match:/vanity_install|vanity_top/},
   {words:/faucet|кран|змішувач|valve|shower (?:system|trim|head)/,match:/faucet|valve|shower_system|shower_trim|shower_head|vanity_connect/},
   {words:/toilet|унітаз/,match:/toilet/},
   {words:/mirror|дзеркал/,match:/mirror/},
@@ -26,10 +26,19 @@ const ALL_RE=/(?:all|every)\s+(?:finish(?:es)?|fixtures|finish materials|materia
 /** які групи товарів власник назвав «купує клієнт» (по реченнях) */
 export function customerSuppliedGroups(text:string):{all:boolean;groups:RegExp[]}{
   const groups:RegExp[]=[];let all=false;
+  // Дивимось лише на фрагмент біля «supplied by customer»: сам фрагмент між комами +
+  // короткі сусідні фрагменти-перелік («vanity, mirror and toilet supplied by customer»).
+  // Довге речення через коми не повинно цілком ставати «купує клієнт».
   for(const sentence of text.toLowerCase().split(/[.;\n!?]+/)){
-    if(!SUPPLY_RE.test(sentence))continue;
-    if(ALL_RE.test(sentence))all=true;
-    for(const g of GROUPS)if(g.words.test(sentence))groups.push(g.match);
+    const parts=sentence.split(/,/).map(p=>p.trim());
+    parts.forEach((part,idx)=>{
+      if(!SUPPLY_RE.test(part))return;
+      const scope=[part];
+      for(let k=idx-1;k>=0&&parts[k].split(/\s+/).filter(Boolean).length<=3;k--)scope.push(parts[k]);
+      const txt=scope.join(" , ");
+      if(ALL_RE.test(txt))all=true;
+      for(const g of GROUPS)if(g.words.test(txt))groups.push(g.match);
+    });
   }
   return {all,groups};
 }
@@ -50,7 +59,8 @@ export function applyCustomerSupplied(result:any,text:string,idKey:"taskId"|"ser
   const anySupply=all||groups.length>0;
   for(const i of result.items){
     const id=String(i?.[idKey]||"");
-    const hay=`${id} ${String(i?.description||"").toLowerCase()}`;
+    // звіряємо з кодом позиції, а не з описом («faucet for vanity» — це кран, а не тумба)
+    const hay=id==="CUSTOM"?String(i?.description||"").toLowerCase():id;
     const supplied=all||groups.some(g=>g.test(hay));
     if(supplied)i.customerSupplied=true;
     // AI не має сам вигадувати «supplied», якщо власник цього не казав
