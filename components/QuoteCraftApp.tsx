@@ -161,7 +161,12 @@ export default function QuoteCraftApp(){
    localStorage.setItem(CDK,JSON.stringify(draft));
  },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue]);
 
- const calcCategories=useMemo(()=>Array.from(new Set(calcTasks.map(t=>t.category))),[calcTasks]);
+ // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
+ const calcCategories=useMemo(()=>{
+   const all=Array.from(new Set(calcTasks.map(t=>t.category)));
+   const pkg=all.filter(c=>/повний ремонт/i.test(c));
+   return [...pkg,...all.filter(c=>!pkg.includes(c))];
+ },[calcTasks]);
  const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier),[calcItems,calcLocationMultiplier]);
  const calcDiscount=useMemo(()=>{
    const v=Math.max(0,Number(calcDiscountValue)||0);
@@ -356,7 +361,9 @@ export default function QuoteCraftApp(){
       const task=calcTasks.find(t=>t.id===aiId);
       const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
       if(!task)return blank;
-      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",note:ai.note||undefined,confidence:ai.confidence};
+      // пакетні ставки — вже пакетні: «basic» на них не застосовуємо (підстраховка до серверної перевірки)
+      const difficulty=/^(br|kp)_/.test(task.id)&&ai.difficulty==="basic"?"standard":(ai.difficulty||"standard");
+      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence};
     });
 
     setCalcItems(items);

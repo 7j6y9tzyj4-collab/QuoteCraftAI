@@ -117,12 +117,50 @@ function remapToPackage(result:any,idKey:"taskId"|"serviceId"){
   // повернув лише пакетний install, а в тексті є зняття, додаємо br_toilet_remove
 }
 
+
+// AI (gpt-4.1-mini) регулярно «губить» 2–4 дрібні позиції з довгого опису.
+// Для найтиповіших робіт перевіряємо текст напряму і додаємо пропущене.
+const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
+  {re:/partition wall|перегородк/,id:"br_demo_partition_wall",desc:"Remove partition wall, patch ceiling, wall and floor"},
+  {re:/medicine cabinet|аптечк/,id:"br_medicine_cabinet",desc:"Install medicine cabinet"},
+  {re:/accessories|аксесуар/,id:"br_accessories",desc:"Install bathroom accessories"},
+  {re:/glass (shower )?enclosure|2-wall glass|скляну? кабін/,id:"br_glass_enclosure_2wall_install",desc:"Install 2-wall glass shower enclosure"},
+  {re:/glass door|двері душу|скляні двері/,id:"br_shower_door_install",desc:"Install shower glass door"},
+  {re:/niche|ніш/,id:"br_niche",desc:"Build and tile shower niche"},
+  {re:/\bfan\b|вентилятор/,id:"br_fan_replace",desc:"Replace bath fan"},
+  {re:/mirror|дзеркал/,id:"br_mirror_install",desc:"Install mirror"},
+  {re:/light fixture|світильник/,id:"br_light_replace",desc:"Replace light fixture",qty:/(\d+)\s*light/},
+  {re:/switch|outlet|розетк|вимикач/,id:"br_switch_outlet_replace",desc:"Replace switches / outlets",qty:/(\d+)\s*(?:switch|outlet|розет|вимик)/},
+  {re:/toilet|унітаз/,id:"br_toilet_remove",desc:"Remove toilet"},
+  {re:/reinstall(?:ing)? (?:the )?toilet|toilet back|унітаз назад|поставити унітаз/,id:"br_toilet_reinstall",desc:"Reinstall toilet after tiling"},
+  {re:/baseboard|плінтус/,id:"br_baseboard_install_paint",desc:"Install and paint baseboard"},
+  {re:/vanity|тумб/,id:"br_vanity_install_single",desc:"Install vanity"},
+  {re:/faucet and drain|connect faucet|підключ\w+ кран/,id:"br_vanity_connect",desc:"Connect faucet and drain for vanity"},
+  {re:/shower drain|дренаж/,id:"br_drain_connect",desc:"Connect shower drain"},
+  {re:/valve|змішувач/,id:"br_valve_replace",desc:"Replace shower valve and head"},
+  {re:/prepare floor|floor prep|підготов\w+ підлог/,id:"br_floor_prep",desc:"Prepare floor base after demolition"},
+];
+function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
+  const n=text.toLowerCase();
+  const id=(i:any)=>String(i?.[idKey]||"");
+  const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
+  // мірні альтернативи: якщо є «relocate valve», не додаємо «replace valve»; якщо є нова
+  // тумба з подвійною мийкою — не додаємо одинарну і т.д.
+  const alt:Record<string,string[]>={br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_vanity_install_single:["br_vanity_install_double"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"],br_shower_door_install:["br_glass_enclosure_2wall_install"]};
+  for(const e of ENSURE){
+    if(!e.re.test(n)||has(e.id)||(alt[e.id]||[]).some(has))continue;
+    const q=e.qty?Number((n.match(e.qty)||[])[1])||1:1;
+    result.items.push({[idKey]:e.id,description:e.desc,quantity:q,unit:"each",difficulty:"standard",note:null,confidence:0.8});
+  }
+}
+
 export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|"serviceId"):{applied:boolean}{
   if(!Array.isArray(result?.items))return {applied:false};
   const id=(i:any)=>String(i?.[idKey]||"");
   const hasPackage=result.items.some((i:any)=>/^(br|kp)_/.test(id(i)));
   if(!hasPackage)return {applied:false};
   remapToPackage(result,idKey);
+  ensurePackageItems(result,text,idKey);
   // AI інколи дублює пакетну позицію (напр. «Install shower system» ще раз як
   // «removal included») — однакові id з однаковою кількістю лишаємо один раз.
   const seen=new Set<string>();

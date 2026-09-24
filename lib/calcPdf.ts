@@ -88,6 +88,9 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   });
 
   y=(doc as any).lastAutoTable.finalY+16;
+  // Блок підсумку (до 7 рядків) не розриваємо між сторінками
+  const totalsHeight=7*16+10;
+  if(y+totalsHeight>doc.internal.pageSize.getHeight()-M){doc.addPage();y=M}
   const line=(label:string,value:string,bold=false)=>{
     if(y>doc.internal.pageSize.getHeight()-M){doc.addPage();y=M}
     doc.setFont(font,bold?"bold":"normal");doc.setFontSize(bold?12:10);
