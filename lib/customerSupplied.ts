@@ -40,6 +40,11 @@ export function customerSuppliedGroups(text:string):{all:boolean;groups:RegExp[]
       for(const g of GROUPS)if(g.words.test(txt))groups.push(g.match);
     });
   }
+  // «her door», «his own vanity», «її двері» — річ клієнта; дивимось лише на слово після присвійного
+  const POSS_RE=/(?:^|[^a-zа-яіїєґ'])(?:her|his|their|customer'?s|client'?s|homeowner'?s|owner'?s|її|його|їхн\w*)\s+(?:own\s+)?([a-zа-яіїєґ']+)/gi;
+  for(const m of text.toLowerCase().matchAll(POSS_RE)){
+    for(const g of GROUPS)if(g.words.test(m[1]))groups.push(g.match);
+  }
   return {all,groups};
 }
 

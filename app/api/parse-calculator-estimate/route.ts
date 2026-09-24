@@ -27,6 +27,18 @@ function isInchesContext(normalized: string): boolean {
   return INCH_UNIT_RE.test(normalized) && !FOOT_UNIT_RE.test(normalized);
 }
 
+// AI інколи ставить CUSTOM, хоча опис — це точна назва роботи з прайсу; повертаємо id,
+// інакше рядок втрачає матеріали й оздоблення.
+function remapCustomByName(result:any,tasks:{id:string;name:string}[]){
+  const norm=(s:string)=>s.toLowerCase().replace(/[^a-z0-9а-яіїєґ]+/g," ").trim();
+  const byName=new Map(tasks.map(t=>[norm(t.name),t.id]));
+  for(const it of result?.items||[]){
+    if(it.taskId!=="CUSTOM")continue;
+    const id=byName.get(norm(String(it.description||"")));
+    if(id)it.taskId=id;
+  }
+}
+
 // Ціну власника беремо лише якщо це число справді є в тексті — AI не може її вигадати.
 function keepOnlyStatedPrices(result:any,text:string){
   const nums=new Set((text.replace(/(\d),(\d{3})/g,"$1$2").match(/\d+(?:[.,]\d+)?/g)||[]).map(n=>Number(n.replace(",","."))));
@@ -34,6 +46,7 @@ function keepOnlyStatedPrices(result:any,text:string){
     const p=Number(it.statedPrice);
     if(!(p>0)||!nums.has(p)||(it.statedPriceType!=="per_unit"&&it.statedPriceType!=="total")){it.statedPrice=null;it.statedPriceType=null}
     if(typeof it.note==="string")it.note=it.note.replace(/\s*\(?(price|quoted|agreed)[^.;)]*\$\s?\d[\d,.]*[^.;)]*\)?[.;]?/gi,"").trim().replace(/^./,(c:string)=>c.toUpperCase())||null;
+    if(typeof it.note==="string"&&/^(?:labor|labour)(?:\s+only)?\.?$/i.test(it.note.trim()))it.note=null;
   }
 }
 
@@ -212,7 +225,7 @@ export async function POST(request:NextRequest){
             "Preserve uncertain details in note and lower confidence.",
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
-            "OWNER'S STATED PRICES: when the speaker states his own labor price for a job (\"walls at $14\", \"по 14 доларів\", \"door for $120\", \"за 680\"), put that number in statedPrice and set statedPriceType to per_unit (price per sq ft / lin ft / each / hour) or total (lump sum for the whole line). Otherwise statedPrice and statedPriceType are null. Never invent a price and never copy a price into description or note. When one stated price covers several jobs (\"skim coat and paint the ceiling at $8\"), return ONE item for it with that price and do not add separate items for the other jobs it covers. A stated price is labor only; materials and finish are still priced from the list.",
+            "OWNER'S STATED PRICES: when the speaker states his own labor price for a job (\"walls at $14\", \"по 14 доларів\", \"door for $120\", \"за 680\"), put that number in statedPrice and set statedPriceType to per_unit (price per sq ft / lin ft / each / hour) or total (lump sum for the whole line). Otherwise statedPrice and statedPriceType are null. Never invent a price and never copy a price into description or note. When one stated price covers several jobs (\"skim coat and paint the ceiling at $8\"), return ONE item for it with that price and do not add separate items for the other jobs it covers. A stated price is labor only; materials and finish are still priced from the list. A stated price never makes an item CUSTOM: always use the matching taskId from the list. Do not write \"Labor\" or the price in note.",
             "CUSTOMER-SUPPLIED ITEMS: never write supplied, customer-supplied or provided by customer in a description or note unless the speaker explicitly said the customer buys or supplies that item. The estimate prices basic finish materials separately.",
             "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
@@ -286,6 +299,7 @@ export async function POST(request:NextRequest){
     const verified=bathroom.applied&&calculateBathroomAreas(text)?parsed:applyCalcMeasurements(parsed,text);
 
     applyCustomerSupplied(verified,text,"taskId");
+    remapCustomByName(verified,tasks);
     keepOnlyStatedPrices(verified,text);
     return NextResponse.json(verified);
   }catch(error){
