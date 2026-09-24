@@ -78,4 +78,6 @@ export type CalcAIItem={
   /** ціна праці, яку власник назвав у тексті */
   statedPrice?:number|null;
   statedPriceType?:"per_unit"|"total"|null;
+  /** робота входить у суму, названу для іншого рядка — праця 0 */
+  includedInStated?:boolean;
 };

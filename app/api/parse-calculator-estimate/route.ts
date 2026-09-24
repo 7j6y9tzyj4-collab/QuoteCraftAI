@@ -41,10 +41,17 @@ function remapCustomByName(result:any,tasks:{id:string;name:string}[]){
 
 // Ціну власника беремо лише якщо це число справді є в тексті — AI не може її вигадати.
 function keepOnlyStatedPrices(result:any,text:string){
-  const nums=new Set((text.replace(/(\d),(\d{3})/g,"$1$2").match(/\d+(?:[.,]\d+)?/g)||[]).map(n=>Number(n.replace(",","."))));
+  // скільки разів кожне число є в тексті: «$14» двічі — дві позиції по $14; «$120» один раз — одна позиція
+  const left=new Map<number,number>();
+  for(const n of text.replace(/(\d),(\d{3})/g,"$1$2").match(/\d+(?:[.,]\d+)?/g)||[]){const v=Number(n.replace(",","."));left.set(v,(left.get(v)||0)+1)}
   for(const it of result?.items||[]){
     const p=Number(it.statedPrice);
-    if(!(p>0)||!nums.has(p)||(it.statedPriceType!=="per_unit"&&it.statedPriceType!=="total")){it.statedPrice=null;it.statedPriceType=null}
+    if(!(p>0)||(it.statedPriceType!=="per_unit"&&it.statedPriceType!=="total")){it.statedPrice=null;it.statedPriceType=null}
+    else if(!left.has(p)){it.statedPrice=null;it.statedPriceType=null}
+    else if((left.get(p)||0)>0)left.set(p,(left.get(p)||0)-1);
+    // одну суму AI розбив на кілька рядків (двері + наличник за $120) — праця вже в першому рядку
+    else if(it.statedPriceType==="total"){it.statedPrice=0;it.includedInStated=true}
+    else{it.statedPrice=null;it.statedPriceType=null}
     if(typeof it.note==="string")it.note=it.note.replace(/\s*\(?(price|quoted|agreed)[^.;)]*\$\s?\d[\d,.]*[^.;)]*\)?[.;]?/gi,"").trim().replace(/^./,(c:string)=>c.toUpperCase())||null;
     if(typeof it.note==="string"&&/^(?:labor|labour)(?:\s+only)?\.?$/i.test(it.note.trim()))it.note=null;
   }

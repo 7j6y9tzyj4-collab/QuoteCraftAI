@@ -359,16 +359,18 @@ export default function QuoteCraftApp(){
       const aiId=legacyIdMap[ai.taskId]||ai.taskId; // AI може повернути старий id
       const task=calcTasks.find(t=>t.id===aiId);
       const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
-      if(!task){const sp=Number(ai.statedPrice);return sp>0?{...blank,laborRate:Math.round((ai.statedPriceType==="total"?sp/(blank.quantity||1):sp)*100)/100,laborOwn:true}:blank}
+      if(!task){const sp=Number(ai.statedPrice);return sp>0?{...blank,laborRate:Math.round((ai.statedPriceType==="total"?sp/(blank.quantity||1):sp)*10000)/10000,laborOwn:true}:blank}
       // пакетні ставки — вже пакетні: «basic» на них не застосовуємо (підстраховка до серверної перевірки)
       const difficulty=/^(br|kp)_/.test(task.id)&&ai.difficulty==="basic"?"standard":(ai.difficulty||"standard");
       const supplied=(ai as any).customerSupplied===true;
       const item:CalcItem={...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{})};
       // ціна, яку власник сам назвав у тексті, — своя ставка цього рядка
       const sp=Number(ai.statedPrice);
+      if(ai.includedInStated)return{...item,laborRate:0,laborOwn:true,difficulty:"standard",minPrice:0};
       if(sp>0){
+        // 4 знаки, щоб $120 на 34 lin ft дало рівно $120.00, а не $120.02
         const rate=ai.statedPriceType==="total"?sp/(item.quantity||1):sp;
-        return{...item,laborRate:Math.round(rate*100)/100,laborOwn:true,difficulty:"standard",minPrice:0};
+        return{...item,laborRate:Math.round(rate*10000)/10000,laborOwn:true,difficulty:"standard",minPrice:0};
       }
       return item;
     });
