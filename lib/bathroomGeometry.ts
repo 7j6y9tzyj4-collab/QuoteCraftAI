@@ -141,15 +141,30 @@ const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
   {re:/valve|змішувач/,id:"br_valve_replace",desc:"Replace shower valve and head"},
   {re:/prepare floor|floor prep|підготов\w+ підлог/,id:"br_floor_prep",desc:"Prepare floor base after demolition"},
 ];
+// «Glass enclosure by glass company, not included» — скло не рахуємо зовсім
+const GLASS_RE=/glass|скл/;
+const EXCLUDED_RE=/not included|excluded|by (?:the |a )?glass company|by others|separate(?:ly)?|не входить|не рахува|окремо|скляна компанія|скляної компанії/;
+export function glassExcluded(text:string){
+  return text.toLowerCase().split(/[.;\n!?]+/).some(c=>GLASS_RE.test(c)&&EXCLUDED_RE.test(c));
+}
+const GLASS_IDS=new Set(["br_glass_enclosure_2wall_install","br_shower_door_install"]);
+
 function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
   const n=text.toLowerCase();
+  if(glassExcluded(text))result.items=result.items.filter((i:any)=>!GLASS_IDS.has(String(i?.[idKey]||"")));
+  // «full demo including the partition wall» — перегородка вже в ціні демонтажу, окремо не рахуємо
+  const partitionInDemo=/(?:demo|demolition|демонтаж)[^.;]{0,100}(?:including|incl\.?|together with|with|разом з|включно з|разом із)[^.;]{0,40}(?:partition|перегородк)/.test(n);
+  if(partitionInDemo)result.items=result.items.filter((i:any)=>String(i?.[idKey]||"")!=="br_demo_partition_wall");
   const id=(i:any)=>String(i?.[idKey]||"");
   const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
   // мірні альтернативи: якщо є «relocate valve», не додаємо «replace valve»; якщо є нова
   // тумба з подвійною мийкою — не додаємо одинарну і т.д.
   const alt:Record<string,string[]>={br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_vanity_install_single:["br_vanity_install_double"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"],br_shower_door_install:["br_glass_enclosure_2wall_install"]};
+  const noGlass=glassExcluded(text);
   for(const e of ENSURE){
     if(!e.re.test(n)||has(e.id)||(alt[e.id]||[]).some(has))continue;
+    if(noGlass&&GLASS_IDS.has(e.id))continue;
+    if(partitionInDemo&&e.id==="br_demo_partition_wall")continue;
     const q=e.qty?Number((n.match(e.qty)||[])[1])||1:1;
     result.items.push({[idKey]:e.id,description:e.desc,quantity:q,unit:/_sqft$/.test(e.id)?"sqft":"each",difficulty:"standard",note:null,confidence:0.8});
   }
@@ -201,7 +216,7 @@ export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|
   // The AI sometimes drops the wall tile when panels are also mentioned.
   const n=text.toLowerCase();
   const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
-  if(/tile.{0,30}(shower )?wall|плитк\w*.{0,30}стін|стін\w*.{0,30}плитк/.test(n)&&!has("br_wall_tile_sqft")){
+  if(/tile.{0,30}(shower )?wall|walls?.{0,30}tile|tile to (?:the )?ceiling|плитк\w*.{0,30}стін|стін\w*.{0,30}плитк|плитк\w* до стел/.test(n)&&!has("br_wall_tile_sqft")){
     const anchorIdx=result.items.findIndex((i:any)=>["br_waterproof_panels_sqft","br_waterproof_membrane_sqft","br_cement_board_wall_sqft"].includes(id(i)));
     const item={[idKey]:"br_wall_tile_sqft",description:"Tile shower walls to ceiling",quantity:g.showerWalls,unit:"sqft",difficulty:"standard",note:g.note,confidence:1};
     if(anchorIdx>=0)result.items.splice(anchorIdx+1,0,item);else result.items.push(item);
