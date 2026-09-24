@@ -359,7 +359,8 @@ export default function QuoteCraftApp(){
       if(!task)return blank;
       // пакетні ставки — вже пакетні: «basic» на них не застосовуємо (підстраховка до серверної перевірки)
       const difficulty=/^(br|kp)_/.test(task.id)&&ai.difficulty==="basic"?"standard":(ai.difficulty||"standard");
-      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence};
+      const supplied=(ai as any).customerSupplied===true;
+      return{...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{})};
     });
 
     setCalcItems(items);
@@ -1063,7 +1064,7 @@ export default function QuoteCraftApp(){
         unit:ai.unit,
         unitPrice:typeof ai.explicitRate==="number"&&Number.isFinite(ai.explicitRate)&&ai.explicitRate>=0?ai.explicitRate:service?.rate||0,
         materialRate:service?.materialRate||0,
-        finishRate:service?.finishRate||0,
+        finishRate:(ai as any).customerSupplied===true?0:(service?.finishRate||0),
         note:ai.note||undefined,
         confidence:ai.confidence
       };

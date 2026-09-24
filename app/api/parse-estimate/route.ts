@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {NextRequest,NextResponse} from "next/server";
 import {applyBathroomMeasurements} from "@/lib/bathroomGeometry";
+import {applyCustomerSupplied} from "@/lib/customerSupplied";
 
 type PriceRule={
   id:string;
@@ -325,6 +326,7 @@ export async function POST(request:NextRequest){
           role:"system",
           content:[
             "You convert informal contractor job descriptions into structured estimate line items.",
+            "CUSTOMER-SUPPLIED ITEMS: never write supplied, customer-supplied or provided by customer in a description or note unless the speaker explicitly said the customer buys or supplies that item. The estimate prices basic finish materials separately.",
             "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
             "The user may speak Ukrainian, English, Russian, mixed language, use slang, omit punctuation, or dictate several jobs in one sentence.",
             "Separate every distinct action into its own item.",
@@ -424,6 +426,7 @@ export async function POST(request:NextRequest){
     }
 
     const parsed=JSON.parse(raw);
+    applyCustomerSupplied(parsed,text,"serviceId");
     if(Array.isArray(parsed.questions) && parsed.questions.length){
       return NextResponse.json({items:[],questions:parsed.questions});
     }
