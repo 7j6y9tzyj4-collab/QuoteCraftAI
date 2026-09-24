@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { estimateTotals, itemTotal, itemMaterialRate } from "@/lib/estimateTotals";
 import type { Estimate, Unit } from "@/lib/types";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PrintButton from "./PrintButton";
@@ -43,7 +44,8 @@ export default async function SharedEstimatePage({
   }
 
   const estimate = data.estimate_data as Estimate;
-  const subtotal = estimate.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const totals = estimateTotals(estimate.items);
+  const subtotal = totals.subtotal;
   const discount = Math.min(subtotal, estimate.discount || 0);
   const tax = ((subtotal - discount) * (estimate.tax || 0)) / 100;
   const total = subtotal - discount + tax;
@@ -82,14 +84,15 @@ export default async function SharedEstimatePage({
                 <td>
                   {item.quantity} {unitLabel(item.unit)}
                 </td>
-                <td>{money(item.unitPrice)}</td>
-                <td>{money(item.quantity * item.unitPrice)}</td>
+                <td>{money(item.unitPrice)}{itemMaterialRate(item) > 0 ? ` + ${money(itemMaterialRate(item))} мат.` : ""}</td>
+                <td>{money(itemTotal(item))}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div className="sharedTotals">
+          {totals.materials > 0 && (<><div><span>Праця</span><span>{money(totals.labor)}</span></div><div><span>Матеріали</span><span>{money(totals.materials)}</span></div></>)}
           <div>
             <span>Проміжна сума</span>
             <span>{money(subtotal)}</span>

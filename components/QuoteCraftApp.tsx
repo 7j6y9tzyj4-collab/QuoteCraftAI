@@ -5,7 +5,8 @@ import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
 import PhotoMeasurements from "@/components/PhotoMeasurements";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
-import {validPrice,bounds} from "@/lib/priceCatalog";
+import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
+import {estimateTotals,itemTotal,itemMaterialRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
@@ -17,12 +18,22 @@ import {legacyIdMap} from "@/lib/catalog";
 import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
-// Ціни калькулятора зберігаються як набір ВІДХИЛЕНЬ від calcDefaults, а не як повна копія
-// каталогу. Завдяки цьому нові роботи з'являються автоматично після оновлення застосунку,
-// а власні правки не губляться і не блокують оновлення.
+// Одна таблиця цін: Calculator бере ставки з Prices (праця = rate, матеріали = materialRate),
+// а решту параметрів (складність, діапазон) — з каталогу. Окремих цін калькулятора більше нема.
 type CalcOverride={laborRate:number;materialRate:number};
 type CalcOverrides=Record<string,CalcOverride>;
-const mergeCalcTasks=(ov:CalcOverrides):CalcTask[]=>calcDefaults.map(t=>ov[t.id]?{...t,laborRate:ov[t.id].laborRate,materialRate:ov[t.id].materialRate}:t);
+const tasksFromPrices=(prices:PriceRule[]):CalcTask[]=>{
+ const byId=new Map(prices.map(p=>[p.id,p]));
+ const fromCatalog=calcDefaults.map(t=>{
+  const p=byId.get(t.id);
+  return p?{...t,laborRate:Number(p.rate)||0,materialRate:typeof p.materialRate==="number"?p.materialRate:t.materialRate,suppliesPct:0,suppliesFixed:0}:t;
+ });
+ const custom=prices.filter(p=>!calcDefaults.some(t=>t.id===p.id)).map(p=>({
+  id:p.id,category:categoryOf(p),name:p.name,unit:p.unit,laborRate:Number(p.rate)||0,materialRate:p.materialRate||0,suppliesPct:0,suppliesFixed:0,minPrice:0,
+  difficultyMultipliers:{basic:0.9,standard:1,difficult:1.2},lowMult:0.9,highMult:1.15,notes:"",source:"Власна позиція з Prices."
+ }));
+ return fromCatalog.concat(custom);
+};
 // Ціни, збережені під старим id, переносимо на новий і накладаємо на повний
 // каталог: так нові роботи зʼявляються самі, а власні ставки й додані вручну
 // позиції зберігаються.
@@ -35,7 +46,7 @@ const mergeSavedPrices=(saved:PriceRule[]|null|undefined):PriceRule[]=>{
  saved_.filter(p=>!legacyIdMap[p.id]).forEach(p=>{byId[p.id]={...p}});
  const merged=defaults.map(d=>{
   const own=byId[d.id];
-  return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax}:d;
+  return own?{...d,rate:own.rate,rateMin:own.rateMin,rateMax:own.rateMax,materialRate:typeof own.materialRate==="number"?own.materialRate:d.materialRate}:d;
  });
  const custom=Object.values(byId).filter(p=>!defaults.some(d=>d.id===p.id));
  return merged.concat(custom);
@@ -48,15 +59,12 @@ const migrateOverrides=(ov:CalcOverrides|null|undefined):CalcOverrides=>{
  Object.entries(ov||{}).forEach(([id,v])=>{out[legacyIdMap[id]||id]=v});
  return out;
 };
-const overridesFrom=(tasks:CalcTask[]):CalcOverrides=>{
- const ov:CalcOverrides={};
- tasks.forEach(t=>{
-  const d=calcDefaults.find(x=>x.id===t.id);
-  if(d&&(d.laborRate!==t.laborRate||d.materialRate!==t.materialRate))ov[t.id]={laborRate:t.laborRate,materialRate:t.materialRate};
- });
- return ov;
+// Старі окремі ціни калькулятора (localStorage / user_calc_prices) один раз переносимо у Prices.
+const applyLegacyCalcOverrides=(prices:PriceRule[],ov:CalcOverrides):PriceRule[]=>{
+ const m=migrateOverrides(ov);
+ if(!Object.keys(m).length)return prices;
+ return prices.map(p=>m[p.id]?{...p,rate:m[p.id].laborRate,materialRate:m[p.id].materialRate,rateMin:Math.min(p.rateMin??m[p.id].laborRate,m[p.id].laborRate),rateMax:Math.max(p.rateMax??m[p.id].laborRate,m[p.id].laborRate)}:p);
 };
-// Таблиці user_calc_prices може ще не бути — тоді просто працюємо локально, без помилки на екрані.
 const missingCalcTable=(e:{code?:string;message?:string}|null)=>!!e&&(e.code==="42P01"||/user_calc_prices/.test(e.message||""));
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft"});
@@ -110,7 +118,6 @@ export default function QuoteCraftApp(){
  const mediaRecorderRef=useRef<MediaRecorder|null>(null);
  const audioChunksRef=useRef<Blob[]>([]);
 
- const [calcTasks,setCalcTasks]=useState<CalcTask[]>(calcDefaults);
  const [calcItems,setCalcItems]=useState<CalcItem[]>([]);
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
@@ -124,11 +131,9 @@ export default function QuoteCraftApp(){
  const [calcListening,setCalcListening]=useState(false);
  const [calcTranscribing,setCalcTranscribing]=useState(false);
  const [calcMessage,setCalcMessage]=useState("");
- const [showCalcPricing,setShowCalcPricing]=useState(false);
  const calcRecognitionRef=useRef<any>(null);
  const calcBaseRef=useRef("");
  const calcFinalRef=useRef("");
- const calcSyncTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const calcMediaRecorderRef=useRef<MediaRecorder|null>(null);
  const calcAudioChunksRef=useRef<Blob[]>([]);
 
@@ -137,15 +142,13 @@ export default function QuoteCraftApp(){
    const savedPrices=mergeSavedPrices(load<PriceRule[]|null>(PK,null));
    setPrices(savedPrices);
    try{localStorage.setItem(PK,JSON.stringify(savedPrices))}catch{}
-   let ov=load<CalcOverrides|null>(CKO,null);
-   if(!ov){
-     // міграція зі старого формату (повний каталог у localStorage)
-     const legacy=load<CalcTask[]|null>(CK,null);
-     ov=Array.isArray(legacy)&&legacy.length?overridesFrom(legacy):{};
+   // одноразове перенесення старих локальних цін калькулятора у Prices
+   const localOv=load<CalcOverrides|null>(CKO,null);
+   if(localOv&&Object.keys(localOv).length){
+     const migrated=applyLegacyCalcOverrides(savedPrices,localOv);
+     setPrices(migrated);
+     try{localStorage.setItem(PK,JSON.stringify(migrated));localStorage.removeItem(CKO);localStorage.removeItem(CK)}catch{}
    }
-   ov=migrateOverrides(ov);
-   try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
-   setCalcTasks(mergeCalcTasks(ov));
    const draft=load<CalcDraft>(CDK,freshCalcDraft());
    setCalcItems(draft.items||[]);
    setCalcClient(draft.client||"");
@@ -161,6 +164,7 @@ export default function QuoteCraftApp(){
    localStorage.setItem(CDK,JSON.stringify(draft));
  },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue]);
 
+ const calcTasks=useMemo(()=>tasksFromPrices(prices),[prices]);
  // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
  const calcCategories=useMemo(()=>{
    const all=Array.from(new Set(calcTasks.map(t=>t.category)));
@@ -175,21 +179,6 @@ export default function QuoteCraftApp(){
  },[calcDiscountType,calcDiscountValue,calcTotalsValue.labor]);
  const calcGrandTotal=Math.max(0,calcTotalsValue.lineTotal-calcDiscount);
  const calcDiscountLabel=calcDiscountType==="percent"?`Package discount (${calcDiscountValue}% of labor)`:"Package discount";
-
- const saveCalcTasks=(x:CalcTask[])=>{
-   setCalcTasks(x);
-   const ov=overridesFrom(x);
-   try{localStorage.setItem(CKO,JSON.stringify(ov))}catch{}
-   if(!user)return;
-   if(calcSyncTimer.current)clearTimeout(calcSyncTimer.current);
-   // поля правляться посимвольно, тому в акаунт пишемо із затримкою після останньої правки
-   calcSyncTimer.current=setTimeout(async()=>{
-     const {error}=await supabase.from("user_calc_prices").upsert({
-       user_id:user.id,calc_overrides:ov,updated_at:new Date().toISOString()
-     },{onConflict:"user_id"});
-     if(error&&!missingCalcTable(error))setMessage("Ціни калькулятора не збереглися в акаунт: "+error.message);
-   },1500);
- };
 
  function applyCalcTask(item:CalcItem,task:CalcTask):CalcItem{
    return{
@@ -705,34 +694,22 @@ export default function QuoteCraftApp(){
        }
      }
 
+     // Старі ціни калькулятора в акаунті (user_calc_prices) переносимо у Prices один раз і обнуляємо.
      const {data:calcRow,error:calcError}=await supabase
        .from("user_calc_prices")
        .select("calc_overrides")
        .eq("user_id",user.id)
        .maybeSingle();
-
-     if(calcError&&!missingCalcTable(calcError)){
-       setMessage("Не вдалося завантажити ціни калькулятора: "+calcError.message);
-     }else if(calcRow?.calc_overrides){
-       const cloudOv=migrateOverrides(calcRow.calc_overrides as CalcOverrides);
-       setCalcTasks(mergeCalcTasks(cloudOv));
-       try{localStorage.setItem(CKO,JSON.stringify(cloudOv))}catch{}
-     }else if(!calcError){
-       const localOv=load<CalcOverrides>(CKO,{});
-
-       if(Object.keys(localOv).length){
-         const {error:uploadCalcError}=await supabase
-           .from("user_calc_prices")
-           .upsert({
-             user_id:user.id,
-             calc_overrides:localOv,
-             updated_at:new Date().toISOString()
-           },{onConflict:"user_id"});
-
-         if(uploadCalcError&&!missingCalcTable(uploadCalcError)){
-           setMessage("Не вдалося перенести ціни калькулятора у хмару: "+uploadCalcError.message);
-         }
-       }
+     if(!calcError&&calcRow?.calc_overrides&&Object.keys(calcRow.calc_overrides as object).length){
+       setPrices(prev=>{
+         const migrated=applyLegacyCalcOverrides(prev,calcRow.calc_overrides as CalcOverrides);
+         supabase.from("user_prices").upsert({user_id:user.id,prices_data:migrated,updated_at:new Date().toISOString()},{onConflict:"user_id"})
+           .then(({error})=>{if(!error)supabase.from("user_calc_prices").update({calc_overrides:{},updated_at:new Date().toISOString()}).eq("user_id",user.id).then(()=>{});});
+         try{localStorage.setItem(PK,JSON.stringify(migrated))}catch{}
+         return migrated;
+       });
+     }else if(calcError&&!missingCalcTable(calcError)){
+       setMessage("Не вдалося перевірити старі ціни калькулятора: "+calcError.message);
      }
 
      setAuthLoading(false);
@@ -745,7 +722,8 @@ export default function QuoteCraftApp(){
    };
  },[user]);
 
- const subtotal=useMemo(()=>cur.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0),[cur.items]);
+ const estTotals=useMemo(()=>estimateTotals(cur.items),[cur.items]);
+ const subtotal=estTotals.subtotal;
  const discount=Math.min(subtotal,cur.discount||0);
  const tax=(subtotal-discount)*(cur.tax||0)/100;
  const total=subtotal-discount+tax;
@@ -807,7 +785,7 @@ export default function QuoteCraftApp(){
    catch{return "Ціни збережено в акаунті. Локальна копія недоступна."}
    return "Ціни збережено в акаунті.";
  };
- const value=(e:Estimate)=>e.items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);
+ const value=(e:Estimate)=>estimateTotals(e.items).subtotal;
 
 
  const signUp=async()=>{
@@ -1074,6 +1052,7 @@ export default function QuoteCraftApp(){
         quantity:Number(ai.quantity)||1,
         unit:ai.unit,
         unitPrice:typeof ai.explicitRate==="number"&&Number.isFinite(ai.explicitRate)&&ai.explicitRate>=0?ai.explicitRate:service?.rate||0,
+        materialRate:service?.materialRate||0,
         note:ai.note||undefined,
         confidence:ai.confidence
       };
@@ -1163,8 +1142,8 @@ export default function QuoteCraftApp(){
          ${item.note?`<div class="note">${esc(item.note)}</div>`:""}
        </td>
        <td>${esc(item.quantity)} ${esc(unitLabel(item.unit))}</td>
-       <td>${esc(money(item.unitPrice))}</td>
-       <td>${esc(money(item.quantity*item.unitPrice))}</td>
+       <td>${esc(money(item.unitPrice))}${itemMaterialRate(item)>0?` + ${esc(money(itemMaterialRate(item)))} mat.`:""}</td>
+       <td>${esc(money(itemTotal(item)))}</td>
      </tr>
    `).join("");
 
@@ -1234,6 +1213,7 @@ export default function QuoteCraftApp(){
      </table>
 
      <div class="totals">
+       ${estTotals.materials>0?`<div><span>Labor</span><span>${esc(money(estTotals.labor))}</span></div><div><span>Materials</span><span>${esc(money(estTotals.materials))}</span></div>`:""}
        <div><span>Subtotal</span><span>${esc(money(subtotal))}</span></div>
        <div><span>Discount</span><span>−${esc(money(discount))}</span></div>
        <div><span>Tax</span><span>${esc(money(tax))}</span></div>
@@ -1415,7 +1395,7 @@ export default function QuoteCraftApp(){
 
     {cur.preliminary&&<section className="panel"><b>Попередній кошторис — потрібні заміри на обʼєкті</b><p>{PRELIMINARY_NOTE}</p><details><summary>Підтверджені приблизні розміри</summary><p style={{whiteSpace:"pre-wrap"}}>{cur.measurementNotes}</p></details></section>}
     <section className="panel"><div className="head"><h2>Scope & pricing</h2><button className="add noPrint" onClick={add}>＋ Add item</button></div>
-      <ServicePicker prices={prices} onSelect={p=>setCur(c=>({...c,items:[...c.items,{id:crypto.randomUUID(),serviceId:p.id,description:p.name,quantity:1,unit:p.unit,unitPrice:p.rate}]}))}/>
+      <ServicePicker prices={prices} onSelect={p=>setCur(c=>({...c,items:[...c.items,{id:crypto.randomUUID(),serviceId:p.id,description:p.name,quantity:1,unit:p.unit,unitPrice:p.rate,materialRate:p.materialRate||0}]}))}/>
       {cur.items.length===0?<p className="empty">AI-позиції з’являться тут.</p>:cur.items.map(i=><article className="item" key={i.id}>
        <div className="itemtop"><input value={i.description} onChange={e=>update(i.id,{description:e.target.value})}/><button className="remove noPrint" onClick={()=>remove(i.id)}>×</button></div>
        {prices.find(p=>p.id===i.serviceId)&&<p className="muted noPrint">Діапазон у Prices: ${bounds(prices.find(p=>p.id===i.serviceId)!).min}–${bounds(prices.find(p=>p.id===i.serviceId)!).max} / {unitLabel(i.unit)}. Нижче — вибрана ціна для цього кошторису.</p>}
@@ -1424,14 +1404,15 @@ export default function QuoteCraftApp(){
        <div className="itemgrid">
         <label>Quantity<input type="number" min="0" step="0.01" value={i.quantity} onChange={e=>update(i.id,{quantity:Number(e.target.value)})}/></label>
         <label>Unit<select value={i.unit} onChange={e=>update(i.id,{unit:e.target.value as Unit})}><option value="each">each</option><option value="sqft">sq ft</option><option value="hour">hour</option><option value="linear_ft">linear ft</option><option value="room">room</option></select></label>
-        <label>Rate<input type="number" min="0" step="0.01" value={i.unitPrice} onChange={e=>update(i.id,{unitPrice:Number(e.target.value)})}/></label>
-        <div className="linetotal"><span>Total</span><b>{money(i.quantity*i.unitPrice)}</b></div>
-       </div><small>{i.quantity} {unitLabel(i.unit)} × {money(i.unitPrice)}</small>
+        <label>Праця, $/од<input type="number" min="0" step="0.01" value={i.unitPrice} onChange={e=>update(i.id,{unitPrice:Number(e.target.value)})}/></label>
+        <label>Матеріали, $/од<input type="number" min="0" step="0.01" value={itemMaterialRate(i)} onChange={e=>update(i.id,{materialRate:Math.max(0,Number(e.target.value)||0)})}/></label>
+        <div className="linetotal"><span>Total</span><b>{money(itemTotal(i))}</b></div>
+       </div><small>{i.quantity} {unitLabel(i.unit)} × ({money(i.unitPrice)}{itemMaterialRate(i)>0?` + ${money(itemMaterialRate(i))} матеріали`:""})</small>
       </article>)}
     </section>
 
     <section className="panel grid3 noPrint"><label>Discount, $<input type="number" value={cur.discount} onChange={e=>setCur({...cur,discount:Number(e.target.value)})}/></label><label>Tax, %<input type="number" value={cur.tax} onChange={e=>setCur({...cur,tax:Number(e.target.value)})}/></label><label>Deposit, %<input type="number" value={cur.deposit} onChange={e=>setCur({...cur,deposit:Number(e.target.value)})}/></label></section>
-    <section className="total"><div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
+    <section className="total">{estTotals.materials>0&&<><div><span>Праця</span><span>{money(estTotals.labor)}</span></div><div><span>Матеріали</span><span>{money(estTotals.materials)}</span></div></>}<div><span>Subtotal</span><span>{money(subtotal)}</span></div><div><span>Discount</span><span>−{money(discount)}</span></div><div><span>Tax</span><span>{money(tax)}</span></div><div className="grand"><span>Total</span><b>{money(total)}</b></div><div><span>Required deposit</span><b>{money(deposit)}</b></div></section>
     {user&&<div className="shareRow noPrint"><button className="secondary" onClick={shareEstimate}>🔗 Copy client link</button></div>}
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
@@ -1488,22 +1469,7 @@ export default function QuoteCraftApp(){
 
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
-    <div className="actions noPrint" style={{marginTop:8}}><button className="secondary full" onClick={()=>setShowCalcPricing(s=>!s)}>{showCalcPricing?"Сховати ціни калькулятора":"⚙ Ціни калькулятора"}</button></div>
-
-    {showCalcPricing&&<section className="panel">
-      <span className="eyebrow">CALCULATOR PRICE LIBRARY</span>
-      <h2>Ціни для калькулятора</h2>
-      <p className="muted">Labor і material ставка за одиницю, окремо від бібліотеки цін в Estimates. Зберігається в акаунт, тому діє і на телефоні. Зберігаються лише твої правки, тож нові роботи з&#39;являються тут самі після оновлення застосунку.</p>
-      {calcCategories.map(cat=><div key={cat}>
-        <h3 className="calcCatHeading">{cat}</h3>
-        {calcTasks.filter(t=>t.category===cat).map(t=><article className="price calcPrice" key={t.id}>
-          <div><b>{t.name}</b><small>{unitLabel(t.unit)} · min {money(t.minPrice)}</small></div>
-          <label>Labor $<input type="number" min="0" step="0.01" value={t.laborRate} onChange={e=>saveCalcTasks(calcTasks.map(x=>x.id===t.id?{...x,laborRate:Number(e.target.value)}:x))}/></label>
-          <label>Material $<input type="number" min="0" step="0.01" value={t.materialRate} onChange={e=>saveCalcTasks(calcTasks.map(x=>x.id===t.id?{...x,materialRate:Number(e.target.value)}:x))}/></label>
-        </article>)}
-      </div>)}
-      <button className="secondary full" onClick={()=>saveCalcTasks(calcDefaults)}>Скинути мої правки до базових цін</button>
-    </section>}
+    <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}

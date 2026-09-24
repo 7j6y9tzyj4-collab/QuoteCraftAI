@@ -21,5 +21,7 @@ export const defaults:PriceRule[]=catalog.map(t=>({
   rate:t.rate,
   rateMin:r2(t.rate*t.lowMult),
   rateMax:r2(t.rate*t.highMult),
-  category:t.category
+  category:t.category,
+  materialRate:t.materialRate,
+  materialStatus:t.materialStatus
 }));
