@@ -65,27 +65,33 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   meta.forEach(m=>{doc.text(m,M,y);y+=14});
   doc.setTextColor(0);y+=6;
 
-  const body=input.items.map(li=>{
-    const c=computeCalcLine(li,input.locationMultiplier,input.includeFinish!==false);
-    // службові примітки про перевірену геометрію клієнту не показуємо
+  // Колонки: праця / матеріали / оздоблення — клієнт бачить, що платить підряднику, а що магазину.
+  // Складність клієнту не показуємо (вона вже врахована в праці).
+  const lines=input.items.map(li=>({li,c:computeCalcLine(li,input.locationMultiplier,input.includeFinish!==false)}));
+  const showFinish=lines.some(x=>x.c.finish>0);
+  const m0=(n:number)=>n>0?money(n):"—";
+  const body=lines.map(({li,c})=>{
     const note=li.note&&!/^Verified /.test(li.note)?li.note:"";
     const desc=note?`${li.name}\n${note}`:li.name;
-    return [desc,`${li.quantity} ${unitLabel(li.unit)}`,li.difficulty,money(c.lineTotal)];
+    const row=[desc,`${li.quantity} ${unitLabel(li.unit)}`,m0(c.labor),m0(c.materials+c.supplies)];
+    if(showFinish)row.push(m0(c.finish));
+    row.push(money(c.lineTotal));
+    return row;
   });
+  const head=["Description","Qty","Labor","Materials",...(showFinish?["Finish"]:[]),"Total"];
+  const num=60,qty=68;
+  const descW=W-2*M-qty-num*(showFinish?4:3);
+  const cols:any={0:{cellWidth:descW},1:{cellWidth:qty}};
+  for(let k=2;k<head.length;k++)cols[k]={cellWidth:num,halign:"right"};
 
   autoTable(doc,{
     startY:y,
-    head:[["Description","Quantity","Difficulty","Total"]],
+    head:[head],
     body,
     margin:{left:M,right:M},
-    styles:{font,fontSize:9,cellPadding:5,overflow:"linebreak",valign:"top"},
-    headStyles:{fillColor:[16,24,40],textColor:255,fontStyle:"bold"},
-    columnStyles:{0:{cellWidth:W-2*M-190},1:{cellWidth:70},2:{cellWidth:60},3:{cellWidth:60,halign:"right"}},
-    didParseCell:(data:any)=>{
-      if(data.section==="body"&&data.column.index===0&&typeof data.cell.raw==="string"&&data.cell.raw.includes("\n")){
-        data.cell.styles.fontSize=9;
-      }
-    }
+    styles:{font,fontSize:8.5,cellPadding:4,overflow:"linebreak",valign:"top"},
+    headStyles:{fillColor:[16,24,40],textColor:255,fontStyle:"bold",halign:"left"},
+    columnStyles:cols,
   });
 
   y=(doc as any).lastAutoTable.finalY+16;
