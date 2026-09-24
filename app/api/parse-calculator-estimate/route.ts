@@ -146,13 +146,13 @@ const DIFFICULT_RE=/cramped|tight|awkward|difficult|hard access|custom|built-in|
 
 function applyBathroomMeasurements(result:any,text:string){
   if(!Array.isArray(result?.items))return result;
-  const hasPackage=result.items.some((i:any)=>String(i?.taskId||"").startsWith("br_"));
+  const hasPackage=result.items.some((i:any)=>/^(br|kp)_/.test(String(i?.taskId||"")));
   if(!hasPackage)return result;
   // Package rates are already the owner's bundled prices — the AI must not
   // discount them further with "basic"; "difficult" only on the speaker's words.
   const allowDifficult=DIFFICULT_RE.test(text.toLowerCase());
   result.items.forEach((i:any)=>{
-    if(String(i?.taskId||"").startsWith("br_")&&(i.difficulty==="basic"||(i.difficulty==="difficult"&&!allowDifficult)))i.difficulty="standard";
+    if(/^(br|kp)_/.test(String(i?.taskId||""))&&(i.difficulty==="basic"||(i.difficulty==="difficult"&&!allowDifficult)))i.difficulty="standard";
   });
   const g=calculateBathroomAreas(text);
   if(!g)return result;
@@ -268,7 +268,7 @@ export async function POST(request:NextRequest){
             "Preserve uncertain details in note and lower confidence.",
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
-            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") are the owner's package rates for a full or major bathroom remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ items.",
+            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
             "MEASUREMENT RULE: Never calculate paintable wall area as length times width times height. That is cubic volume, not square footage.",
             "For a rectangular room with length L, width W, and height H, calculate wall area as 2 * (L + W) * H.",
