@@ -200,6 +200,7 @@ export async function POST(request:NextRequest){
             "Preserve uncertain details in note and lower confidence.",
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
+            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") are the owner's package rates for a full or major bathroom remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ items.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
             "MEASUREMENT RULE: Never calculate paintable wall area as length times width times height. That is cubic volume, not square footage.",
             "For a rectangular room with length L, width W, and height H, calculate wall area as 2 * (L + W) * H.",

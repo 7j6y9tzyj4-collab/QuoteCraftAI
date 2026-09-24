@@ -7,6 +7,7 @@ type PriceRule={
   aliases:string[];
   unit:"each"|"sqft"|"hour"|"linear_ft"|"room";
   rate:number;
+  category?:string;
 };
 
 export const runtime="nodejs";
@@ -307,6 +308,7 @@ export async function POST(request:NextRequest){
     const catalog=prices.map(p=>({
       serviceId:p.id,
       name:p.name,
+      category:p.category||"",
       aliases:p.aliases,
       defaultUnit:p.unit
     }));
@@ -322,6 +324,7 @@ export async function POST(request:NextRequest){
           role:"system",
           content:[
             "You convert informal contractor job descriptions into structured estimate line items.",
+            "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") are the owner's package rates for a full or major bathroom remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ items.",
             "The user may speak Ukrainian, English, Russian, mixed language, use slang, omit punctuation, or dictate several jobs in one sentence.",
             "Separate every distinct action into its own item.",
             "When contractor-approved approximate dimensions are provided in text, use them for a PRELIMINARY budget. Use their explicitly calculated gross rectangular areas for those named surfaces only; never apply room geometry again to those individual surfaces. Preserve scope exclusions. Unknown hidden conditions remain excluded. Do not reuse one area for unrelated surfaces.",
