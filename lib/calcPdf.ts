@@ -17,6 +17,9 @@ export type CalcPdfInput={
   notes:string;
 };
 
+const COMPANY_NAME="K&V House Renovation";
+const COMPANY_CONTACT="(773) 957-7709 · koiatvasyl@gmail.com";
+
 const money=(n:number)=>"$"+(Math.round(n*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const unitLabel=(u:string)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"lin ft",room:"room"} as Record<string,string>)[u]||u;
 
@@ -49,6 +52,11 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   const W=doc.internal.pageSize.getWidth();
   let y=M;
 
+  // Шапка: назва компанії праворуч, назва проєкту ліворуч
+  doc.setFont(font,"bold");doc.setFontSize(11);doc.setTextColor(16,24,40);
+  doc.text(COMPANY_NAME,W-M,y,{align:"right"});
+  if(COMPANY_CONTACT){doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(100);doc.text(COMPANY_CONTACT,W-M,y+13,{align:"right"});}
+  doc.setTextColor(0);
   doc.setFont(font,"bold");doc.setFontSize(18);
   doc.text(input.project||"Estimate",M,y);y+=22;
   doc.setFont(font,"normal");doc.setFontSize(10);doc.setTextColor(80);
@@ -58,7 +66,9 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
 
   const body=input.items.map(li=>{
     const c=computeCalcLine(li,input.locationMultiplier);
-    const desc=li.note?`${li.name}\n${li.note}`:li.name;
+    // службові примітки про перевірену геометрію клієнту не показуємо
+    const note=li.note&&!/^Verified /.test(li.note)?li.note:"";
+    const desc=note?`${li.name}\n${note}`:li.name;
     return [desc,`${li.quantity} ${unitLabel(li.unit)}`,li.difficulty,money(c.lineTotal)];
   });
 
