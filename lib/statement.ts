@@ -1,6 +1,8 @@
 // Розрахунок з клієнтом: робота + матеріали за чеками − оплати = залишок.
 export type StatementLine={id:string;description:string;amount:number};
-export type Receipt={id:string;date:string;store:string;items:string;amount:number};
+export type Receipt={id:string;date:string;store:string;items:string;amount:number;
+  /** шлях у Supabase Storage (bucket receipts) */ photoPath?:string;
+  /** запасний варіант без акаунта: маленька копія фото */ photoData?:string};
 export type Payment={id:string;date:string;amount:number;method:string};
 export type Statement={
   id:string;

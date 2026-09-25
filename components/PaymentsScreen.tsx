@@ -4,7 +4,8 @@ import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
-import {buildStatementPdf,statementFileName} from "@/lib/statementPdf";
+import {buildStatementPdf,statementFileName,type ReceiptPhoto} from "@/lib/statementPdf";
+import {scanReceipt,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
 // Розрахунок з клієнтом: робота + чеки на матеріали − оплати = залишок, PDF для клієнта.
 const SK="qc_statements";
@@ -13,6 +14,21 @@ const today=()=>new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-di
 const uid=()=>crypto.randomUUID();
 const loadLocal=():Statement[]=>{try{return JSON.parse(localStorage.getItem(SK)||"[]")}catch{return[]}};
 const METHODS=["Cash","Check","Zelle","Card","Other"];
+const BUCKET="receipts";
+
+// мініатюра чека: з акаунта (приватне сховище, тимчасове посилання) або локальна копія
+function ReceiptThumb({r}:{r:Receipt}){
+ const [src,setSrc]=useState<string|null>(r.photoData||null);
+ useEffect(()=>{
+   if(r.photoData){setSrc(r.photoData);return}
+   if(!r.photoPath)return;
+   let on=true;
+   supabase.storage.from(BUCKET).createSignedUrl(r.photoPath,3600).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});
+   return()=>{on=false};
+ },[r.photoPath,r.photoData]);
+ if(!src)return null;
+ return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
+}
 
 export default function PaymentsScreen({user}:{user:User|null}){
  const [list,setList]=useState<Statement[]>([]);
@@ -25,6 +41,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
  const camRef=useRef<HTMLInputElement|null>(null);    // одразу камера
  const targetRef=useRef<string|null>(null);           // куди додати чек зі швидкої кнопки
  const [picking,setPicking]=useState(false);
+ const [withPhotos,setWithPhotos]=useState(true);
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
  useEffect(()=>{
@@ -53,8 +70,13 @@ export default function PaymentsScreen({user}:{user:User|null}){
    persist(list.map(s=>s.id===cur.id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
  }
  function create(){const s=newStatement();persist([s,...list]);setOpenId(s.id);setMsg("")}
+ function removeFiles(paths:(string|undefined)[]){
+   const ps=paths.filter(Boolean) as string[];
+   if(ps.length&&user)supabase.storage.from(BUCKET).remove(ps).then(()=>{});
+ }
  function remove(){
    if(!cur||!confirm(`Видалити розрахунок «${cur.client||"без імені"}»?`))return;
+   removeFiles(cur.receipts.map(r=>r.photoPath));
    persist(list.filter(s=>s.id!==cur.id));setOpenId(null);
  }
 
@@ -62,7 +84,11 @@ export default function PaymentsScreen({user}:{user:User|null}){
  const setLine=<T extends {id:string},>(key:"labor"|"receipts"|"payments",id:string,patch:Partial<T>)=>{
    if(!cur)return;update({[key]:(cur[key] as unknown as T[]).map(x=>x.id===id?{...x,...patch}:x)} as any);
  };
- const delLine=(key:"labor"|"receipts"|"payments",id:string)=>{if(cur)update({[key]:(cur[key] as any[]).filter(x=>x.id!==id)} as any)};
+ const delLine=(key:"labor"|"receipts"|"payments",id:string)=>{
+   if(!cur)return;
+   if(key==="receipts"){const r=cur.receipts.find(x=>x.id===id);if(r?.photoPath&&!confirm("Видалити чек разом з фото?"))return;removeFiles([r?.photoPath])}
+   update({[key]:(cur[key] as any[]).filter(x=>x.id!==id)} as any);
+ };
 
  async function addReceiptPhotos(files:FileList|null,targetId?:string|null){
    const target=list.find(s=>s.id===(targetId||cur?.id))||null;
@@ -76,7 +102,20 @@ export default function PaymentsScreen({user}:{user:User|null}){
        const res=await fetch("/api/parse-receipt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo:p.dataUrl})});
        const d=await res.json();
        if(!res.ok)throw new Error(d?.error||"AI error");
-       added.push({id:uid(),date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0});
+       const rid=uid();
+       const rec:Receipt={id:rid,date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0};
+       // обрізаємо по межах чека і зберігаємо фото
+       try{
+         const scan=await scanReceipt(p.dataUrl,d.box||null);
+         let saved=false;
+         if(user){
+           const path=`${user.id}/${target.id}/${rid}.jpg`;
+           const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
+           if(!error){rec.photoPath=path;saved=true}
+         }
+         if(!saved)rec.photoData=await scanReceipt(p.dataUrl,d.box||null,900,.5);
+       }catch{/* без фото, але з сумою */}
+       added.push(rec);
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
      }catch(e){failed.push(`${f.name}: ${e instanceof Error?e.message:String(e)}`)}
    }
@@ -98,7 +137,17 @@ export default function PaymentsScreen({user}:{user:User|null}){
    if(!cur)return;
    setBusy(true);
    try{
-     const blob=await buildStatementPdf(cur);
+     const photos:ReceiptPhoto[]=[];
+     if(withPhotos)for(const r of cur.receipts){
+       try{
+         let dataUrl=r.photoData||"";
+         if(!dataUrl&&r.photoPath){const {data}=await supabase.storage.from(BUCKET).download(r.photoPath);if(data)dataUrl=await blobToDataUrl(data)}
+         if(!dataUrl)continue;
+         const {w,h}=await imageSize(dataUrl);
+         photos.push({label:`${r.date} · ${r.store||"Receipt"} · ${money(Number(r.amount)||0)}`,dataUrl,w,h});
+       }catch{/* пропускаємо фото, яке не завантажилось */}
+     }
+     const blob=await buildStatementPdf(cur,photos);
      const file=new File([blob],statementFileName(cur),{type:"application/pdf"});
      const nav=navigator as Navigator&{canShare?:(d:ShareData)=>boolean};
      if(share&&nav.share&&nav.canShare&&nav.canShare({files:[file]})){await nav.share({files:[file],title:file.name})}
@@ -152,7 +201,8 @@ export default function PaymentsScreen({user}:{user:User|null}){
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 З галереї</button>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
+     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
+       <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
        <input value={r.date} onChange={e=>setLine<Receipt>("receipts",r.id,{date:e.target.value})}/>
        <div style={{display:"grid",gap:6}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
@@ -183,6 +233,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>
    </section>
+   {cur.receipts.some(r=>r.photoPath||r.photoData)&&<label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"0 4px 10px"}}><input type="checkbox" style={{width:"auto"}} checked={withPhotos} onChange={e=>setWithPhotos(e.target.checked)}/>Додати фото чеків у PDF</label>}
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
    {inputs}
  </>;

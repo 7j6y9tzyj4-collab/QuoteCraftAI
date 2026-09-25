@@ -4,7 +4,9 @@ import {COMPANY_NAME,COMPANY_CONTACT,setupPdfFonts} from "./calcPdf";
 
 const money=(n:number)=>(n<0?"-":"")+"$"+Math.abs(Math.round(n*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
-export async function buildStatementPdf(s:Statement):Promise<Blob>{
+export type ReceiptPhoto={label:string;dataUrl:string;w:number;h:number};
+
+export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Promise<Blob>{
   const {jsPDF}=await import("jspdf");
   const autoTable=(await import("jspdf-autotable")).default;
   const doc=new jsPDF({unit:"pt",format:"letter"});
@@ -57,6 +59,23 @@ export async function buildStatementPdf(s:Statement):Promise<Blob>{
   if(s.notes.trim()){
     y+=8;doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(60);
     for(const l of doc.splitTextToSize(s.notes.trim(),W-2*M) as string[]){if(y>H-M){doc.addPage();y=M}doc.text(l,M,y);y+=12}
+    doc.setTextColor(0);
+  }
+  // Додаток: фото чеків, по 2 на сторінку
+  if(photos.length){
+    const gap=16,colW=(W-2*M-gap)/2,maxH=H-2*M-40;
+    for(let i=0;i<photos.length;i+=2){
+      doc.addPage();y=M;
+      doc.setFont(font,"bold");doc.setFontSize(12);doc.setTextColor(0);
+      doc.text(i===0?"Receipts":"Receipts (continued)",M,y);y+=18;
+      photos.slice(i,i+2).forEach((ph,k)=>{
+        const x=M+k*(colW+gap);
+        const sc=Math.min(colW/ph.w,maxH/ph.h);
+        doc.setFont(font,"normal");doc.setFontSize(8.5);doc.setTextColor(80);
+        doc.text(doc.splitTextToSize(ph.label,colW) as string[],x,y);
+        try{doc.addImage(ph.dataUrl,"JPEG",x,y+14,ph.w*sc,ph.h*sc)}catch{/* пошкоджене фото — пропускаємо */}
+      });
+    }
     doc.setTextColor(0);
   }
   return doc.output("blob");
