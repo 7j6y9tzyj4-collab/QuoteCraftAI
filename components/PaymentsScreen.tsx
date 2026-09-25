@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
-import {prepareJobPhoto} from "@/lib/jobPhotos";
+import {prepareReceiptFile,isPdf,filesFromDataTransfer,filesFromClipboardItems} from "@/lib/receiptFile";
 import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
@@ -41,6 +41,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
  const camRef=useRef<HTMLInputElement|null>(null);    // одразу камера
  const targetRef=useRef<string|null>(null);           // куди додати чек зі швидкої кнопки
  const [picking,setPicking]=useState(false);
+ const [zoneOn,setZoneOn]=useState(false);
  const [withPhotos,setWithPhotos]=useState(true);
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
@@ -98,7 +99,8 @@ export default function PaymentsScreen({user}:{user:User|null}){
    const added:Receipt[]=[];const failed:string[]=[];
    for(const f of Array.from(files)){
      try{
-       const p=await prepareJobPhoto(f);
+       const p=await prepareReceiptFile(f);
+       const clean=screenshot||isPdf(f); // скріншот / PDF — вже «чисті», не обрізаємо
        const res=await fetch("/api/parse-receipt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo:p.dataUrl})});
        const d=await res.json();
        if(!res.ok)throw new Error(d?.error||"AI error");
@@ -107,14 +109,14 @@ export default function PaymentsScreen({user}:{user:User|null}){
        // обрізаємо по межах чека і зберігаємо фото
        try{
          // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
-         const scan=screenshot?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null);
+         const scan=clean?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null);
          let saved=false;
          if(user){
            const path=`${user.id}/${target.id}/${rid}.jpg`;
            const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
            if(!error){rec.photoPath=path;saved=true}
          }
-         if(!saved)rec.photoData=screenshot?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null,900,.5);
+         if(!saved)rec.photoData=clean?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null,900,.5);
        }catch{/* без фото, але з сумою */}
        added.push(rec);
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
@@ -134,25 +136,31 @@ export default function PaymentsScreen({user}:{user:User|null}){
    setPicking(false);setMsg("");
    try{
      const cb=navigator.clipboard as Clipboard&{read?:()=>Promise<ClipboardItem[]>};
-     if(!cb?.read)throw new Error("цей браузер не дає читати фото з буфера");
-     const items=await cb.read();
-     const files:File[]=[];
-     for(const it of items){
-       const type=it.types.find(t=>t.startsWith("image/"));
-       if(type){const b=await it.getType(type);files.push(new File([b],`screenshot.${type.split("/")[1]||"png"}`,{type}))}
-     }
-     if(!files.length){setMsg("У буфері немає картинки. Зроби скріншот і натисни «Скопіювати».");return}
+     if(!cb?.read)throw new Error("цей браузер не дає читати буфер кнопкою");
+     const {files,types}=await filesFromClipboardItems(await cb.read());
+     if(!files.length){setMsg(noClipMsg(types));return}
      await addReceiptPhotos(files,id,true);
-   }catch(e){setMsg("Не вдалося вставити: "+(e instanceof Error?e.message:String(e))+". Можна вибрати скріншот через «🖼 З галереї».")}
+   }catch(e){setMsg("Кнопка не змогла прочитати буфер ("+(e instanceof Error?e.message:String(e))+"). На ноутбуці: відкрий розрахунок, клікни в рамку «Вставити сюди» і натисни ⌘V.")}
+ }
+ function noClipMsg(types:string[]){
+   const t=types.filter(x=>!x.startsWith("text/")||x==="text/html");
+   return "У буфері немає картинки чи PDF"+(types.length?` (там: ${types.join(", ")})`:"")+
+     (t.length?"":". Якщо копіював чек через Print → Поділитися → «Копіювати», iPhone кладе туди тільки текст — краще вибери «Зберегти у Файли» і додай через «🖼 Фото / PDF», або зроби скріншот.");
  }
  // Cmd+V / «Вставити» у відкритому розрахунку
  useEffect(()=>{
    if(!openId)return;
-   const onPaste=(e:ClipboardEvent)=>{
-     const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith("image/"));
-     if(!files.length)return;
-     const tag=(e.target as HTMLElement|null)?.tagName;
+   const onPaste=async(e:ClipboardEvent)=>{
+     const el=e.target as HTMLElement|null;
+     const tag=el?.tagName;
      if(tag==="INPUT"||tag==="TEXTAREA")return;
+     const inZone=!!el?.closest?.("[data-paste-zone]");
+     const dt=e.clipboardData;
+     // синхронно забираємо, поки буфер доступний
+     const got=filesFromDataTransfer(dt);
+     if(inZone)e.preventDefault();
+     const {files,types}=await got;
+     if(!files.length){if(inZone)setMsg(noClipMsg(types));return}
      e.preventDefault();addReceiptPhotos(files,openId,true);
    };
    window.addEventListener("paste",onPaste);
@@ -187,7 +195,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
  }
 
  const inputs=<>
-   <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files)}/>
+   <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" multiple style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files)}/>
    <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files,targetRef.current)}/>
  </>;
 
@@ -233,8 +241,15 @@ export default function PaymentsScreen({user}:{user:User|null}){
      <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
-       <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 З галереї</button>
+       <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 Фото / PDF</button>
        <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
+     </div>
+     <div data-paste-zone style={{position:"relative",marginTop:10,padding:"12px 10px",border:`2px dashed ${zoneOn?"#2563eb":"#cbd5e1"}`,background:zoneOn?"#eff6ff":"transparent",borderRadius:12,color:zoneOn?"#1d4ed8":"#64748b",fontSize:13,textAlign:"center"}}>
+       {busy?"Читаю…":zoneOn?"Тепер натисни ⌘V":"📋 Вставити сюди: клікни тут і натисни ⌘V (скріншот з iPhone, картинка або PDF)"}
+       {/* порожнє редаговане поле поверх рамки — Safari на Mac дає вставити тільки в таке */}
+       <div contentEditable suppressContentEditableWarning aria-label="Вставити чек"
+         onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
+         style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
      {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
