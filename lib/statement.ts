@@ -13,6 +13,8 @@ export type Statement={
   payments:Payment[];
   notes:string;
   updatedAt:string;
+  /** з якого естімейту (посилання клієнту /q/<token>) */
+  quoteToken?:string;
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";

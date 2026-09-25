@@ -18,6 +18,8 @@ import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
 import {computeCalcLine,computeCalcTotals,computeOptionalTotal} from "@/lib/calcEngine";
+import {buildQuoteSnapshot,type QuoteStatus} from "@/lib/sharedQuote";
+import {newStatement,type Statement} from "@/lib/statement";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
 // Одна таблиця цін: Calculator бере ставки з Prices (праця = rate, матеріали = materialRate),
@@ -137,6 +139,9 @@ export default function QuoteCraftApp(){
  const [calcItems,setCalcItems]=useState<CalcItem[]>([]);
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
+ const [calcShareToken,setCalcShareToken]=useState<string>("");
+ const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null}|null>(null);
+ const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [calcLocationMultiplier,setCalcLocationMultiplier]=useState(1);
  // Пакетна знижка — на працю, як у кошторисах власника (матеріали не знижуються)
  const [calcDiscountType,setCalcDiscountType]=useState<"percent"|"amount">("percent");
@@ -181,12 +186,13 @@ export default function QuoteCraftApp(){
    setCalcDiscountValue(Number(draft.discountValue)||0);
    setCalcIncludeFinish(draft.includeFinish!==false);
    setCalcNotes(draft.notes??DEFAULT_CALC_NOTES);
+   setCalcShareToken(draft.shareToken||"");
  },[]);
 
  useEffect(()=>{
-   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish};
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined};
    localStorage.setItem(CDK,JSON.stringify(draft));
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken]);
 
  const calcTasks=useMemo(()=>tasksFromPrices(prices),[prices]);
  // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
@@ -252,7 +258,7 @@ export default function QuoteCraftApp(){
 
  function clearCalc(){
    if(calcItems.length&&!confirm("Почати новий розрахунок? Поточний буде очищено."))return;
-   setCalcItems([]);setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");
+   setCalcItems([]);setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);
  }
 
  function needsCalcRecorderFallback(){
@@ -502,6 +508,57 @@ export default function QuoteCraftApp(){
      setTimeout(()=>URL.revokeObjectURL(url),10000);
    }catch(e){setCalcMessage("Не вдалося зробити PDF: "+(e instanceof Error?e.message:String(e)))}
    finally{setCalcPdfBusy(false)}
+ }
+ // ---- посилання клієнту (/q/<token>) ----
+ useEffect(()=>{
+   if(screen!=="calc"||!calcShareToken||!user){if(!calcShareToken)setCalcQuote(null);return}
+   supabase.from("shared_quotes").select("status,viewed_at,accepted_at,accepted_name").eq("token",calcShareToken).maybeSingle()
+     .then(({data}:{data:any})=>setCalcQuote(data||null));
+ },[screen,calcShareToken,user]);
+ async function shareCalcLink(){
+   if(!user){setCalcMessage("Увійди в акаунт, щоб надіслати посилання клієнту.");return}
+   if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
+   if(calcQuote?.status==="accepted"&&!confirm("Клієнт уже прийняв цей естімейт. Оновити сторінку за тим самим посиланням новими цифрами?"))return;
+   setCalcPdfBusy(true);setCalcMessage("");
+   try{
+     const data=buildQuoteSnapshot({client:calcClient,project:calcProject,items:calcItems,locationMultiplier:calcLocationMultiplier,includeFinish:calcIncludeFinish,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes});
+     let token=calcShareToken;
+     if(token){
+       const {data:row,error}=await supabase.from("shared_quotes").update({data,updated_at:new Date().toISOString()}).eq("token",token).select("token").maybeSingle();
+       if(error)throw error;
+       if(!row)token="";
+     }
+     if(!token){
+       token=crypto.randomUUID();
+       const {error}=await supabase.from("shared_quotes").insert({token,user_id:user.id,data,status:"sent"});
+       if(error)throw error;
+       setCalcQuote({status:"sent",viewed_at:null,accepted_at:null,accepted_name:null});
+     }
+     setCalcShareToken(token);
+     const link=`${window.location.origin}/q/${token}`;
+     const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+     if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){
+       try{await nav.share({title:calcProject||"Estimate",url:link});setCalcMessage("Посилання надіслано: "+link);return}catch{}
+     }
+     try{await navigator.clipboard.writeText(link);setCalcMessage("Посилання скопійовано: "+link)}catch{setCalcMessage("Посилання: "+link)}
+   }catch(e){
+     const m=e instanceof Error?e.message:String((e as any)?.message||e);
+     setCalcMessage(/shared_quotes/.test(m)?"Спершу створи таблицю shared_quotes у Supabase (SQL від Claude).":"Не вдалося зробити посилання: "+m);
+   }finally{setCalcPdfBusy(false)}
+ }
+ // ---- естімейт → Оплати ----
+ function sendCalcToPayments(){
+   if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
+   const r2=(n:number)=>Math.round(n*100)/100;
+   const s=newStatement();
+   s.client=calcClient;s.project=calcProject;s.quoteToken=calcShareToken||undefined;
+   s.labor=calcItems.filter(li=>!li.optional).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
+   if(calcDiscount>0)s.labor.push({id:crypto.randomUUID(),description:calcDiscountLabel,amount:-r2(calcDiscount)});
+   const mat=r2(calcTotalsValue.materials+calcTotalsValue.supplies+calcTotalsValue.finish);
+   if(mat>0&&!confirm(`Робота ${money(r2(calcTotalsValue.labor-calcDiscount))} переноситься в Оплати.\n\nМатеріали в естімейті: ${money(mat)}.\nOK — матеріали клієнт платить за чеками (додаватимеш чеки).\nСкасувати — додати матеріали з естімейту однією сумою.`)){
+     s.labor.push({id:crypto.randomUUID(),description:"Materials (per estimate)",amount:mat});
+   }
+   setPayIncoming(s);setScreen("pay");
  }
  async function shareCalcPdf(){
    if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
@@ -1596,10 +1653,12 @@ export default function QuoteCraftApp(){
 
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
+    <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
+    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen user={user}/>}
+   {screen==="pay"&&<PaymentsScreen user={user} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
    {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>

@@ -29,8 +29,8 @@ export default async function SharedEstimatePage({
     return (
       <main className="shared">
         <div className="sharedCard" style={{ textAlign: "center" }}>
-          <h1>Кошторис не знайдено</h1>
-          <p>Це посилання недійсне або кошторис було видалено.</p>
+          <h1>Estimate not found</h1>
+          <p>This link is no longer valid.</p>
         </div>
       </main>
     );
@@ -57,7 +57,7 @@ export default async function SharedEstimatePage({
       <div className="sharedCard">
         <div className="sharedHead">
           <div>
-            <span className="sharedEyebrow">ESTIMATE</span>
+            <span className="sharedEyebrow">K&amp;V HOUSE RENOVATION · ESTIMATE</span>
             <h1>{estimate.project || "Estimate"}</h1>
             {estimate.preliminary&&<><p><strong>{PRELIMINARY_NOTE}</strong></p><p style={{whiteSpace:"pre-wrap"}}>{estimate.measurementNotes}</p></>}
             {estimate.client && <p>Client: {estimate.client}</p>}
@@ -69,10 +69,10 @@ export default async function SharedEstimatePage({
         <table className="sharedTable">
           <thead>
             <tr>
-              <th>Опис</th>
-              <th>К-сть</th>
-              <th>Ціна</th>
-              <th>Разом</th>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -85,7 +85,7 @@ export default async function SharedEstimatePage({
                 <td>
                   {item.quantity} {unitLabel(item.unit)}
                 </td>
-                <td>{money(item.unitPrice)}{itemMaterialRate(item) > 0 ? ` + ${money(itemMaterialRate(item))} мат.` : ""}{includeFinish && itemFinishRate(item) > 0 ? ` + ${money(itemFinishRate(item))} оздобл.` : ""}</td>
+                <td>{money(item.unitPrice)}{itemMaterialRate(item) > 0 ? ` + ${money(itemMaterialRate(item))} materials` : ""}{includeFinish && itemFinishRate(item) > 0 ? ` + ${money(itemFinishRate(item))} finish` : ""}</td>
                 <td>{money(itemTotal(item, includeFinish))}</td>
               </tr>
             ))}
@@ -93,26 +93,26 @@ export default async function SharedEstimatePage({
         </table>
 
         <div className="sharedTotals">
-          {(totals.materials > 0 || totals.finish > 0) && (<><div><span>Праця</span><span>{money(totals.labor)}</span></div><div><span>Матеріали</span><span>{money(totals.materials)}</span></div>{totals.finish > 0 && <div><span>Оздоблення (базове, орієнтовно)</span><span>{money(totals.finish)}</span></div>}</>)}
+          {(totals.materials > 0 || totals.finish > 0) && (<><div><span>Labor</span><span>{money(totals.labor)}</span></div><div><span>Materials</span><span>{money(totals.materials)}</span></div>{totals.finish > 0 && <div><span>Finish allowance (basic grade)</span><span>{money(totals.finish)}</span></div>}</>)}
           <div>
-            <span>Проміжна сума</span>
+            <span>Subtotal</span>
             <span>{money(subtotal)}</span>
           </div>
           <div>
-            <span>Знижка</span>
+            <span>Discount</span>
             <span>−{money(discount)}</span>
           </div>
           <div>
-            <span>Податок</span>
+            <span>Tax</span>
             <span>{money(tax)}</span>
           </div>
           <div className="grand">
-            <span>Разом</span>
+            <span>Total</span>
             <span>{money(total)}</span>
           </div>
           {estimate.deposit > 0 && (
             <div>
-              <span>Необхідний депозит</span>
+              <span>Deposit required</span>
               <span>{money(deposit)}</span>
             </div>
           )}

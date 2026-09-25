@@ -59,6 +59,7 @@ export type CalcTotals={
 };
 
 export type CalcDraft={
+  shareToken?:string;
   items:CalcItem[];
   client:string;
   project:string;

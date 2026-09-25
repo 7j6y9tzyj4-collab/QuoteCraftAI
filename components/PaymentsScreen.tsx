@@ -5,7 +5,7 @@ import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,filesFromDataTransfer,filesFromClipboardItems} from "@/lib/receiptFile";
 import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,type ReceiptPhoto} from "@/lib/statementPdf";
-import {scanReceipt,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
+import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
 // Розрахунок з клієнтом: робота + чеки на матеріали − оплати = залишок, PDF для клієнта.
 const SK="qc_statements";
@@ -30,7 +30,7 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
-export default function PaymentsScreen({user}:{user:User|null}){
+export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User|null;incoming?:Statement|null;onIncomingDone?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const [msg,setMsg]=useState("");
@@ -43,17 +43,19 @@ export default function PaymentsScreen({user}:{user:User|null}){
  const [picking,setPicking]=useState(false);
  const [zoneOn,setZoneOn]=useState(false);
  const [withPhotos,setWithPhotos]=useState(true);
+ const [ready,setReady]=useState(false); // список з акаунта вже завантажено
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
  useEffect(()=>{
-   setList(loadLocal());loaded.current=true;
-   if(!user)return;
+   setList(loadLocal());loaded.current=true;setReady(false);
+   if(!user){setReady(true);return}
    supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle()
      .then(({data,error}:{data:any;error:any})=>{
-       if(error){cloudOk.current=false;return}
+       if(error){cloudOk.current=false;setReady(true);return}
        cloudOk.current=true;
        const cloud=data?.statements as Statement[]|undefined;
        if(Array.isArray(cloud)&&cloud.length){setList(cloud);try{localStorage.setItem(SK,JSON.stringify(cloud))}catch{}}
+       setReady(true);
      });
  },[user]);
 
@@ -66,6 +68,20 @@ export default function PaymentsScreen({user}:{user:User|null}){
    }
  }
  const cur=list.find(s=>s.id===openId)||null;
+ // естімейт з калькулятора → розрахунок (новий або оновлюємо роботу в існуючому)
+ useEffect(()=>{
+   if(!incoming||!ready)return;
+   const same=list.find(s=>(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
+     (incoming.client.trim()&&s.client.trim().toLowerCase()===incoming.client.trim().toLowerCase()&&s.project.trim().toLowerCase()===incoming.project.trim().toLowerCase()));
+   if(same&&confirm(`Розрахунок «${same.client||"без імені"}» вже є. Замінити в ньому роботу на цей естімейт? Чеки й оплати залишаться.`)){
+     persist(list.map(s=>s.id===same.id?{...s,labor:incoming.labor,quoteToken:incoming.quoteToken||s.quoteToken,updatedAt:new Date().toISOString()}:s));
+     setOpenId(same.id);setMsg("Роботу оновлено з естімейту.");
+   }else{
+     persist([incoming,...list]);setOpenId(incoming.id);setMsg("Створено з естімейту. Додавай чеки й оплати.");
+   }
+   onIncomingDone?.();
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[incoming,ready]);
  function update(patch:Partial<Statement>){
    if(!cur)return;
    persist(list.map(s=>s.id===cur.id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
@@ -109,14 +125,17 @@ export default function PaymentsScreen({user}:{user:User|null}){
        // обрізаємо по межах чека і зберігаємо фото
        try{
          // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
-         const scan=clean?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null);
+         // обрізаємо з оригінального фото (повна роздільність), а не зі зменшеної копії для AI
+         const orig=URL.createObjectURL(f);
+         let scan=p.dataUrl;
+         if(!clean){try{scan=await scanReceipt(orig,d.box||null)}catch{scan=await scanReceipt(p.dataUrl,d.box||null)}finally{URL.revokeObjectURL(orig)}}
          let saved=false;
          if(user){
            const path=`${user.id}/${target.id}/${rid}.jpg`;
            const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
            if(!error){rec.photoPath=path;saved=true}
          }
-         if(!saved)rec.photoData=clean?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null,900,.5);
+         if(!saved)rec.photoData=clean?p.dataUrl:await shrinkImage(scan);
        }catch{/* без фото, але з сумою */}
        added.push(rec);
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
