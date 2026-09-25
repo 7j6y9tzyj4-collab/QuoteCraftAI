@@ -90,7 +90,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
    update({[key]:(cur[key] as any[]).filter(x=>x.id!==id)} as any);
  };
 
- async function addReceiptPhotos(files:FileList|null,targetId?:string|null){
+ async function addReceiptPhotos(files:FileList|File[]|null,targetId?:string|null,screenshot=false){
    const target=list.find(s=>s.id===(targetId||cur?.id))||null;
    if(!target||!files?.length)return;
    if(openId!==target.id)setOpenId(target.id);
@@ -106,14 +106,15 @@ export default function PaymentsScreen({user}:{user:User|null}){
        const rec:Receipt={id:rid,date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0};
        // обрізаємо по межах чека і зберігаємо фото
        try{
-         const scan=await scanReceipt(p.dataUrl,d.box||null);
+         // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
+         const scan=screenshot?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null);
          let saved=false;
          if(user){
            const path=`${user.id}/${target.id}/${rid}.jpg`;
            const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
            if(!error){rec.photoPath=path;saved=true}
          }
-         if(!saved)rec.photoData=await scanReceipt(p.dataUrl,d.box||null,900,.5);
+         if(!saved)rec.photoData=screenshot?p.dataUrl:await scanReceipt(p.dataUrl,d.box||null,900,.5);
        }catch{/* без фото, але з сумою */}
        added.push(rec);
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
@@ -128,6 +129,35 @@ export default function PaymentsScreen({user}:{user:User|null}){
    targetRef.current=null;
  }
  // швидкий чек зі списку: вибрав клієнта → одразу камера
+ // скріншот чека з програми Home Depot / Floor & Decor: скопіював → вставив
+ async function pasteReceipt(id:string){
+   setPicking(false);setMsg("");
+   try{
+     const cb=navigator.clipboard as Clipboard&{read?:()=>Promise<ClipboardItem[]>};
+     if(!cb?.read)throw new Error("цей браузер не дає читати фото з буфера");
+     const items=await cb.read();
+     const files:File[]=[];
+     for(const it of items){
+       const type=it.types.find(t=>t.startsWith("image/"));
+       if(type){const b=await it.getType(type);files.push(new File([b],`screenshot.${type.split("/")[1]||"png"}`,{type}))}
+     }
+     if(!files.length){setMsg("У буфері немає картинки. Зроби скріншот і натисни «Скопіювати».");return}
+     await addReceiptPhotos(files,id,true);
+   }catch(e){setMsg("Не вдалося вставити: "+(e instanceof Error?e.message:String(e))+". Можна вибрати скріншот через «🖼 З галереї».")}
+ }
+ // Cmd+V / «Вставити» у відкритому розрахунку
+ useEffect(()=>{
+   if(!openId)return;
+   const onPaste=(e:ClipboardEvent)=>{
+     const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith("image/"));
+     if(!files.length)return;
+     const tag=(e.target as HTMLElement|null)?.tagName;
+     if(tag==="INPUT"||tag==="TEXTAREA")return;
+     e.preventDefault();addReceiptPhotos(files,openId,true);
+   };
+   window.addEventListener("paste",onPaste);
+   return()=>window.removeEventListener("paste",onPaste);
+ });
  function quickReceipt(id:string){
    targetRef.current=id;setPicking(false);
    camRef.current?.click();
@@ -165,8 +195,12 @@ export default function PaymentsScreen({user}:{user:User|null}){
    return <><section className="panel">
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" onClick={create}>＋ Новий</button></div></div>
      {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
-       <small className="muted">Для кого чек? Натисни клієнта — відкриється камера.</small>
-       {list.map(s=><button key={s.id} className="secondary full" style={{marginTop:6,textAlign:"left"}} onClick={()=>quickReceipt(s.id)}>{s.client||"Без імені"}{s.project?` — ${s.project}`:""}</button>)}
+       <small className="muted">Для кого чек? «📷 Фото» — камера; «📋 Скріншот» — вставити скопійований скріншот з програми магазину.</small>
+       {list.map(s=><div key={s.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginTop:6,alignItems:"center"}}>
+         <b style={{fontSize:14}}>{s.client||"Без імені"}{s.project?` — ${s.project}`:""}</b>
+         <button className="secondary" onClick={()=>quickReceipt(s.id)}>📷 Фото</button>
+         <button className="secondary" onClick={()=>pasteReceipt(s.id)}>📋 Скріншот</button>
+       </div>)}
      </div>}
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
@@ -200,6 +234,7 @@ export default function PaymentsScreen({user}:{user:User|null}){
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 З галереї</button>
+       <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
      </div>
      {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
