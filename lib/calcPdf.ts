@@ -68,7 +68,9 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
 
   // Колонки: праця / матеріали / оздоблення — клієнт бачить, що платить підряднику, а що магазину.
   // Складність клієнту не показуємо (вона вже врахована в праці).
-  const lines=input.items.map(li=>({li,c:computeCalcLine(li,input.locationMultiplier,input.includeFinish!==false)}));
+  const all=input.items.map(li=>({li,c:computeCalcLine(li,input.locationMultiplier,input.includeFinish!==false)}));
+  const lines=all.filter(x=>!x.li.optional);
+  const optional=all.filter(x=>x.li.optional);
   const showFinish=lines.some(x=>x.c.finish>0);
   const m0=(n:number)=>n>0?money(n):"—";
   const body=lines.map(({li,c})=>{
@@ -117,6 +119,33 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
     line("Total",money(input.totals.lineTotal),true);
   }
   line("Estimated range",`${money(Math.max(0,input.totals.low-input.discount))} – ${money(Math.max(0,input.totals.high-input.discount))}`);
+
+  // Опційні позиції: окремою таблицею, у загальну суму не входять
+  if(optional.length){
+    y+=14;
+    if(y>doc.internal.pageSize.getHeight()-M-80){doc.addPage();y=M}
+    doc.setFont(font,"bold");doc.setFontSize(11);doc.setTextColor(0);
+    doc.text("Optional items (not included in the total)",M,y);y+=6;
+    const optSum=optional.reduce((s,x)=>s+x.c.lineTotal,0);
+    autoTable(doc,{
+      startY:y,
+      head:[["Description","Qty","Price"]],
+      body:optional.map(({li,c})=>{
+        const note=li.note&&!/^Verified /.test(li.note)?li.note:"";
+        return [note?`${li.name}\n${note}`:li.name,`${li.quantity} ${unitLabel(li.unit)}`,money(c.lineTotal)];
+      }),
+      margin:{left:M,right:M},
+      styles:{font,fontSize:8.5,cellPadding:4,overflow:"linebreak",valign:"top"},
+      headStyles:{fillColor:[102,112,133],textColor:255,fontStyle:"bold",halign:"left"},
+      columnStyles:{1:{cellWidth:68},2:{cellWidth:70,halign:"right"}},
+      rowPageBreak:"avoid",
+    });
+    y=(doc as any).lastAutoTable.finalY+14;
+    if(y>doc.internal.pageSize.getHeight()-M-20){doc.addPage();y=M}
+    doc.setFont(font,"normal");doc.setFontSize(10);
+    const base=input.discount>0?input.grandTotal:input.totals.lineTotal;
+    doc.text("Total if all optional items are added",W-M-250,y);doc.text(money(base+optSum),W-M,y,{align:"right"});y+=10;
+  }
 
   const allowance=input.totals.finish>0?"Finish allowance: tile, fixtures and lights are included at basic grade based on Home Depot and Floor & Decor prices checked in September 2026. The final amount is adjusted to the customer's actual selection and receipts.":"";
   const notes=[allowance,input.notes.trim()].filter(Boolean).join("\n\n");

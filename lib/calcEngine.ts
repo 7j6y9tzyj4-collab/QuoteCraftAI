@@ -36,6 +36,7 @@ export function computeCalcLine(li:CalcItem,locationMultiplier:number,includeFin
 export function computeCalcTotals(items:CalcItem[],locationMultiplier:number,includeFinish=true):CalcTotals{
   const totals:CalcTotals={labor:0,materials:0,supplies:0,finish:0,lineTotal:0,low:0,high:0};
   items.forEach(li=>{
+    if(li.optional)return; // опційні позиції — окремим блоком, не в сумі
     const c=computeCalcLine(li,locationMultiplier,includeFinish);
     totals.labor+=c.labor;
     totals.finish+=c.finish;
@@ -46,4 +47,9 @@ export function computeCalcTotals(items:CalcItem[],locationMultiplier:number,inc
     totals.high+=c.high;
   });
   return totals;
+}
+
+/** сума опційних позицій (для рядка «якщо додати все опційне») */
+export function computeOptionalTotal(items:CalcItem[],locationMultiplier:number,includeFinish=true){
+  return items.filter(li=>li.optional).reduce((s,li)=>s+computeCalcLine(li,locationMultiplier,includeFinish).lineTotal,0);
 }

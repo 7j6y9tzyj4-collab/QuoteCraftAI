@@ -65,7 +65,7 @@ function keepOnlyStatedPrices(result:any,text:string){
     else if(it.statedPriceType==="total"){it.statedPrice=0;it.includedInStated=true}
     else{it.statedPrice=null;it.statedPriceType=null}
     if(typeof it.note==="string")it.note=it.note.replace(/\s*\(?(price|quoted|agreed)[^.;)]*\$\s?\d[\d,.]*[^.;)]*\)?[.;]?/gi,"").trim().replace(/^./,(c:string)=>c.toUpperCase())||null;
-    if(typeof it.note==="string")it.note=it.note.replace(/[;,]?\s*\b(?:owner[- ])?stated(?: price| total)?\b\.?/gi,"").trim().replace(/[;,]$/,"")||null;
+    if(typeof it.note==="string")it.note=it.note.replace(/[;,]?\s*\b(?:(?:owner|customer|client)[- ])?stated(?: price| total)?(?: by (?:the )?(?:owner|customer|client))?\b\.?/gi,"").replace(/[;,]\s*(?:customer|client|owner)\s*$/i,"").trim().replace(/[;,]$/,"")||null;
     if(typeof it.note==="string"&&/^(?:labor|labour)(?:\s+only)?\.?$/i.test(it.note.trim()))it.note=null;
   }
 }
@@ -246,6 +246,7 @@ export async function POST(request:NextRequest){
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
             "OWNER'S STATED PRICES: when the speaker states his own labor price for a job (\"walls at $14\", \"по 14 доларів\", \"door for $120\", \"за 680\"), put that number in statedPrice and set statedPriceType to per_unit (price per sq ft / lin ft / each / hour) or total (lump sum for the whole line). Otherwise statedPrice and statedPriceType are null. Never invent a price and never copy a price into description or note. When one stated price covers several jobs (\"skim coat and paint the ceiling at $8\"), return ONE item for it with that price and do not add separate items for the other jobs it covers. A stated price is labor only; materials and finish are still priced from the list. A stated price never makes an item CUSTOM: always use the matching taskId from the list. Do not write \"Labor\" or the price in note.",
+            "OPTIONAL ITEMS: set optional=true only when the speaker says the job is optional, only if needed, if the customer decides/wants, maybe, possibly, or as an option (\"optional: skim coat if walls are damaged\", \"if she wants, add a pendant light\"). Everything else is optional=false.",
             "WALLS AND NICHES: hanging new wallpaper is wallpaper_install_sqft (never wallpaper_remove_sqft); priming walls before wallpaper is wall_prime_sqft (not painting); a recessed niche in a regular wall (above a toilet or vanity, for art or decor) is wall_niche_drywall_each — shower niches are only for showers; a single wall shelf is shelf_install_each, not an accessories set.",
             "CUSTOMER-SUPPLIED ITEMS: never write supplied, customer-supplied or provided by customer in a description or note unless the speaker explicitly said the customer buys or supplies that item. The estimate prices basic finish materials separately.",
             "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
@@ -298,9 +299,10 @@ export async function POST(request:NextRequest){
                     note:{type:["string","null"]},
                     confidence:{type:"number",minimum:0,maximum:1},
                     statedPrice:{type:["number","null"]},
-                    statedPriceType:{type:["string","null"],enum:["per_unit","total",null]}
+                    statedPriceType:{type:["string","null"],enum:["per_unit","total",null]},
+                    optional:{type:"boolean"}
                   },
-                  required:["taskId","description","quantity","unit","difficulty","note","confidence","statedPrice","statedPriceType"]
+                  required:["taskId","description","quantity","unit","difficulty","note","confidence","statedPrice","statedPriceType","optional"]
                 }
               }
             },

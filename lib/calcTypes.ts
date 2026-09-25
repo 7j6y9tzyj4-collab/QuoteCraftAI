@@ -40,6 +40,8 @@ export type CalcItem={
   notes:string;
   note?:string;
   confidence?:number;
+  /** опційна позиція: показується окремо, в загальну суму не входить */
+  optional?:boolean;
   /** ставку праці введено вручну в цьому рядку (прайс не змінюється) */
   laborOwn?:boolean;
   /** оздоблення змінене вручну в цьому рядку */
@@ -80,4 +82,6 @@ export type CalcAIItem={
   statedPriceType?:"per_unit"|"total"|null;
   /** робота входить у суму, названу для іншого рядка — праця 0 */
   includedInStated?:boolean;
+  /** власник сказав «optional / if needed / якщо клієнт захоче» */
+  optional?:boolean|null;
 };

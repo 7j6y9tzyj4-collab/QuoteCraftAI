@@ -61,7 +61,8 @@ export function customerSuppliedGroups(text:string):{all:boolean;groups:RegExp[]
 
 // «supplied by the customer» — прибрати; «(customer-)supplied X» → «new X»
 const cleanSupplied=(t:string)=>{
-  let out=t.replace(/\s*,?\s*\b(?:supplied|provided)\s+by\s+(?:the\s+)?(?:customer|client|owner|homeowner)\b/gi,"")
+  let out=t.replace(/[;,]?\s*\b(?:the\s+)?(?:customer|client|owner|homeowner)\s+(?:supplies|provides|buys|purchases)\b[^.;]*[.;]?/gi,"")
+    .replace(/\s*,?\s*\b(?:supplied|provided)\s+by\s+(?:the\s+)?(?:customer|client|owner|homeowner)\b/gi,"")
     .replace(/\b(?:customer|client)[-\s]supplied\b/gi,"new")
     .replace(/\bsupplied\b/gi,"new")
     .replace(/\bnew\s+new\b/gi,"new")

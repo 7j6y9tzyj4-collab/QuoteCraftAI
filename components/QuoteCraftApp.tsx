@@ -16,7 +16,7 @@ import {buildCalcPdf,buildShoppingPdf,pdfFileName} from "@/lib/calcPdf";
 import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
-import {computeCalcLine,computeCalcTotals} from "@/lib/calcEngine";
+import {computeCalcLine,computeCalcTotals,computeOptionalTotal} from "@/lib/calcEngine";
 
 const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
 // Одна таблиця цін: Calculator бере ставки з Prices (праця = rate, матеріали = materialRate),
@@ -75,6 +75,17 @@ const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
 const DEFAULT_CALC_NOTES="Additional conditions: This estimate includes labor and an editable allowance for basic installation materials (adhesive/thinset, waterproof boards, floor underlayment boards, shower pan/base, drain and plumbing rough materials, grout, silicone, sealants and small consumables). Final material cost may change based on product choice, final layout and conditions found after demolition.\n\nFinish materials (tile, vanity, faucet, mirror, shower glass/door, light fixtures, fan, accessories) are either shown above as a basic-grade allowance or purchased by the customer; the final amount follows the customer's actual selection and receipts. Appliances, permits, dumpster/disposal, and any hidden damage behind walls or under the floor are separate unless specifically included above. Small consumables (fasteners, sealant, putty, etc.) are purchased by the contractor and reimbursed by the customer based on receipts. Payment can be made in cash, by check, or via Zelle.\n\nAny additional work beyond this estimate will be billed separately; the customer will be informed in advance to approve the cost before proceeding. Final labor may change if ductwork, plumbing, electrical, rotten subfloor, mold, or other hidden issues are found after demolition. Prices are valid for 30 days.";
+// Шаблони нотаток: власник зберігає свої абзаци й вставляє їх у кошторис однією кнопкою.
+type NoteTemplate={id:string;name:string;text:string};
+const NTK="qc_note_templates";
+const DEFAULT_NOTE_TEMPLATES:NoteTemplate[]=[
+ {id:"std",name:"Стандартні умови",text:DEFAULT_CALC_NOTES},
+ {id:"per-item",name:"Ціни по пунктах + матеріали по чеках",text:"Pricing: all prices are per item as listed. Any additional work requested or found necessary will be added to the estimate, and any listed work that is not performed will be deducted from it. The customer will approve any change before it is done.\n\nMaterials: material amounts shown are estimates. The contractor purchases the materials needed for the job, and the final material cost is billed based on the actual store receipts, which will be provided to the customer."},
+ {id:"wallpaper",name:"Шпалери: стан стін (якщо треба)",text:"Wallpaper removal: the condition of the walls under the existing wallpaper is unknown until it is removed. If the drywall surface is damaged during removal (torn paper facing, old adhesive, or no primer underneath), repair will be charged additionally: spot repair with sealer and joint compound at $1.25 per sq ft of damaged area, or a full skim coat at $2.25 per sq ft. The customer will be informed and approve before this work begins."},
+ {id:"hidden",name:"Приховані умови в стінах",text:"Hidden conditions: plumbing, electrical, vent pipes or framing found inside the walls, and any hidden damage behind walls or under the floor, are not included and will be discussed with the customer before any extra work."},
+ {id:"payment",name:"Оплата і термін дії",text:"Not included: permits, disposal/dumpster, and any work not listed above.\n\nPayment can be made in cash, by check, or via Zelle. Prices are valid for 30 days."},
+];
+const missingNotesTable=(e:{code?:string;message?:string}|null)=>!!e&&(e.code==="42P01"||e.code==="PGRST205"||/user_note_templates/.test(e.message||""));
 const freshCalcDraft=():CalcDraft=>({items:[],client:"",project:"",locationMultiplier:1,notes:DEFAULT_CALC_NOTES,discountType:"percent",discountValue:0});
 
 type AIItem={
@@ -132,6 +143,11 @@ export default function QuoteCraftApp(){
  // базове оздоблення (плитка, прилади за цінами магазинів) — у сумі за замовчуванням
  const [calcIncludeFinish,setCalcIncludeFinish]=useState(true);
  const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
+ const [noteTemplates,setNoteTemplates]=useState<NoteTemplate[]>(DEFAULT_NOTE_TEMPLATES);
+ const [noteTplName,setNoteTplName]=useState("");
+ const notesRef=useRef<HTMLTextAreaElement|null>(null);
+ const notesCloudOk=useRef(false);
+ useEffect(()=>{setNoteTemplates(load<NoteTemplate[]>(NTK,DEFAULT_NOTE_TEMPLATES))},[]);
  const [calcPrompt,setCalcPrompt]=useState("");
  const [calcThinking,setCalcThinking]=useState(false);
  const [calcListening,setCalcListening]=useState(false);
@@ -179,6 +195,7 @@ export default function QuoteCraftApp(){
    return [...pkg,...all.filter(c=>!pkg.includes(c))];
  },[calcTasks]);
  const calcTotalsValue=useMemo(()=>computeCalcTotals(calcItems,calcLocationMultiplier,calcIncludeFinish),[calcItems,calcLocationMultiplier,calcIncludeFinish]);
+ const calcOptionalTotal=useMemo(()=>computeOptionalTotal(calcItems,calcLocationMultiplier,calcIncludeFinish),[calcItems,calcLocationMultiplier,calcIncludeFinish]);
  const calcDiscount=useMemo(()=>{
    const v=Math.max(0,Number(calcDiscountValue)||0);
    const raw=calcDiscountType==="percent"?calcTotalsValue.labor*v/100:v;
@@ -340,6 +357,31 @@ export default function QuoteCraftApp(){
   }
  }
 
+ function saveNoteTemplates(next:NoteTemplate[]){
+   setNoteTemplates(next);
+   try{localStorage.setItem(NTK,JSON.stringify(next))}catch{}
+   if(user&&notesCloudOk.current){
+     supabase.from("user_note_templates").upsert({user_id:user.id,templates:next,updated_at:new Date().toISOString()},{onConflict:"user_id"})
+       .then(({error})=>{if(error&&!missingNotesTable(error))setCalcMessage("Не вдалося зберегти шаблони: "+error.message)});
+   }
+ }
+ function insertNoteTemplate(t:NoteTemplate){
+   setCalcNotes(n=>{const cur=n.trim();return cur?`${cur}\n\n${t.text}`:t.text});
+ }
+ function addNoteTemplate(){
+   const el=notesRef.current;
+   const sel=el&&el.selectionEnd>el.selectionStart?calcNotes.slice(el.selectionStart,el.selectionEnd).trim():"";
+   const text=sel||calcNotes.trim();
+   if(!text){setCalcMessage("Спочатку напиши або виділи текст у нотатках.");return}
+   const name=noteTplName.trim()||text.slice(0,40);
+   saveNoteTemplates([...noteTemplates,{id:crypto.randomUUID(),name,text}]);
+   setNoteTplName("");
+   setCalcMessage(sel?"Виділений текст збережено як шаблон.":"Весь текст нотаток збережено як шаблон.");
+ }
+ function removeNoteTemplate(id:string){
+   saveNoteTemplates(noteTemplates.filter(t=>t.id!==id));
+ }
+
  function stopCalcVoiceRecording(){calcMediaRecorderRef.current?.stop?.()}
 
  async function generateCalc(){
@@ -358,12 +400,12 @@ export default function QuoteCraftApp(){
     const items:CalcItem[]=aiItems.map(ai=>{
       const aiId=legacyIdMap[ai.taskId]||ai.taskId; // AI може повернути старий id
       const task=calcTasks.find(t=>t.id===aiId);
-      const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence};
+      const blank:CalcItem={id:crypto.randomUUID(),taskId:"",name:ai.description,category:"Custom",unit:ai.unit,quantity:Number(ai.quantity)||1,difficulty:ai.difficulty||"standard",laborRate:0,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:0.85,highMult:1.25,notes:"",note:ai.note||undefined,confidence:ai.confidence,...(ai.optional?{optional:true}:{})};
       if(!task){const sp=Number(ai.statedPrice);return sp>0?{...blank,laborRate:Math.round((ai.statedPriceType==="total"?sp/(blank.quantity||1):sp)*10000)/10000,laborOwn:true}:blank}
       // пакетні ставки — вже пакетні: «basic» на них не застосовуємо (підстраховка до серверної перевірки)
       const difficulty=/^(br|kp)_/.test(task.id)&&ai.difficulty==="basic"?"standard":(ai.difficulty||"standard");
       const supplied=(ai as any).customerSupplied===true;
-      const item:CalcItem={...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{})};
+      const item:CalcItem={...applyCalcTask(blank,task),quantity:Number(ai.quantity)||1,difficulty,note:ai.note||undefined,confidence:ai.confidence,...(supplied?{finishRate:0,finishOwn:true}:{}),...(ai.optional?{optional:true}:{})};
       // ціна, яку власник сам назвав у тексті, — своя ставка цього рядка
       const sp=Number(ai.statedPrice);
       if(ai.includedInStated)return{...item,laborRate:0,laborOwn:true,difficulty:"standard",minPrice:0};
@@ -397,7 +439,7 @@ export default function QuoteCraftApp(){
    lines.push("----------");
    calcItems.forEach(li=>{
      const c=computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish);
-     lines.push(`${li.name} — ${li.quantity} ${unitLabel(li.unit)} (${li.difficulty})  →  ${money(c.lineTotal)}  [range ${money(c.low)}–${money(c.high)}]`);
+     lines.push(`${li.optional?"[OPTIONAL, not in total] ":""}${li.name} — ${li.quantity} ${unitLabel(li.unit)} (${li.difficulty})  →  ${money(c.lineTotal)}  [range ${money(c.low)}–${money(c.high)}]`);
      if(li.note)lines.push("   note: "+li.note);
    });
    lines.push("");
@@ -499,7 +541,7 @@ export default function QuoteCraftApp(){
      const c=computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish);
      return`
      <tr>
-       <td><strong>${esc(li.name)}</strong>${li.note?`<div class="note">${esc(li.note)}</div>`:""}</td>
+       <td><strong>${esc(li.name)}</strong>${li.optional?` <em>(optional, not in total)</em>`:""}${li.note?`<div class="note">${esc(li.note)}</div>`:""}</td>
        <td>${esc(li.quantity)} ${esc(unitLabel(li.unit))}</td>
        <td>${esc(li.difficulty)}</td>
        <td>${esc(money(c.lineTotal))}</td>
@@ -608,6 +650,27 @@ export default function QuoteCraftApp(){
    return()=>{
      supabase.removeChannel(channel);
    };
+ },[user]);
+
+ // Шаблони нотаток з акаунта (таблиця user_note_templates). Нема таблиці — працюємо локально.
+ useEffect(()=>{
+   if(!user)return;
+   let active=true;
+   supabase.from("user_note_templates").select("templates").eq("user_id",user.id).maybeSingle()
+     .then(({data,error})=>{
+       if(!active)return;
+       if(error){notesCloudOk.current=false;return}
+       notesCloudOk.current=true;
+       const cloud=data?.templates as NoteTemplate[]|undefined;
+       if(Array.isArray(cloud)&&cloud.length){
+         setNoteTemplates(cloud);
+         try{localStorage.setItem(NTK,JSON.stringify(cloud))}catch{}
+       }else{
+         const local=load<NoteTemplate[]>(NTK,DEFAULT_NOTE_TEMPLATES);
+         supabase.from("user_note_templates").upsert({user_id:user.id,templates:local,updated_at:new Date().toISOString()},{onConflict:"user_id"}).then(()=>{});
+       }
+     });
+   return()=>{active=false};
  },[user]);
 
  useEffect(()=>{
@@ -1494,14 +1557,29 @@ export default function QuoteCraftApp(){
           <label>Праця, $/од<input type="number" min="0" step="0.01" value={li.laborRate} onChange={e=>updateCalcItem(li.id,{laborRate:Math.max(0,Number(e.target.value)||0),difficulty:"standard",minPrice:0,laborOwn:true})}/></label>
           <label>Матеріали, $/од<input type="number" min="0" step="0.01" value={li.materialRate} onChange={e=>updateCalcItem(li.id,{materialRate:Math.max(0,Number(e.target.value)||0),minPrice:0})}/></label>
           <label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={li.finishRate||0} onChange={e=>updateCalcItem(li.id,{finishRate:Math.max(0,Number(e.target.value)||0),finishOwn:true,minPrice:0})}/></label>
-          <div className="linetotal"><span>Total</span><b>{money(c.lineTotal)}</b></div>
+          <div className="linetotal"><span>{li.optional?"Опційно":"Total"}</span><b>{money(c.lineTotal)}</b></div>
+          <label className="noPrint" style={{display:"flex",gap:6,alignItems:"center",gridColumn:"1/-1",fontWeight:600}}><input type="checkbox" style={{width:"auto"}} checked={!!li.optional} onChange={e=>updateCalcItem(li.id,{optional:e.target.checked})}/>Опційно — показати окремо, не додавати в суму</label>
          </div>
-         <small>{li.laborOwn&&"✎ своя ставка · "}Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
+         <small>{li.optional&&"◇ опційно, не в сумі · "}{li.laborOwn&&"✎ своя ставка · "}Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
         </article>;
       })}
     </section>
 
-    <section className="panel"><label>Notes &amp; exclusions<textarea rows={8} value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label>{calcNotes!==DEFAULT_CALC_NOTES&&<button className="secondary full noPrint" onClick={()=>setCalcNotes(DEFAULT_CALC_NOTES)}>Повернути стандартний текст умов</button>}</section>
+    <section className="panel"><label>Notes &amp; exclusions<textarea ref={notesRef} rows={8} value={calcNotes} onChange={e=>setCalcNotes(e.target.value)}/></label>
+     <div className="noPrint" style={{marginTop:10}}>
+      <small className="muted">Шаблони — натисни, щоб додати в кінець нотаток:</small>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+       {noteTemplates.map(t=><span key={t.id} style={{display:"inline-flex",alignItems:"center",background:"#eef2f7",borderRadius:10}}>
+        <button type="button" className="secondary" style={{padding:"7px 10px"}} onClick={()=>insertNoteTemplate(t)} title={t.text}>＋ {t.name}</button>
+        <button type="button" aria-label="Видалити шаблон" style={{background:"transparent",color:"#b42318",padding:"0 8px"}} onClick={()=>{if(confirm(`Видалити шаблон «${t.name}»?`))removeNoteTemplate(t.id)}}>×</button>
+       </span>)}
+      </div>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+       <input placeholder="Назва нового шаблону" value={noteTplName} onChange={e=>setNoteTplName(e.target.value)}/>
+       <button type="button" className="secondary" style={{whiteSpace:"nowrap"}} onClick={addNoteTemplate}>Зберегти як шаблон</button>
+      </div>
+      <small className="muted">Виділи абзац у нотатках — збережеться тільки він; без виділення — весь текст.</small>
+     </div>{calcNotes!==DEFAULT_CALC_NOTES&&<button className="secondary full noPrint" onClick={()=>setCalcNotes(DEFAULT_CALC_NOTES)}>Повернути стандартний текст умов</button>}</section>
 
     <label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"8px 0"}}><input type="checkbox" checked={calcIncludeFinish} onChange={e=>setCalcIncludeFinish(e.target.checked)}/>Включити базове оздоблення (плитка, прилади, світильники за цінами Home Depot / Floor &amp; Decor)</label>
     <section className="total">
@@ -1512,6 +1590,7 @@ export default function QuoteCraftApp(){
      <div className={calcDiscount>0?undefined:"grand"}><span>Subtotal</span><b>{money(calcTotalsValue.lineTotal)}</b></div>
      {calcDiscount>0&&<><div><span>{calcDiscountLabel}</span><span>−{money(calcDiscount)}</span></div><div className="grand"><span>Total</span><b>{money(calcGrandTotal)}</b></div></>}
      <div><span>Estimated range</span><b>{money(Math.max(0,calcTotalsValue.low-calcDiscount))} – {money(Math.max(0,calcTotalsValue.high-calcDiscount))}</b></div>
+     {calcOptionalTotal>0&&<div><span>Опційні позиції (не в сумі)</span><span>+{money(calcOptionalTotal)}</span></div>}
     </section>
 
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
