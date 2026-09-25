@@ -137,6 +137,10 @@ export const recipes:Record<string,Recipe>={
   paint_repaired_areas_each:{install:[["primer",0.1],["paintEgg",0.1],["spackle",0.25],["sponge",1]]},
   water_stain_block_each:{install:[["primer",0.25],["paintCeil",0.15]]},
   wallpaper_remove_sqft:{install:[["plastic",1/108],["bags",1/32/40]]},
+  wallpaper_install_sqft:{install:[["plastic",1/108],["sponge",1/200],["spackle",1/400]]},
+  wall_prime_sqft:{install:[["primer",gal(1,1,350)],["roller6",(1/6)/300],["trayKit",0.5/300],["plastic",1/300]]},
+  wall_niche_drywall_each:{install:[["stud",3],["drywall",0.25],["cornerBead",2],["mud",0.1],["dwTape",0.05],["dwScrews",0.05],["primer",0.1],["paintEgg",0.1],["sponge",1]]},
+  shelf_install_each:{install:[["dwScrews",0.01]]},
   fill_nail_holes_room:{install:[["woodFiller",0.25],["alexCaulk",1],["sponge",0.5]]},
   caulk_trim_linear_ft:{install:[["alexCaulk",1/55]]},
   // ---------- гіпсокартон / каркас / утеплення ----------

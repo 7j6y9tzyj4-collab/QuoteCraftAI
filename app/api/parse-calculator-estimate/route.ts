@@ -39,6 +39,18 @@ function remapCustomByName(result:any,tasks:{id:string;name:string}[]){
   }
 }
 
+// AI інколи повторює ту саму площу двічі («Remove Wallpaper 258» ×2). Для sq ft / lin ft
+// однаковий рядок — це дубль; штучні позиції (дві ніші по 1 each) не чіпаємо.
+function dropDuplicateAreas(result:any){
+  const seen=new Set<string>();
+  result.items=(result?.items||[]).filter((it:any)=>{
+    if(!/^(sqft|linear_ft)$/.test(String(it.unit))||/^(br|kp)_/.test(String(it.taskId)))return true;
+    const k=`${it.taskId}|${Number(it.quantity)}`;
+    if(seen.has(k))return false;
+    seen.add(k);return true;
+  });
+}
+
 // Ціну власника беремо лише якщо це число справді є в тексті — AI не може її вигадати.
 function keepOnlyStatedPrices(result:any,text:string){
   // скільки разів кожне число є в тексті: «$14» двічі — дві позиції по $14; «$120» один раз — одна позиція
@@ -53,6 +65,7 @@ function keepOnlyStatedPrices(result:any,text:string){
     else if(it.statedPriceType==="total"){it.statedPrice=0;it.includedInStated=true}
     else{it.statedPrice=null;it.statedPriceType=null}
     if(typeof it.note==="string")it.note=it.note.replace(/\s*\(?(price|quoted|agreed)[^.;)]*\$\s?\d[\d,.]*[^.;)]*\)?[.;]?/gi,"").trim().replace(/^./,(c:string)=>c.toUpperCase())||null;
+    if(typeof it.note==="string")it.note=it.note.replace(/[;,]?\s*\b(?:owner[- ])?stated(?: price| total)?\b\.?/gi,"").trim().replace(/[;,]$/,"")||null;
     if(typeof it.note==="string"&&/^(?:labor|labour)(?:\s+only)?\.?$/i.test(it.note.trim()))it.note=null;
   }
 }
@@ -233,6 +246,7 @@ export async function POST(request:NextRequest){
             "Do not combine separate areas unless the speaker clearly describes one continuous job.",
             "DIFFICULTY: every item needs a difficulty of basic, standard, or difficult. Default to standard unless the speaker's own words justify otherwise — cramped, tight, awkward access, custom/built-in work, or an unusually complicated layout is difficult; a plain, quick, straightforward swap or install is basic.",
             "OWNER'S STATED PRICES: when the speaker states his own labor price for a job (\"walls at $14\", \"по 14 доларів\", \"door for $120\", \"за 680\"), put that number in statedPrice and set statedPriceType to per_unit (price per sq ft / lin ft / each / hour) or total (lump sum for the whole line). Otherwise statedPrice and statedPriceType are null. Never invent a price and never copy a price into description or note. When one stated price covers several jobs (\"skim coat and paint the ceiling at $8\"), return ONE item for it with that price and do not add separate items for the other jobs it covers. A stated price is labor only; materials and finish are still priced from the list. A stated price never makes an item CUSTOM: always use the matching taskId from the list. Do not write \"Labor\" or the price in note.",
+            "WALLS AND NICHES: hanging new wallpaper is wallpaper_install_sqft (never wallpaper_remove_sqft); priming walls before wallpaper is wall_prime_sqft (not painting); a recessed niche in a regular wall (above a toilet or vanity, for art or decor) is wall_niche_drywall_each — shower niches are only for showers; a single wall shelf is shelf_install_each, not an accessories set.",
             "CUSTOMER-SUPPLIED ITEMS: never write supplied, customer-supplied or provided by customer in a description or note unless the speaker explicitly said the customer buys or supplies that item. The estimate prices basic finish materials separately.",
             "PACKAGE RATES: items whose id starts with br_ (category \"Ванна: повний ремонт\") or kp_ (category \"Кухня: повний ремонт\") are the owner's package rates for a full or major bathroom or kitchen remodel (tile demo, shower rebuild, tub or shower replacement, new floor tile, vanity and toilet in one job). When the description is such a remodel, price every line with br_ (bathroom) or kp_ (kitchen) items and do not mix in standalone items for the same work. When the speaker asks for one or two small separate jobs (replace a toilet, hang a mirror), use the standalone items instead, never br_ or kp_ items. A count in the description (2 switches/outlets, 7 light fixtures, 3 doors) is the item quantity — never collapse it to 1.",
             "LOCATION PRICING is handled separately by the user for the whole estimate — never invent or mention a location multiplier yourself.",
@@ -307,6 +321,7 @@ export async function POST(request:NextRequest){
 
     applyCustomerSupplied(verified,text,"taskId");
     remapCustomByName(verified,tasks);
+    dropDuplicateAreas(verified);
     keepOnlyStatedPrices(verified,text);
     return NextResponse.json(verified);
   }catch(error){

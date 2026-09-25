@@ -11,7 +11,7 @@ const GROUPS:Array<{words:RegExp;match:RegExp}>=[
   {words:/medicine|аптечк|linen|пенал/,match:/medicine|tall_cabinet/},
   {words:/light|fixture|світильн|лампа/,match:/light/},
   {words:/fan|вентилятор|витяжк/,match:/fan|hood/},
-  {words:/accessor|аксесуар|towel|рушник/,match:/accessor|towel|robe|paper_holder/},
+  {words:/accessor|аксесуар|towel|рушник|paper holder|тримач|shelf|полиц/,match:/accessor|towel|robe|paper_holder|shelf/},
   {words:/glass|скл|shower door|двері душ/,match:/glass|shower_door|enclosure/},
   {words:/\btub\b|bathtub|ванну\b|ванна\b/,match:/tub_install|acrylic_tub|freestanding_tub/},
   {words:/\blvp\b|vinyl|ламінат|вініл|floor(?:ing)?\b/,match:/lvp/},
@@ -25,6 +25,8 @@ const ALL_RE=/(?:all|every)\s+(?:finish(?:es)?|fixtures|finish materials|materia
 
 /** які групи товарів власник назвав «купує клієнт» (по реченнях) */
 export function customerSuppliedGroups(text:string):{all:boolean;groups:RegExp[]}{
+  // «toilet paper holder» — це тримач, а не унітаз
+  text=text.replace(/toilet[- ]paper/gi,"paper");
   const groups:RegExp[]=[];let all=false;
   // Дивимось лише на фрагмент біля «supplied by customer»: сам фрагмент між комами +
   // короткі сусідні фрагменти-перелік («vanity, mirror and toilet supplied by customer»).
@@ -39,6 +41,15 @@ export function customerSuppliedGroups(text:string):{all:boolean;groups:RegExp[]
       if(ALL_RE.test(txt))all=true;
       for(const g of GROUPS)if(g.words.test(txt))groups.push(g.match);
     });
+  }
+  // «remove and reinstall mirror, towel ring and shelf» — старі речі клієнта, нових не купуємо.
+  // Перелік іде ПІСЛЯ слова, тому беремо речення від «reinstall» до кінця.
+  const REUSE_RE=/\bre-?install\w*|\bput (?:it |them )?back\b|\bre-?hang\w*|повісити назад|поставити назад|встановити назад/;
+  for(const sentence of text.toLowerCase().split(/[.;\n!?]+/)){
+    const m=sentence.match(REUSE_RE);
+    if(!m||m.index===undefined)continue;
+    const tail=sentence.slice(m.index);
+    for(const g of GROUPS)if(g.words.test(tail))groups.push(g.match);
   }
   // «her door», «his own vanity», «її двері» — річ клієнта; дивимось лише на слово після присвійного
   const POSS_RE=/(?:^|[^a-zа-яіїєґ'])(?:her|his|their|customer'?s|client'?s|homeowner'?s|owner'?s|її|його|їхн\w*)\s+(?:own\s+)?([a-zа-яіїєґ']+)/gi;

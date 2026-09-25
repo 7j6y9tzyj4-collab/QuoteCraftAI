@@ -14,7 +14,7 @@ export function computeCalcLine(li:CalcItem,locationMultiplier:number,includeFin
   const locMult=Number(locationMultiplier)||1;
   const qty=Number(li.quantity)||0;
 
-  const labor=qty*Number(li.laborRate||0)*diffMult*locMult;
+  let labor=qty*Number(li.laborRate||0)*diffMult*locMult;
   const materials=qty*Number(li.materialRate||0);
   const supplies=Number(li.suppliesFixed)>0
     ?Number(li.suppliesFixed)
@@ -24,7 +24,8 @@ export function computeCalcLine(li:CalcItem,locationMultiplier:number,includeFin
   const finish=includeFinish?qty*Number(li.finishRate||0):0;
   let lineTotal=labor+materials+supplies+finish;
   const minPrice=Number(li.minPrice)||0;
-  if(lineTotal<minPrice)lineTotal=minPrice;
+  // доплата до мінімальної ціни — це праця: колонки Labor/Materials/Finish мають сходитися з Total
+  if(lineTotal<minPrice){labor+=minPrice-lineTotal;lineTotal=minPrice}
 
   const lowMult=li.lowMult??0.85;
   const highMult=li.highMult??1.25;
