@@ -21,7 +21,10 @@ export default function PaymentsScreen({user}:{user:User|null}){
  const [busy,setBusy]=useState(false);
  const cloudOk=useRef(false);
  const loaded=useRef(false);
- const fileRef=useRef<HTMLInputElement|null>(null);
+ const fileRef=useRef<HTMLInputElement|null>(null);   // галерея, кілька фото
+ const camRef=useRef<HTMLInputElement|null>(null);    // одразу камера
+ const targetRef=useRef<string|null>(null);           // куди додати чек зі швидкої кнопки
+ const [picking,setPicking]=useState(false);
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
  useEffect(()=>{
@@ -61,8 +64,10 @@ export default function PaymentsScreen({user}:{user:User|null}){
  };
  const delLine=(key:"labor"|"receipts"|"payments",id:string)=>{if(cur)update({[key]:(cur[key] as any[]).filter(x=>x.id!==id)} as any)};
 
- async function addReceiptPhotos(files:FileList|null){
-   if(!cur||!files?.length)return;
+ async function addReceiptPhotos(files:FileList|null,targetId?:string|null){
+   const target=list.find(s=>s.id===(targetId||cur?.id))||null;
+   if(!target||!files?.length)return;
+   if(openId!==target.id)setOpenId(target.id);
    setBusy(true);setMsg("");
    const added:Receipt[]=[];const failed:string[]=[];
    for(const f of Array.from(files)){
@@ -75,11 +80,18 @@ export default function PaymentsScreen({user}:{user:User|null}){
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
      }catch(e){failed.push(`${f.name}: ${e instanceof Error?e.message:String(e)}`)}
    }
-   const latest=list.find(s=>s.id===cur.id)||cur;
+   const latest=list.find(s=>s.id===target.id)||target;
    persist(list.map(s=>s.id===latest.id?{...latest,receipts:[...latest.receipts,...added].sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()),updatedAt:new Date().toISOString()}:s));
    setBusy(false);
    setMsg(`Додано чеків: ${added.length}.`+(failed.length?" Увага — "+failed.join("; "):" Перевір суми з чеками."));
    if(fileRef.current)fileRef.current.value="";
+   if(camRef.current)camRef.current.value="";
+   targetRef.current=null;
+ }
+ // швидкий чек зі списку: вибрав клієнта → одразу камера
+ function quickReceipt(id:string){
+   targetRef.current=id;setPicking(false);
+   camRef.current?.click();
  }
 
  async function pdf(share:boolean){
@@ -95,16 +107,26 @@ export default function PaymentsScreen({user}:{user:User|null}){
    finally{setBusy(false)}
  }
 
+ const inputs=<>
+   <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files)}/>
+   <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files,targetRef.current)}/>
+ </>;
+
  if(!cur){
-   return <section className="panel">
-     <div className="head"><h1>Оплати</h1><button className="add" onClick={create}>＋ Новий розрахунок</button></div>
+   return <><section className="panel">
+     <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" onClick={create}>＋ Новий</button></div></div>
+     {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
+       <small className="muted">Для кого чек? Натисни клієнта — відкриється камера.</small>
+       {list.map(s=><button key={s.id} className="secondary full" style={{marginTop:6,textAlign:"left"}} onClick={()=>quickReceipt(s.id)}>{s.client||"Без імені"}{s.project?` — ${s.project}`:""}</button>)}
+     </div>}
+     {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      {list.length===0?<p className="empty">Ще немає розрахунків.</p>:list.map(s=>{const t=statementTotals(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}}>
          <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
-   </section>;
+   </section>{inputs}</>;
  }
 
  const t=statementTotals(cur);
@@ -126,8 +148,10 @@ export default function PaymentsScreen({user}:{user:User|null}){
 
    <section className="panel">
      <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
-     <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files)}/>
-     <button className="primary full" disabled={busy} onClick={()=>fileRef.current?.click()}>{busy?"Читаю чеки…":"📷 Додати чеки з фото"}</button>
+     <div className="actions" style={{marginTop:10}}>
+       <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
+       <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 З галереї</button>
+     </div>
      {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
        <input value={r.date} onChange={e=>setLine<Receipt>("receipts",r.id,{date:e.target.value})}/>
        <div style={{display:"grid",gap:6}}>
@@ -160,5 +184,6 @@ export default function PaymentsScreen({user}:{user:User|null}){
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>
    </section>
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
+   {inputs}
  </>;
 }
