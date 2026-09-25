@@ -12,7 +12,7 @@ import ServicePicker from "@/components/ServicePicker";
 import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
-import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft} from "@/lib/calcTypes";
+import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft,SavedCalc} from "@/lib/calcTypes";
 import {buildCalcPdf,buildShoppingPdf,pdfFileName} from "@/lib/calcPdf";
 import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
@@ -21,7 +21,7 @@ import {computeCalcLine,computeCalcTotals,computeOptionalTotal} from "@/lib/calc
 import {buildQuoteSnapshot,type QuoteStatus} from "@/lib/sharedQuote";
 import {newStatement,type Statement} from "@/lib/statement";
 
-const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1";
+const EK="qc-estimates-v1",PK="qc-prices-v1",CK="qc-calc-pricing-v1",CKO="qc-calc-overrides-v1",CDK="qc-calc-draft-v1",CSK="qc-calc-saved-v1";
 // Одна таблиця цін: Calculator бере ставки з Prices (праця = rate, матеріали = materialRate),
 // а решту параметрів (складність, діапазон) — з каталогу. Окремих цін калькулятора більше нема.
 type CalcOverride={laborRate:number;materialRate:number};
@@ -149,6 +149,9 @@ export default function QuoteCraftApp(){
  // базове оздоблення (плитка, прилади за цінами магазинів) — у сумі за замовчуванням
  const [calcIncludeFinish,setCalcIncludeFinish]=useState(true);
  const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
+ const [calcSavedId,setCalcSavedId]=useState("");
+ const [calcSaved,setCalcSaved]=useState<SavedCalc[]>([]);
+ const [calcSavedAt,setCalcSavedAt]=useState("");
  const [noteTemplates,setNoteTemplates]=useState<NoteTemplate[]>(DEFAULT_NOTE_TEMPLATES);
  const [noteTplName,setNoteTplName]=useState("");
  const notesRef=useRef<HTMLTextAreaElement|null>(null);
@@ -187,12 +190,14 @@ export default function QuoteCraftApp(){
    setCalcIncludeFinish(draft.includeFinish!==false);
    setCalcNotes(draft.notes??DEFAULT_CALC_NOTES);
    setCalcShareToken(draft.shareToken||"");
+   setCalcSavedId(draft.savedId||"");
+   setCalcSaved(load<SavedCalc[]>(CSK,[]));
  },[]);
 
  useEffect(()=>{
-   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined};
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,savedId:calcSavedId||undefined};
    localStorage.setItem(CDK,JSON.stringify(draft));
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcSavedId]);
 
  const calcTasks=useMemo(()=>tasksFromPrices(prices),[prices]);
  // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
@@ -258,7 +263,7 @@ export default function QuoteCraftApp(){
 
  function clearCalc(){
    if(calcItems.length&&!confirm("Почати новий розрахунок? Поточний буде очищено."))return;
-   setCalcItems([]);setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);
+   setCalcItems([]);setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);setCalcSavedId("");setCalcSavedAt("");
  }
 
  function needsCalcRecorderFallback(){
@@ -508,6 +513,73 @@ export default function QuoteCraftApp(){
      setTimeout(()=>URL.revokeObjectURL(url),10000);
    }catch(e){setCalcMessage("Не вдалося зробити PDF: "+(e instanceof Error?e.message:String(e)))}
    finally{setCalcPdfBusy(false)}
+ }
+ // ---- збережені естімейти калькулятора (таблиця user_calc_estimates, по рядку на естімейт) ----
+ useEffect(()=>{
+   if(!user)return;
+   let on=true;
+   supabase.from("user_calc_estimates").select("id,data,updated_at").eq("user_id",user.id).then(({data,error}:{data:any[]|null;error:any})=>{
+     if(!on||error||!data)return;
+     const cloud:SavedCalc[]=data.map(r=>({...(r.data as SavedCalc),id:r.id,updatedAt:r.updated_at}));
+     setCalcSaved(local=>{
+       // об'єднуємо: новіша версія перемагає; локальні, яких нема в акаунті, — дозаливаємо
+       const map=new Map<string,SavedCalc>();
+       for(const c of cloud)map.set(c.id,c);
+       for(const l of local){const c=map.get(l.id);if(!c||new Date(l.updatedAt)>new Date(c.updatedAt)){map.set(l.id,l);pushCalc(l)}}
+       const next=[...map.values()].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+       try{localStorage.setItem(CSK,JSON.stringify(next))}catch{}
+       return next;
+     });
+   });
+   return()=>{on=false};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[user]);
+ function pushCalc(s:SavedCalc){
+   if(!user)return;
+   supabase.from("user_calc_estimates").upsert({id:s.id,user_id:user.id,data:s,updated_at:s.updatedAt},{onConflict:"id"})
+     .then(({error}:{error:any})=>{if(error)setCalcMessage(/user_calc_estimates/.test(error.message)?"Збережено на цьому пристрої. Щоб бачити й на телефоні — створи таблицю user_calc_estimates (SQL від Claude).":"Не вдалося зберегти в акаунт: "+error.message)});
+ }
+ function storeCalcList(next:SavedCalc[]){setCalcSaved(next);try{localStorage.setItem(CSK,JSON.stringify(next))}catch{}}
+ function currentCalc(id:string):SavedCalc{
+   return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined};
+ }
+ function saveCalc(silent=false){
+   if(!calcItems.length){if(!silent)setCalcMessage("Спочатку додай позиції.");return}
+   const id=calcSavedId||crypto.randomUUID();
+   const s=currentCalc(id);
+   storeCalcList([s,...calcSaved.filter(x=>x.id!==id)]);
+   pushCalc(s);
+   setCalcSavedId(id);setCalcSavedAt(s.updatedAt);
+   if(!silent)setCalcMessage("Збережено. Знайдеш у вкладці Estimates → «З калькулятора».");
+ }
+ // автозбереження збереженого естімейту після змін (через 1.5 с)
+ const calcAutoRef=useRef(false);
+ useEffect(()=>{
+   if(!calcSavedId){calcAutoRef.current=false;return}
+   if(!calcAutoRef.current){calcAutoRef.current=true;return} // перший раз — щойно відкрили
+   const t=setTimeout(()=>saveCalc(true),1500);
+   return()=>clearTimeout(t);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken]);
+ function openCalc(s:SavedCalc){
+   if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Відкрити інший замість нього?"))return;
+   calcAutoRef.current=false;
+   setCalcItems(s.items||[]);setCalcClient(s.client||"");setCalcProject(s.project||"");setCalcLocationMultiplier(s.locationMultiplier??1);
+   setCalcNotes(s.notes??DEFAULT_CALC_NOTES);setCalcDiscountType(s.discountType??"percent");setCalcDiscountValue(Number(s.discountValue)||0);
+   setCalcIncludeFinish(s.includeFinish!==false);setCalcShareToken(s.shareToken||"");setCalcQuote(null);
+   setCalcSavedId(s.id);setCalcSavedAt(s.updatedAt);setCalcPrompt("");setCalcMessage("");
+   setScreen("calc");
+ }
+ function duplicateCalc(s:SavedCalc){
+   const copy:SavedCalc={...s,id:crypto.randomUUID(),updatedAt:new Date().toISOString(),shareToken:undefined,project:(s.project||"Estimate")+" (copy)"};
+   storeCalcList([copy,...calcSaved]);pushCalc(copy);
+ }
+ function deleteCalc(id:string){
+   const s=calcSaved.find(x=>x.id===id);
+   if(!confirm(`Видалити естімейт «${s?.client||s?.project||"без імені"}»?`))return;
+   storeCalcList(calcSaved.filter(x=>x.id!==id));
+   if(user)supabase.from("user_calc_estimates").delete().eq("id",id).then(()=>{});
+   if(id===calcSavedId){setCalcSavedId("");setCalcSavedAt("")}
  }
  // ---- посилання клієнту (/q/<token>) ----
  useEffect(()=>{
@@ -1579,7 +1651,7 @@ export default function QuoteCraftApp(){
    </>}
 
    {screen==="calc"&&<>
-    <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>Calculator</b><button onClick={clearCalc}>Clear</button></div>
+    <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>Calculator{calcSavedId&&<small className="muted" style={{fontWeight:400,marginLeft:6}}>✓ збережено</small>}</b><button onClick={clearCalc}>{calcSavedId?"Новий":"Clear"}</button></div>
     <section className="assistant noPrint">
       <div className="assisttitle"><span>🧮</span><div><b>Опиши роботу простою мовою</b><small>Українська, English або змішано — порахує labor, materials і supplies</small></div></div>
       <textarea value={calcPrompt} onChange={e=>setCalcPrompt(e.target.value)} placeholder="Покласти ламінат 1350 sqft, встановити плінтус і shoe molding 310 linear ft, пофарбувати кімнату 25 на 18 висота 8 футів."/>
@@ -1651,6 +1723,7 @@ export default function QuoteCraftApp(){
      {calcOptionalTotal>0&&<div><span>Опційні позиції (не в сумі)</span><span>+{money(calcOptionalTotal)}</span></div>}
     </section>
 
+    <div className="actions noPrint" style={{marginBottom:8}}><button className="primary" onClick={()=>saveCalc()}>💾 {calcSavedId?"Зберегти зміни":"Зберегти естімейт"}</button></div>
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
@@ -1659,7 +1732,8 @@ export default function QuoteCraftApp(){
    </>}
 
    {screen==="pay"&&<PaymentsScreen user={user} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)}/>}
-   {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
+   {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small></button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
+   {screen==="saved"&&<section className="panel"><div className="head"><h1>AI estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
    {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
 

@@ -59,6 +59,8 @@ export type CalcTotals={
 };
 
 export type CalcDraft={
+  /** id збереженого естімейту калькулятора (якщо збережений) */
+  savedId?:string;
   shareToken?:string;
   items:CalcItem[];
   client:string;
@@ -69,6 +71,9 @@ export type CalcDraft={
   discountValue?:number;
   includeFinish?:boolean;
 };
+
+/** збережений естімейт з калькулятора */
+export type SavedCalc=CalcDraft&{id:string;updatedAt:string;total:number};
 
 export type CalcAIItem={
   taskId:string;
