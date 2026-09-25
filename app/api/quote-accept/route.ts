@@ -10,6 +10,13 @@ export async function POST(req:NextRequest){
     const token=String(body?.token||"");
     const name=String(body?.name||"").trim().slice(0,120);
     if(!/^[0-9a-f-]{36}$/i.test(token)||!name)return NextResponse.json({error:"Invalid request"},{status:400});
+    // старі посилання з AI-кошторису (/e/<token>): лише статус «accepted»
+    if(body?.kind==="e"){
+      const {data:e}=await supabaseAdmin.from("estimates").select("status").eq("share_token",token).maybeSingle();
+      if(!e)return NextResponse.json({error:"Estimate not found"},{status:404});
+      if(e.status!=="accepted"){const {error}=await supabaseAdmin.from("estimates").update({status:"accepted"}).eq("share_token",token);if(error)throw error}
+      return NextResponse.json({accepted_at:new Date().toISOString()});
+    }
     const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at").eq("token",token).maybeSingle();
     if(!data)return NextResponse.json({error:"Estimate not found"},{status:404});
     if(data.status==="accepted")return NextResponse.json({accepted_at:data.accepted_at});

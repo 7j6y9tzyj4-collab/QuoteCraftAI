@@ -3,6 +3,7 @@ import { estimateTotals, itemTotal, itemMaterialRate, itemFinishRate } from "@/l
 import type { Estimate, Unit } from "@/lib/types";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PrintButton from "./PrintButton";
+import AcceptBox from "@/app/q/[token]/AcceptBox";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,7 @@ export default async function SharedEstimatePage({
             </div>
           )}
         </div>
+        <AcceptBox token={token} kind="e" accepted={data.status==="accepted"} acceptedName="" acceptedAt=""/>
       </div>
     </main>
   );
