@@ -70,6 +70,10 @@ export type CalcDraft={
   discountType?:"percent"|"amount";
   discountValue?:number;
   includeFinish?:boolean;
+  /** депозит, % від суми */
+  depositPct?:number;
+  /** підтверджені приблизні розміри з фото — естімейт попередній */
+  measurementNotes?:string;
 };
 
 /** збережений естімейт з калькулятора */

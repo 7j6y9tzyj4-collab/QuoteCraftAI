@@ -2,6 +2,7 @@ import {supabaseAdmin} from "@/lib/supabaseAdmin";
 import type {QuoteSnapshot} from "@/lib/sharedQuote";
 import PrintButton from "@/app/e/[token]/PrintButton";
 import AcceptBox from "./AcceptBox";
+import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 
 export const dynamic="force-dynamic";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -35,6 +36,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
           </div>
           <PrintButton/>
         </div>
+        {q.measurementNotes&&<div style={{margin:"0 0 16px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}><strong>{PRELIMINARY_NOTE}</strong><p style={{whiteSpace:"pre-wrap",margin:"8px 0 0",color:"#667085"}}>Approximate dimensions: {q.measurementNotes}</p></div>}
 
         <div style={{overflowX:"auto"}}>
         <table className="sharedTable">
@@ -58,6 +60,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
           {t.finish>0&&<div><span>Finish allowance (basic grade)</span><span>{money(t.finish)}</span></div>}
           {t.discount>0&&<><div><span>Subtotal</span><span>{money(t.subtotal)}</span></div><div><span>{t.discountLabel}</span><span>−{money(t.discount)}</span></div></>}
           <div className="grand"><span>Total</span><span>{money(t.total)}</span></div>
+          {(t.deposit||0)>0&&<div><span>Required deposit ({t.depositPct}%)</span><strong>{money(t.deposit||0)}</strong></div>}
         </div>
 
         {q.optional.length>0&&<>

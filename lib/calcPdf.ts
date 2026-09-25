@@ -1,4 +1,5 @@
 import type {CalcItem,CalcTotals} from "./calcTypes";
+import {PRELIMINARY_NOTE} from "./photoMeasurements";
 import {computeCalcLine} from "./calcEngine";
 import type {ShoppingList} from "./shoppingList";
 
@@ -17,6 +18,8 @@ export type CalcPdfInput={
   grandTotal:number;
   notes:string;
   includeFinish?:boolean;
+  depositPct?:number;
+  measurementNotes?:string;
 };
 
 export const COMPANY_NAME="K&V House Renovation";
@@ -78,6 +81,13 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   const meta=[input.client?`Client: ${input.client}`:"",`Date: ${new Date().toLocaleDateString("en-US")}`,input.locationMultiplier!==1?`Location multiplier: ${input.locationMultiplier}`:""].filter(Boolean);
   meta.forEach(m=>{doc.text(m,M,y);y+=14});
   doc.setTextColor(0);y+=6;
+  if(input.measurementNotes){
+    doc.setFont(font,"bold");doc.setFontSize(9);
+    for(const l of doc.splitTextToSize(PRELIMINARY_NOTE,W-2*M) as string[]){doc.text(l,M,y);y+=11}
+    doc.setFont(font,"normal");doc.setTextColor(80);
+    for(const l of doc.splitTextToSize("Approximate dimensions: "+input.measurementNotes.replace(/\s*\n\s*/g,"; "),W-2*M) as string[]){doc.text(l,M,y);y+=11}
+    doc.setTextColor(0);y+=8;
+  }
 
   // Колонки: праця / матеріали / оздоблення — клієнт бачить, що платить підряднику, а що магазину.
   // Складність клієнту не показуємо (вона вже врахована в праці).
@@ -131,6 +141,7 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
   }else{
     line("Total",money(input.totals.lineTotal),true);
   }
+  if((input.depositPct||0)>0)line(`Required deposit (${input.depositPct}%)`,money(Math.round(input.grandTotal*input.depositPct!)/100));
   line("Estimated range",`${money(Math.max(0,input.totals.low-input.discount))} – ${money(Math.max(0,input.totals.high-input.discount))}`);
 
   // Опційні позиції: окремою таблицею, у загальну суму не входять
