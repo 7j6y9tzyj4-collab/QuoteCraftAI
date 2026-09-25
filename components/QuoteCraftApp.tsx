@@ -5,6 +5,7 @@ import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
 import PhotoMeasurements from "@/components/PhotoMeasurements";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
+import PaymentsScreen from "@/components/PaymentsScreen";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
 import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
@@ -99,7 +100,7 @@ type AIItem={
 };
 
 export default function QuoteCraftApp(){
- const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices"|"calc">("home");
+ const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices"|"calc"|"pay">("home");
  const [all,setAll]=useState<Estimate[]>([]);
  const [prices,setPrices]=useState<PriceRule[]>(defaults);
  const [cur,setCur]=useState<Estimate>(fresh());
@@ -1598,6 +1599,7 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
+   {screen==="pay"&&<PaymentsScreen user={user}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h1>My estimates</h1><button className="add" onClick={start}>＋ New</button></div>{all.length===0?<p className="empty">Немає збережених кошторисів.</p>:all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
    {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
@@ -1635,6 +1637,6 @@ export default function QuoteCraftApp(){
 </div>
 </section>}
   </main>
-  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
+  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")}>$<span>Оплати</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
  </div>
 }

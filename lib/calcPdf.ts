@@ -19,8 +19,8 @@ export type CalcPdfInput={
   includeFinish?:boolean;
 };
 
-const COMPANY_NAME="K&V House Renovation";
-const COMPANY_CONTACT="(773) 957-7709 · koiatvasyl@gmail.com";
+export const COMPANY_NAME="K&V House Renovation";
+export const COMPANY_CONTACT="(773) 957-7709 · koiatvasyl@gmail.com";
 
 const money=(n:number)=>"$"+(Math.round(n*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const unitLabel=(u:string)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"lin ft",room:"room"} as Record<string,string>)[u]||u;
@@ -32,6 +32,19 @@ async function loadFont(url:string):Promise<string>{
   let bin="";
   for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,Array.from(bytes.subarray(i,i+0x8000)));
   return btoa(bin);
+}
+
+/** DejaVu для кирилиці; повертає назву шрифту для doc.setFont */
+export async function setupPdfFonts(doc:any):Promise<string>{
+  try{
+    if(!fontCache){
+      const [reg,bold]=await Promise.all([loadFont("/fonts/DejaVuSans.ttf"),loadFont("/fonts/DejaVuSans-Bold.ttf")]);
+      fontCache={reg,bold};
+    }
+    doc.addFileToVFS("DejaVuSans.ttf",fontCache.reg);doc.addFont("DejaVuSans.ttf","DejaVu","normal");
+    doc.addFileToVFS("DejaVuSans-Bold.ttf",fontCache.bold);doc.addFont("DejaVuSans-Bold.ttf","DejaVu","bold");
+    return "DejaVu";
+  }catch{return "helvetica"}
 }
 
 export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
