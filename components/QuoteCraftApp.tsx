@@ -1709,7 +1709,11 @@ export default function QuoteCraftApp(){
           </select>
           <button className="remove noPrint" onClick={()=>removeCalcItem(li.id)}>×</button>
          </div>
-         {li.note&&<div className="itemNote">ℹ {li.note}</div>}
+         {/* назва й примітка так, як їх побачить клієнт у PDF і на сторінці за посиланням */}
+         <div className="itemgrid">
+          <label style={{gridColumn:"1/-1"}}>Назва для клієнта<input value={li.name} placeholder="Назва роботи" onChange={e=>updateCalcItem(li.id,{name:e.target.value})}/></label>
+          <label style={{gridColumn:"1/-1"}}>Примітка (під назвою)<input value={li.note||""} placeholder="Необов'язково" onChange={e=>updateCalcItem(li.id,{note:e.target.value||undefined})}/></label>
+         </div>
          {typeof li.confidence==="number"&&li.confidence<.7&&<div className="itemWarning">⚠ Low confidence — verify this item.</div>}
          <div className="itemgrid">
           <label>Quantity<input type="number" min="0" step="0.01" value={li.quantity} onChange={e=>updateCalcItem(li.id,{quantity:Number(e.target.value)})}/></label>
