@@ -195,6 +195,8 @@ export const recipes:Record<string,Recipe>={
   bathtub_remove_each:{install:[["bags",4/32]]},
   kitchen_cabinet_remove_each:{install:[["bags",0.5/32]]},
   door_remove_each:{install:[]},
+  door_bottom_trim_each:{install:[]},
+  appliances_move_reinstall_each:{install:[]},
   baseboard_remove_linear_ft:{install:[["bags",1/32/40]]},
   // ---------- трим / двері ----------
   baseboard_install:{install:[["baseboard",1.1/8],["bradNails",3/1000],["alexCaulk",1/55],["woodFiller",1/200]]},
