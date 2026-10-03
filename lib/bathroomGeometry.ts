@@ -173,7 +173,9 @@ function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
 export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|"serviceId"):{applied:boolean}{
   if(!Array.isArray(result?.items))return {applied:false};
   const id=(i:any)=>String(i?.[idKey]||"");
-  const hasPackage=result.items.some((i:any)=>/^(br|kp)_/.test(id(i)));
+  // Ванні правила (перенос на br_-пакети, «загублені» позиції ванної) — тільки коли це справді ванна.
+  // Кухня/підлога з одним kp_-рядком (напр. зняття дерев'яної підлоги) сюди не потрапляє.
+  const hasPackage=result.items.some((i:any)=>/^br_/.test(id(i)));
   if(!hasPackage)return {applied:false};
   remapToPackage(result,idKey);
   ensurePackageItems(result,text,idKey);
