@@ -195,6 +195,18 @@ function applyCalcMeasurements(result: any, text: string) {
   return result;
 }
 
+// AI інколи бере ванні пакети (br_) для кухні чи кімнати. Якщо в тексті немає нічого про ванну —
+// переносимо такі рядки на кухонні/звичайні і прибираємо ванні «додатки».
+const BATH_RE=/\bbath|shower|\btub\b|bathtub|toilet|vanity|powder room|ванн|душ|унітаз|туалет|санвуз/i;
+const BR_TO_PLAIN:Record<string,string>={br_floor_tile_sqft:"kp_floor_tile_sqft",br_cement_board_floor_sqft:"cement_board_install_sqft",br_floor_prep:"wood_subfloor_prep_sqft",br_floor_leveling_sqft:"floor_leveling_sqft",br_paint_sqft:"paint_walls_sqft",br_trim:"baseboard_install"};
+function notBathroomGuard(result:any,text:string){
+  if(!Array.isArray(result?.items)||BATH_RE.test(text))return;
+  const ids=()=>result.items.map((i:any)=>String(i?.taskId||""));
+  result.items.forEach((i:any)=>{const t=BR_TO_PLAIN[String(i?.taskId||"")];if(t)i.taskId=t;});
+  // плінтус «зняти і поставити назад» уже є — ванний «встановити і пофарбувати» зайвий
+  if(ids().includes("baseboard_reinstall_linear_ft"))result.items=result.items.filter((i:any)=>!/^(br_baseboard_install_paint|baseboard_install)$/.test(String(i?.taskId||"")));
+}
+
 export async function POST(request:NextRequest){
   try{
     if(!process.env.OPENAI_API_KEY){
@@ -319,6 +331,7 @@ export async function POST(request:NextRequest){
     }
 
     const parsed=JSON.parse(raw);
+    notBathroomGuard(parsed,text);
     const bathroom=applyBathroomMeasurements(parsed,text,"taskId");
     const verified=bathroom.applied&&calculateBathroomAreas(text)?parsed:applyCalcMeasurements(parsed,text);
 
