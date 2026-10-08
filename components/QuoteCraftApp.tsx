@@ -6,6 +6,7 @@ import PhotoMeasurements from "@/components/PhotoMeasurements";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
+import SiteLeads from "@/components/SiteLeads";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
 import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
@@ -1623,6 +1624,7 @@ export default function QuoteCraftApp(){
   <main>
    {screen==="home"&&<>
     <section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section>
+    <SiteLeads user={user}/>
     <section className="metrics"><article><span>Estimates</span><b>{calcSaved.length}</b></article><article><span>Quoted value</span><b>{money(calcSaved.reduce((a,c)=>a+(Number(c.total)||0),0))}</b></article></section>
     <section className="panel"><div className="head"><h2>Recent estimates</h2><button onClick={()=>setScreen("saved")}>View all</button></div>{calcSaved.length===0?<p className="empty">Ще немає збережених естімейтів.</p>:calcSaved.slice(0,3).map(c=><button className="estimate" key={c.id} onClick={()=>openCalc(c)}><span><b>{c.client||"Unnamed client"}</b><small>{c.project||"Estimate"}</small></span><strong>{money(c.total)}</strong></button>)}</section>
    </>}
