@@ -197,12 +197,25 @@ function applyCalcMeasurements(result: any, text: string) {
 
 // AI інколи бере ванні пакети (br_) для кухні чи кімнати. Якщо в тексті немає нічого про ванну —
 // переносимо такі рядки на кухонні/звичайні і прибираємо ванні «додатки».
-const BATH_RE=/\bbath|shower|\btub\b|bathtub|toilet|vanity|powder room|ванн|душ|унітаз|туалет|санвуз/i;
 const BR_TO_PLAIN:Record<string,string>={br_floor_tile_sqft:"kp_floor_tile_sqft",br_cement_board_floor_sqft:"cement_board_install_sqft",br_floor_prep:"wood_subfloor_prep_sqft",br_floor_leveling_sqft:"floor_leveling_sqft",br_paint_sqft:"paint_walls_sqft",br_trim:"baseboard_install"};
+// «поріг до ванної», «двері ванної» на кухні — це не ремонт ванної
+const BATH_MENTION_RE=/\b(?:to|into|at|near|by|from|toward)\s+(?:the\s+)?(?:bath\w*|powder room)|\bbath\w*\s+(?:door\w*|threshold|entry|entrance|transition)|(?:до|біля|від|у|в)\s+ванн\w*|двер\w*\s+(?:у\s+|в\s+|до\s+)?ванн\w*/gi;
+// ванна = є сантехніка ванної, або слово «ванна» без кухні (а не просто «поріг до ванної»)
+const BATH_FIXTURE_RE=/shower|\btub\b|bathtub|toilet|vanity|powder room|душ|унітаз|туалет|санвуз/i;
+function isBathroomJob(text:string){
+  if(BATH_FIXTURE_RE.test(text))return true;
+  return /\bbath|ванн/i.test(text.replace(BATH_MENTION_RE," "))&&!/kitchen|кухн/i.test(text);
+}
 function notBathroomGuard(result:any,text:string){
-  if(!Array.isArray(result?.items)||BATH_RE.test(text))return;
+  if(!Array.isArray(result?.items)||isBathroomJob(text))return;
   const ids=()=>result.items.map((i:any)=>String(i?.taskId||""));
-  result.items.forEach((i:any)=>{const t=BR_TO_PLAIN[String(i?.taskId||"")];if(t)i.taskId=t;});
+  // площа підлоги цієї роботи — для пакетних «за кімнату» позицій, що стають «за sq ft»
+  const floorArea=Math.max(0,...result.items.filter((i:any)=>/floor_tile_sqft|uncoupling_membrane_sqft|floor_demo/.test(String(i?.taskId||""))).map((i:any)=>Number(i.quantity)||0));
+  result.items.forEach((i:any)=>{
+    const from=String(i?.taskId||""),t=BR_TO_PLAIN[from];if(!t)return;
+    i.taskId=t;
+    if(/_sqft$/.test(t)&&!/_sqft$/.test(from)&&Number(i.quantity)<=1&&floorArea>1){i.quantity=floorArea;i.unit="sqft";}
+  });
   // плінтус «зняти і поставити назад» уже є — ванний «встановити і пофарбувати» зайвий
   if(ids().includes("baseboard_reinstall_linear_ft"))result.items=result.items.filter((i:any)=>!/^(br_baseboard_install_paint|baseboard_install)$/.test(String(i?.taskId||"")));
 }
