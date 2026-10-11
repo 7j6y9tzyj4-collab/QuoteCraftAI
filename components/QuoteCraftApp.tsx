@@ -1583,12 +1583,13 @@ export default function QuoteCraftApp(){
            щоб бачити ті самі estimates.
          </p>
 
-         <div className="grid">
+         <form className="grid" onSubmit={e=>{e.preventDefault();signIn()}}>
            <label className="wide">
              Email
              <input
                type="email"
-               autoComplete="email"
+               name="username"
+               autoComplete="username"
                value={email}
                onChange={e=>setEmail(e.target.value)}
                placeholder="your@email.com"
@@ -1599,13 +1600,15 @@ export default function QuoteCraftApp(){
              Password
              <input
                type="password"
+               name="password"
                autoComplete="current-password"
                value={password}
                onChange={e=>setPassword(e.target.value)}
-               placeholder="Minimum 6 characters"
+               placeholder="Face ID підставить сам"
              />
            </label>
-         </div>
+           <button type="submit" hidden aria-hidden="true"/>
+         </form>
 
          {message&&<div className="statusMessage">{message}</div>}
 
@@ -1809,26 +1812,30 @@ export default function QuoteCraftApp(){
 <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
   <span className="eyebrow">ACCOUNT</span>
   <BackupPanel user={user}/>
-  <h2>Change password</h2>
+  <h2>Пароль для Face ID</h2>
+  <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
+  <form onSubmit={e=>{e.preventDefault();updatePassword()}}>
+    <input type="email" name="username" autoComplete="username" value={user?.email||""} readOnly hidden/>
+    <label>
+      Новий пароль
+      <input
+        type="password"
+        name="new-password"
+        autoComplete="new-password"
+        value={newPassword}
+        onChange={e=>setNewPassword(e.target.value)}
+        placeholder="Торкнись — iPhone запропонує пароль"
+      />
+    </label>
 
-  <label>
-    New password
-    <input
-      type="password"
-      autoComplete="new-password"
-      value={newPassword}
-      onChange={e=>setNewPassword(e.target.value)}
-      placeholder="Minimum 6 characters"
-    />
-  </label>
-
-  <button
-    className="primary full"
-    onClick={updatePassword}
-    disabled={authLoading}
-  >
-    {authLoading?"Please wait…":"Save new password"}
-  </button>
+    <button
+      type="submit"
+      className="primary full"
+      disabled={authLoading}
+    >
+      {authLoading?"Please wait…":"Зберегти пароль в iCloud"}
+    </button>
+  </form>
 
   <button
     className="secondary full"
