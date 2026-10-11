@@ -1,10 +1,12 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useRef,useState,type DragEvent} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
-import {prepareReceiptFile,isPdf,filesFromDataTransfer,filesFromClipboardItems} from "@/lib/receiptFile";
+import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
+import {imageHash,findDuplicate,matchStatementByName,baseName} from "@/lib/receiptBatch";
+import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
-import {buildStatementPdf,statementFileName,type ReceiptPhoto} from "@/lib/statementPdf";
+import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
 // Розрахунок з клієнтом: робота + чеки на матеріали − оплати = залишок, PDF для клієнта.
@@ -15,6 +17,8 @@ const uid=()=>crypto.randomUUID();
 const loadLocal=():Statement[]=>{try{return JSON.parse(localStorage.getItem(SK)||"[]")}catch{return[]}};
 const METHODS=["Cash","Check","Zelle","Card","Other"];
 const BUCKET="receipts";
+const errText=(e:unknown)=>e instanceof Error?e.message:String(e);
+const byDate=(a:Receipt,b:Receipt)=>new Date(a.date).getTime()-new Date(b.date).getTime();
 
 // мініатюра чека: з акаунта (приватне сховище, тимчасове посилання) або локальна копія
 function ReceiptThumb({r}:{r:Receipt}){
@@ -44,6 +48,14 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
  const [zoneOn,setZoneOn]=useState(false);
  const [withPhotos,setWithPhotos]=useState(true);
  const [ready,setReady]=useState(false); // список з акаунта вже завантажено
+ // пакет чеків: перегляд перед збереженням
+ const [batch,setBatch]=useState<Draft[]|null>(null);
+ const batchRef=useRef<Draft[]|null>(null);
+ const [batchAsk,setBatchAsk]=useState(false);
+ const [saving,setSaving]=useState(false);
+ const [dragOn,setDragOn]=useState(false);
+ const listRef=useRef<Statement[]>([]);
+ listRef.current=list;
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
  useEffect(()=>{
@@ -190,37 +202,192 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
    camRef.current?.click();
  }
 
+ // ---------- Пакет чеків: кілька фото / PDF (1 сторінка = 1 чек) → перегляд → «Додати всі» ----------
+ function setB(fn:(d:Draft[]|null)=>Draft[]|null){batchRef.current=fn(batchRef.current);setBatch(batchRef.current)}
+ const patchDraft=(key:string,patch:Partial<Draft>)=>setB(ds=>ds&&ds.map(d=>d.key===key?{...d,...patch}:d));
+
+ // дублікати: проти чеків у проєкті і проти попередніх чеків цього ж пакета
+ function markDuplicates(){
+   setB(ds=>{
+     if(!ds)return ds;
+     const seen:Record<string,Receipt[]>={};
+     return ds.map(d=>{
+       if(d.status!=="ok"||!d.targetId)return d.dupOf?{...d,dupOf:undefined,include:d.status==="ok"}:d;
+       const st=listRef.current.find(s=>s.id===d.targetId);
+       const pool=[...(st?.receipts||[]),...(seen[d.targetId]||[])];
+       const dup=findDuplicate(d,pool);
+       let out:Draft;
+       if(dup)out={...d,include:false,dupOf:`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`};
+       else out=d.dupOf?{...d,dupOf:undefined,include:true}:d;
+       if(!dup)(seen[d.targetId]||=[]).push({id:d.key,date:d.date,store:d.store,items:"",amount:d.amount,receiptNo:d.receiptNo,hash:d.hash});
+       return out;
+     });
+   });
+ }
+
+ async function readDraft(key:string){
+   const d=batchRef.current?.find(x=>x.key===key);if(!d)return;
+   patchDraft(key,{status:"reading"});
+   try{
+     const res=await fetch("/api/parse-receipt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo:d.dataUrl})});
+     const j=await res.json();
+     if(!res.ok)throw new Error(j?.error||"AI error");
+     // фото — обрізаємо по межах чека з оригіналу; сторінка PDF (сканер Нотаток) — вже чиста
+     let scan=d.dataUrl;
+     if(!d.fromPdf){
+       const orig=URL.createObjectURL(d.file);
+       try{scan=await scanReceipt(orig,j.box||null)}catch{try{scan=await scanReceipt(d.dataUrl,j.box||null)}catch{/* лишаємо як є */}}
+       finally{URL.revokeObjectURL(orig)}
+     }
+     patchDraft(key,{status:"ok",date:j.date||today(),store:j.store||"",items:j.items||"",amount:Number(j.total)||0,
+       receiptNo:String(j.receipt_no||""),confidence:typeof j.confidence==="number"?j.confidence:1,hash:await imageHash(d.dataUrl),scan,include:true});
+   }catch(e){patchDraft(key,{status:"error",error:errText(e),include:false})}
+ }
+
+ async function readAll(keys:string[]){
+   let i=0;
+   const worker=async()=>{while(i<keys.length&&batchRef.current){await readDraft(keys[i++])}};
+   await Promise.all([worker(),worker(),worker()]);
+   markDuplicates();
+ }
+
+ // targetId: проєкт, куди скинули; null — з головної Оплат (шукаємо проєкт за назвою файлу)
+ async function startBatch(files:File[],targetId:string|null){
+   const fs=files.filter(isReceiptFile);
+   if(!fs.length){setMsg("Тут немає фото чи PDF.");return}
+   if(batchRef.current){setMsg("Спершу збережи або скасуй поточний пакет чеків.");return}
+   setMsg("");setBatchAsk(!targetId);setBusy(true);
+   const drafts:Draft[]=[];const errs:string[]=[];
+   for(const f of fs){
+     const tid=targetId||matchStatementByName(f.name,listRef.current)?.id||"";
+     try{
+       for(const p of await prepareReceiptPages(f))drafts.push({key:p.key,source:p.name,page:p.page,pages:p.pages,fromPdf:p.fromPdf,file:p.file,dataUrl:p.dataUrl,
+         status:"wait",date:"",store:"",items:"",amount:0,receiptNo:"",confidence:1,hash:"",include:false,targetId:tid});
+     }catch(e){errs.push(`${f.name}: ${errText(e)}`)}
+   }
+   setBusy(false);
+   if(errs.length)setMsg("Не вдалося відкрити — "+errs.join("; "));
+   if(!drafts.length)return;
+   setB(()=>drafts);
+   await readAll(drafts.map(d=>d.key));
+ }
+
+ function batchTarget(source:string,targetId:string){
+   setB(ds=>ds&&ds.map(d=>d.source===source?{...d,targetId}:d));
+   markDuplicates();
+ }
+
+ // довгий чек на 2 сторінки: приклеюємо сторінку до попередньої і читаємо ще раз
+ async function joinDraft(key:string){
+   const ds=batchRef.current;if(!ds)return;
+   const i=ds.findIndex(d=>d.key===key);if(i<1)return;
+   const prev=ds[i-1],d=ds[i];
+   try{
+     const merged=await joinReceiptImages(prev.dataUrl,d.dataUrl);
+     setB(x=>x&&x.filter(y=>y.key!==key).map(y=>y.key===prev.key?{...y,dataUrl:merged,scan:undefined,status:"wait",dupOf:undefined}:y));
+     await readDraft(prev.key);
+     markDuplicates();
+   }catch(e){setMsg("Не вдалося з'єднати: "+errText(e))}
+ }
+
+ async function saveBatch(){
+   const ds=(batchRef.current||[]).filter(d=>d.include&&d.status==="ok");
+   if(!ds.length||ds.some(d=>!d.targetId))return;
+   const skipped=(batchRef.current||[]).filter(d=>d.dupOf&&!d.include).length;
+   setSaving(true);
+   let all=listRef.current.slice();
+   const newIds:Record<string,string>={};
+   const add:Record<string,Receipt[]>={};
+   let noPhoto=0;
+   for(let k=0;k<ds.length;k++){
+     const d=ds[k];
+     setMsg(`Зберігаю чеки… ${k+1} / ${ds.length}`);
+     let tid=d.targetId;
+     if(tid==="new"){
+       if(!newIds[d.source]){const s={...newStatement(),client:baseName(d.source)};all=[s,...all];newIds[d.source]=s.id}
+       tid=newIds[d.source];
+     }
+     const rid=uid();
+     const rec:Receipt={id:rid,date:d.date||today(),store:d.store,items:d.items,amount:Number(d.amount)||0,receiptNo:d.receiptNo||undefined,hash:d.hash||undefined};
+     const img=d.scan||d.dataUrl;
+     let saved=false;
+     if(user){
+       const path=`${user.id}/${tid}/${rid}.jpg`;
+       const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(img),{contentType:"image/jpeg",upsert:true});
+       if(!error){rec.photoPath=path;saved=true}
+     }
+     if(!saved){try{rec.photoData=await shrinkImage(img)}catch{noPhoto++}}
+     (add[tid]||=[]).push(rec);
+   }
+   const now=new Date().toISOString();
+   persist(all.map(s=>add[s.id]?{...s,receipts:[...s.receipts,...add[s.id]].sort(byDate),updatedAt:now}:s));
+   const ids=Object.keys(add);
+   setB(()=>null);setSaving(false);
+   if(ids.length===1)setOpenId(ids[0]);
+   setMsg(`Додано чеків: ${ds.length}`+(ids.length>1?` у ${ids.length} проєкти`:"")+(skipped?`. Пропущено дублікатів: ${skipped}`:"")+(noPhoto?`. Без фото: ${noPhoto}`:"")+". Перевір суми з чеками.");
+ }
+
+ // перетягнути файли на сторінку (Mac) — той самий пакет
+ const dropProps=(targetId:string|null)=>({
+   onDragOver:(e:DragEvent)=>{if(Array.from(e.dataTransfer.types||[]).includes("Files")){e.preventDefault();if(!dragOn)setDragOn(true)}},
+   onDragLeave:(e:DragEvent)=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDragOn(false)},
+   onDrop:(e:DragEvent)=>{const fs=Array.from(e.dataTransfer.files||[]);if(!fs.length)return;e.preventDefault();setDragOn(false);startBatch(fs,targetId)},
+ });
+
+ const batchView=batch&&<ReceiptBatch drafts={batch} list={list} askTarget={batchAsk} saving={saving}
+   onPatch={patchDraft} onTarget={batchTarget} onJoin={joinDraft} onCancel={()=>{if(saving)return;if(confirm("Скасувати пакет? Нічого не буде додано.")){setB(()=>null);setMsg("")}}} onSave={saveBatch}/>;
+
+ // фото чеків для PDF (з акаунта або локальна копія)
+ async function loadPhotos(s:Statement):Promise<ReceiptPhoto[]>{
+   const photos:ReceiptPhoto[]=[];
+   for(const r of s.receipts){
+     try{
+       let dataUrl=r.photoData||"";
+       if(!dataUrl&&r.photoPath){const {data}=await supabase.storage.from(BUCKET).download(r.photoPath);if(data)dataUrl=await blobToDataUrl(data)}
+       if(!dataUrl)continue;
+       const {w,h}=await imageSize(dataUrl);
+       photos.push({label:`${r.date} · ${r.store||"Receipt"} · ${money(Number(r.amount)||0)}`,dataUrl,w,h});
+     }catch{/* пропускаємо фото, яке не завантажилось */}
+   }
+   return photos;
+ }
+ async function deliver(blob:Blob,name:string,share:boolean){
+   const file=new File([blob],name,{type:"application/pdf"});
+   const nav=navigator as Navigator&{canShare?:(d:ShareData)=>boolean};
+   if(share&&nav.share&&nav.canShare&&nav.canShare({files:[file]})){await nav.share({files:[file],title:file.name})}
+   else{const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}
+ }
+
  async function pdf(share:boolean){
    if(!cur)return;
    setBusy(true);
    try{
-     const photos:ReceiptPhoto[]=[];
-     if(withPhotos)for(const r of cur.receipts){
-       try{
-         let dataUrl=r.photoData||"";
-         if(!dataUrl&&r.photoPath){const {data}=await supabase.storage.from(BUCKET).download(r.photoPath);if(data)dataUrl=await blobToDataUrl(data)}
-         if(!dataUrl)continue;
-         const {w,h}=await imageSize(dataUrl);
-         photos.push({label:`${r.date} · ${r.store||"Receipt"} · ${money(Number(r.amount)||0)}`,dataUrl,w,h});
-       }catch{/* пропускаємо фото, яке не завантажилось */}
-     }
-     const blob=await buildStatementPdf(cur,photos);
-     const file=new File([blob],statementFileName(cur),{type:"application/pdf"});
-     const nav=navigator as Navigator&{canShare?:(d:ShareData)=>boolean};
-     if(share&&nav.share&&nav.canShare&&nav.canShare({files:[file]})){await nav.share({files:[file],title:file.name})}
-     else{const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}
-   }catch(e){setMsg("Не вдалося зробити PDF: "+(e instanceof Error?e.message:String(e)))}
+     const photos=withPhotos?await loadPhotos(cur):[];
+     await deliver(await buildStatementPdf(cur,photos),statementFileName(cur),share);
+   }catch(e){setMsg("Не вдалося зробити PDF: "+errText(e))}
+   finally{setBusy(false)}
+ }
+ // усі чеки проєкту одним PDF — на iPhone відкриється «Поділитись» → «Зберегти у Файли»
+ async function receiptsPdf(){
+   if(!cur)return;
+   setBusy(true);setMsg("Збираю чеки в PDF…");
+   try{
+     const photos=await loadPhotos(cur);
+     const mobile=typeof matchMedia!=="undefined"&&matchMedia("(pointer:coarse)").matches;
+     await deliver(await buildReceiptsPdf(cur,photos),receiptsFileName(cur),mobile);
+     setMsg(`PDF з чеками: ${photos.length} шт.`);
+   }catch(e){if((e as any)?.name!=="AbortError")setMsg("Не вдалося зробити PDF з чеками: "+errText(e));else setMsg("")}
    finally{setBusy(false)}
  }
 
  const inputs=<>
-   <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" multiple style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files)}/>
+   <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" multiple style={{display:"none"}} onChange={e=>{const fs=Array.from(e.target.files||[]);e.target.value="";startBatch(fs,cur?.id??null)}}/>
    <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files,targetRef.current)}/>
  </>;
 
  if(!cur){
-   return <><section className="panel">
-     <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" onClick={create}>＋ Новий</button></div></div>
+   return <>{batchView}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+     <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
      {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
        <small className="muted">Для кого чек? «📷 Фото» — камера; «📋 Скріншот» — вставити скопійований скріншот з програми магазину.</small>
        {list.map(s=><div key={s.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginTop:6,alignItems:"center"}}>
@@ -231,6 +398,7 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
      </div>}
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
+     <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
      {list.length===0?<p className="empty">Ще немає розрахунків.</p>:list.map(s=>{const t=statementTotals(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}}>
          <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small></span>
@@ -256,15 +424,16 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
      </div>)}
    </section>
 
-   <section className="panel">
+   {batchView}
+   <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
-       <button className="secondary" disabled={busy} onClick={()=>fileRef.current?.click()}>🖼 Фото / PDF</button>
+       <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет чеків (фото / PDF)</button>
        <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
      </div>
      <div data-paste-zone style={{position:"relative",marginTop:10,padding:"12px 10px",border:`2px dashed ${zoneOn?"#2563eb":"#cbd5e1"}`,background:zoneOn?"#eff6ff":"transparent",borderRadius:12,color:zoneOn?"#1d4ed8":"#64748b",fontSize:13,textAlign:"center"}}>
-       {busy?"Читаю…":zoneOn?"Тепер натисни ⌘V":"📋 Вставити сюди: клікни тут і натисни ⌘V (скріншот з iPhone, картинка або PDF)"}
+       {busy?"Читаю…":dragOn?"Відпусти — прочитаю всі чеки":zoneOn?"Тепер натисни ⌘V":"📋 Вставити сюди: клікни тут і натисни ⌘V, або перетягни файли (пакет PDF / фото)"}
        {/* порожнє редаговане поле поверх рамки — Safari на Mac дає вставити тільки в таке */}
        <div contentEditable suppressContentEditableWarning aria-label="Вставити чек"
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
@@ -304,6 +473,7 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
    </section>
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"0 4px 10px"}}><input type="checkbox" style={{width:"auto"}} checked={withPhotos} onChange={e=>setWithPhotos(e.target.checked)}/>Додати фото чеків у PDF</label>}
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
+   {cur.receipts.some(r=>r.photoPath||r.photoData)&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={receiptsPdf}>📥 Скачати всі чеки проєкту (PDF)</button></div>}
    {inputs}
  </>;
 }

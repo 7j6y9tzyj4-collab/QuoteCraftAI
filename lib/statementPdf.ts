@@ -85,3 +85,40 @@ export function statementFileName(s:Statement){
   const base=["Payment Statement",s.client,s.project].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g,"").trim();
   return `${base}.pdf`;
 }
+
+// Усі чеки проєкту окремим PDF: один чек на сторінку, підпис зверху, внизу підсумок.
+export async function buildReceiptsPdf(s:Statement,photos:ReceiptPhoto[]):Promise<Blob>{
+  const {jsPDF}=await import("jspdf");
+  const doc=new jsPDF({unit:"pt",format:"letter"});
+  const font=await setupPdfFonts(doc);
+  const M=36,W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const t=statementTotals(s);
+  photos.forEach((ph,i)=>{
+    if(i>0)doc.addPage();
+    doc.setFont(font,"bold");doc.setFontSize(10);doc.setTextColor(16,24,40);
+    doc.text([s.client,s.project].filter(Boolean).join(" — ")||"Receipts",M,M);
+    doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(90);
+    doc.text(`${i+1} / ${photos.length}`,W-M,M,{align:"right"});
+    doc.text(doc.splitTextToSize(ph.label,W-2*M) as string[],M,M+14);
+    const top=M+30,maxW=W-2*M,maxH=H-top-M;
+    const sc=Math.min(maxW/ph.w,maxH/ph.h);
+    const w=ph.w*sc,h=ph.h*sc;
+    try{doc.addImage(ph.dataUrl,"JPEG",M+(maxW-w)/2,top,w,h)}catch{/* пошкоджене фото — пропускаємо */}
+  });
+  if(!photos.length){doc.setFont(font,"normal");doc.setFontSize(11);doc.text("No receipt photos.",M,M)}
+  doc.addPage();
+  doc.setFont(font,"bold");doc.setFontSize(14);doc.setTextColor(0);
+  doc.text("Receipts summary",M,M+6);
+  let y=M+30;doc.setFont(font,"normal");doc.setFontSize(9.5);
+  for(const r of s.receipts){
+    if(y>H-M-30){doc.addPage();y=M}
+    doc.text(`${r.date}   ${r.store||"Receipt"}`,M,y);doc.text(money(Number(r.amount)||0),W-M,y,{align:"right"});y+=14;
+  }
+  doc.setDrawColor(16,24,40);doc.line(M,y-6,W-M,y-6);y+=8;
+  doc.setFont(font,"bold");doc.text(`Total materials (${s.receipts.length} receipts)`,M,y);doc.text(money(t.materials),W-M,y,{align:"right"});
+  return doc.output("blob");
+}
+export function receiptsFileName(s:Statement){
+  const base=["Receipts",s.client,s.project].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g,"").trim();
+  return `${base}.pdf`;
+}

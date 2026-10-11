@@ -4,29 +4,28 @@ import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
 export const isPdf=(f:File|Blob)=>f.type==="application/pdf"||("name" in f&&/\.pdf$/i.test((f as File).name));
 export const isReceiptFile=(f:File)=>f.type.startsWith("image/")||isPdf(f);
 
-// PDF → одна картинка: перші сторінки одна під одною, біле по краях обрізане.
-async function pdfToDataUrl(file:Blob):Promise<string>{
+// PDF: одна сторінка → полотно, біле по краях обрізане.
+async function openPdf(file:Blob){
   const pdfjs=await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc="/pdf.worker.min.mjs";
-  const doc=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-  const pages:HTMLCanvasElement[]=[];
-  for(let i=1;i<=Math.min(doc.numPages,3);i++){
-    const page=await doc.getPage(i);
-    const base=page.getViewport({scale:1});
-    const vp=page.getViewport({scale:Math.min(3,1100/base.width)});
-    const c=document.createElement("canvas");
-    c.width=Math.round(vp.width);c.height=Math.round(vp.height);
-    const ctx=c.getContext("2d")!;
-    ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
-    await page.render({canvas:c,canvasContext:ctx,viewport:vp}).promise;
-    pages.push(trimWhite(c));
-  }
-  await doc.destroy();
-  if(!pages.length)throw new Error("PDF порожній");
+  return pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+}
+async function renderPage(doc:any,i:number,width=1100):Promise<HTMLCanvasElement>{
+  const page=await doc.getPage(i);
+  const base=page.getViewport({scale:1});
+  const vp=page.getViewport({scale:Math.min(3,width/base.width)});
+  const c=document.createElement("canvas");
+  c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+  const ctx=c.getContext("2d")!;
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+  await page.render({canvas:c,canvasContext:ctx,viewport:vp}).promise;
+  return trimWhite(c);
+}
+// кілька полотен одне під одним → JPEG, який ще влазить в AI (≤750 КБ)
+function stackCanvases(pages:HTMLCanvasElement[],maxH=2400,maxW=1400):string{
   const w=Math.max(...pages.map(p=>p.width));
   const h=pages.reduce((s,p)=>s+p.height,0);
-  // не більше ~2400 px у висоту, щоб AI ще читав цифри
-  const scale=Math.min(1,2400/h,1400/w);
+  const scale=Math.min(1,maxH/h,maxW/w);
   const out=document.createElement("canvas");
   out.width=Math.max(1,Math.round(w*scale));out.height=Math.max(1,Math.round(h*scale));
   const o=out.getContext("2d")!;
@@ -34,8 +33,48 @@ async function pdfToDataUrl(file:Blob):Promise<string>{
   let y=0;for(const p of pages){o.drawImage(p,0,y*scale,p.width*scale,p.height*scale);y+=p.height}
   let url=out.toDataURL("image/jpeg",.8);
   if(url.length>750000)url=out.toDataURL("image/jpeg",.55);
-  if(url.length>750000)throw new Error("PDF завеликий — зроби скріншот чека");
+  if(url.length>750000)url=out.toDataURL("image/jpeg",.35);
+  if(url.length>750000)throw new Error("зображення завелике — зроби скріншот чека");
   return url;
+}
+
+// PDF → одна картинка: перші сторінки одна під одною (для одиночного чека / вставки).
+async function pdfToDataUrl(file:Blob):Promise<string>{
+  const doc=await openPdf(file);
+  const pages:HTMLCanvasElement[]=[];
+  for(let i=1;i<=Math.min(doc.numPages,3);i++)pages.push(await renderPage(doc,i));
+  await doc.destroy();
+  if(!pages.length)throw new Error("PDF порожній");
+  return stackCanvases(pages);
+}
+
+// Пакет чеків: PDF ділимо по сторінках — 1 сторінка = 1 чек. Фото — як є.
+export type ReceiptPage={key:string;file:File;name:string;page:number;pages:number;fromPdf:boolean;dataUrl:string};
+export const MAX_BATCH_PAGES=80;
+export async function prepareReceiptPages(f:File):Promise<ReceiptPage[]>{
+  const name=f.name||(isPdf(f)?"receipts.pdf":"receipt.jpg");
+  if(!isPdf(f)){
+    const p=await prepareJobPhoto(f);
+    return [{key:crypto.randomUUID(),file:f,name,page:1,pages:1,fromPdf:false,dataUrl:p.dataUrl}];
+  }
+  const doc=await openPdf(f);
+  try{
+    const n=Math.min(doc.numPages,MAX_BATCH_PAGES);
+    const out:ReceiptPage[]=[];
+    for(let i=1;i<=n;i++){
+      const c=await renderPage(doc,i,1300);
+      out.push({key:crypto.randomUUID(),file:f,name,page:i,pages:doc.numPages,fromPdf:true,dataUrl:stackCanvases([c])});
+    }
+    if(!out.length)throw new Error("PDF порожній");
+    return out;
+  }finally{await doc.destroy()}
+}
+
+// «З'єднати з попереднім»: довгий чек на 2 сторінки → одна картинка
+export async function joinReceiptImages(top:string,bottom:string):Promise<string>{
+  const load=(src:string)=>new Promise<HTMLImageElement>((ok,fail)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>fail(new Error("image"));i.src=src});
+  const toCanvas=(img:HTMLImageElement)=>{const c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext("2d")!.drawImage(img,0,0);return c};
+  return stackCanvases([toCanvas(await load(top)),toCanvas(await load(bottom))],3000,1400);
 }
 
 function trimWhite(c:HTMLCanvasElement):HTMLCanvasElement{

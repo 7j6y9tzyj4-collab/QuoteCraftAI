@@ -7,6 +7,7 @@ import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
+import BackupPanel from "@/components/BackupPanel";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
 import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
@@ -1779,6 +1780,7 @@ export default function QuoteCraftApp(){
 
 <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
   <span className="eyebrow">ACCOUNT</span>
+  <BackupPanel user={user}/>
   <h2>Change password</h2>
 
   <label>
