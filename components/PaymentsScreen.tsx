@@ -3,11 +3,11 @@ import {useEffect,useRef,useState,type DragEvent} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
-import {imageHash,findDuplicate,matchStatementByName,baseName} from "@/lib/receiptBatch";
+import {imageHash,findDuplicate,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import type {SavedCalc} from "@/lib/calcTypes";
-import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -58,6 +58,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const [dragOn,setDragOn]=useState(false);
  const listRef=useRef<Statement[]>([]);
  listRef.current=list;
+ const [ownMonth,setOwnMonth]=useState(()=>new Date().toLocaleDateString("sv-SE").slice(0,7)); // YYYY-MM
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
  useEffect(()=>{
@@ -85,7 +86,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  // естімейт з калькулятора → розрахунок (новий або оновлюємо роботу в існуючому)
  useEffect(()=>{
    if(!incoming||!ready)return;
-   const same=list.find(s=>(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
+   const same=list.find(s=>!s.own&&(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
      (incoming.client.trim()&&s.client.trim().toLowerCase()===incoming.client.trim().toLowerCase()&&s.project.trim().toLowerCase()===incoming.project.trim().toLowerCase()));
    if(same&&confirm(`Розрахунок «${same.client||"без імені"}» вже є. Замінити в ньому роботу на цей естімейт? Чеки й оплати залишаться.`)){
      persist(list.map(s=>s.id===same.id?{...s,labor:incoming.labor,quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,updatedAt:new Date().toISOString()}:s));
@@ -101,6 +102,10 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
    persist(list.map(s=>s.id===cur.id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
  }
  function create(){const s=newStatement();persist([s,...list]);setOpenId(s.id);setMsg("")}
+ function openOwn(){
+   if(!list.some(s=>s.id===OWN_ID))persist([newOwnStatement(),...list]);
+   setOpenId(OWN_ID);setMsg("");
+ }
  function removeFiles(paths:(string|undefined)[]){
    const ps=paths.filter(Boolean) as string[];
    if(ps.length&&user)supabase.storage.from(BUCKET).remove(ps).then(()=>{});
@@ -387,6 +392,12 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
    <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addReceiptPhotos(e.target.files,targetRef.current)}/>
  </>;
 
+ const clients=list.filter(s=>!s.own);
+ const ownSt=list.find(s=>s.id===OWN_ID);
+ const inMonth=(r:Receipt,m:string)=>normDate(r.date).slice(0,7)===m;
+ const catOf=(r:Receipt)=>r.category||guessOwnCategory(r.items);
+ function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}
+
  if(!cur){
    return <>{batchView}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
@@ -401,12 +412,74 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
-     {list.length===0?<p className="empty">Ще немає розрахунків.</p>:list.map(s=>{const t=statementTotals(s);return(
+     <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
+       <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
+       <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
+     </button>
+     {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:clients.map(s=>{const t=statementTotals(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}}>
          <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;
+ }
+
+ // ---- 🧰 Мої витрати: свої інструменти й матеріали, підсумок за місяць ----
+ if(cur.own){
+   const rs=cur.receipts.filter(r=>inMonth(r,ownMonth)||!normDate(r.date));
+   const byCat=OWN_CATS.map(c=>({c,sum:Math.round(rs.filter(r=>normDate(r.date)&&catOf(r)===c).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}));
+   const total=ownTotal(ownMonth);
+   const year=ownMonth.slice(0,4);
+   const yearTotal=Math.round(cur.receipts.filter(r=>normDate(r.date).startsWith(year)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100;
+   const monthName=new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long",year:"numeric"});
+   const summary=[`Мої витрати на роботу — ${monthName}`,...byCat.filter(x=>x.sum).map(x=>`${x.c}: ${money(x.sum)}`),`Разом: ${money(total)}`].join("\n");
+   const copySummary=async()=>{try{await navigator.clipboard.writeText(summary);setMsg("Скопійовано — встав у свою таблицю.")}catch{setMsg(summary)}};
+   const csv=()=>{
+     const q=(v:unknown)=>`"${String(v??"").replace(/"/g,'""')}"`;
+     const lines=[["Дата","Магазин","Що купив","Категорія","Сума"].map(q).join(","),
+       ...rs.filter(r=>normDate(r.date)).sort((a,b)=>normDate(a.date).localeCompare(normDate(b.date))).map(r=>[r.date,r.store,r.items,catOf(r),(Number(r.amount)||0).toFixed(2)].map(q).join(",")),
+       "",...byCat.map(x=>[q(""),q(""),q(""),q(x.c),x.sum.toFixed(2)].join(",")),[q(""),q(""),q(""),q("Разом"),total.toFixed(2)].join(",")];
+     const blob=new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv;charset=utf-8"});
+     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`Мої витрати ${ownMonth}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+   };
+   return <>
+     <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← Список</button><b>🧰 Мої витрати</b><span/></div>
+     {batchView}
+     <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+       <p className="muted" style={{marginTop:0}}>Інструменти й матеріали, які купуєш для себе (не для клієнта). Чеки — так само: фото, пакет PDF або вручну.</p>
+       <label>Місяць<input type="month" value={ownMonth} onChange={e=>e.target.value&&setOwnMonth(e.target.value)}/></label>
+       <div className="actions" style={{marginTop:10}}>
+         <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю…":"📷 Чек"}</button>
+         <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет (фото / PDF)</button>
+         <button className="secondary" onClick={()=>{const [y,m]=ownMonth.split("-");const now=new Date();const d=now.toLocaleDateString("sv-SE").startsWith(ownMonth)?today():`${m}/01/${y}`;update({receipts:[...cur.receipts,{id:uid(),date:d,store:"",items:"",amount:0}]})}}>＋ Вручну</button>
+       </div>
+       {rs.length===0&&<p className="empty">За {monthName} ще нічого.</p>}
+       {rs.sort((a,b)=>normDate(a.date).localeCompare(normDate(b.date))).map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:8,marginTop:10,alignItems:"start",paddingBottom:10,borderBottom:"1px solid #f2f4f7"}}>
+         <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
+         <div style={{display:"grid",gap:6,minWidth:0}}>
+           <div style={{display:"grid",gridTemplateColumns:"minmax(0,110px) minmax(0,1fr) minmax(0,100px)",gap:6}}>
+             <input value={r.date} style={!normDate(r.date)?{borderColor:"#f04438"}:undefined} onChange={e=>setLine<Receipt>("receipts",r.id,{date:e.target.value})}/>
+             <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
+             <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
+           </div>
+           <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 130px",gap:6}}>
+             <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
+             <select value={catOf(r)} onChange={e=>setLine<Receipt>("receipts",r.id,{category:e.target.value})}>{OWN_CATS.map(c=><option key={c}>{c}</option>)}</select>
+           </div>
+           {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}
+         </div>
+         <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
+       </div>)}
+     </section>
+     {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
+     <section className="total">
+       {byCat.filter(x=>x.sum).map(x=><div key={x.c}><span>{x.c}</span><span>{money(x.sum)}</span></div>)}
+       <div className="grand"><span>Разом за {monthName}</span><b>{money(total)}</b></div>
+       <div><span>З початку {year} року</span><span>{money(yearTotal)}</span></div>
+     </section>
+     <div className="actions noPrint"><button className="primary" onClick={copySummary}>📋 Скопіювати для таблиці</button><button className="secondary" onClick={csv}>⬇ CSV за місяць</button></div>
+     {inputs}
+   </>;
  }
 
  const t=statementTotals(cur);
