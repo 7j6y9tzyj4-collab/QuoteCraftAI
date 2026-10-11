@@ -1094,6 +1094,25 @@ export default function QuoteCraftApp(){
  };
 
 
+ // Вхід без пароля: лист з посиланням на пошту, натиснув — і ти всередині
+ const magicLink=async()=>{
+   if(!email.trim()){
+     setMessage("Введи email — на нього прийде посилання для входу.");
+     return;
+   }
+   setAuthLoading(true);
+   const {error}=await supabase.auth.signInWithOtp({
+     email:email.trim(),
+     options:{emailRedirectTo:window.location.origin,shouldCreateUser:false}
+   });
+   setAuthLoading(false);
+   if(error){
+     setMessage(/rate|seconds/i.test(error.message)?"Лист уже надіслано — зачекай хвилину і перевір пошту (і Спам).":error.message);
+     return;
+   }
+   setMessage("Готово! Відкрий пошту і натисни посилання в листі від Supabase — увійдеш без пароля.");
+ };
+
  const resetPassword=async()=>{
    if(!email.trim()){
      setMessage("Введи email.");
@@ -1589,6 +1608,15 @@ export default function QuoteCraftApp(){
          </div>
 
          {message&&<div className="statusMessage">{message}</div>}
+
+         <button
+           className="primary full"
+           onClick={magicLink}
+           disabled={authLoading}
+           style={{marginBottom:10}}
+         >
+           ✉️ Увійти без пароля — посилання на пошту
+         </button>
 
          <div className="actions">
            <button
