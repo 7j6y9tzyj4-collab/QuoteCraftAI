@@ -4,6 +4,12 @@ import type {PriceRule} from "@/lib/types";
 import {chicagoPrices,applyChicagoPrices} from "@/lib/chicagoPrices";
 import {categories,categoryOf,bounds,validPrice,matches} from "@/lib/priceCatalog";
 import {defaults} from "@/lib/defaults";
+import {raisePrices} from "@/lib/priceHistory";
+
+// знімок цін перед «Підняти на X%» — щоб можна було відкотити
+const SNAP="qc_prices_before_raise";
+type Snap={date:string;pct:number;prices:PriceRule[]};
+const readSnap=():Snap|null=>{try{const v=JSON.parse(localStorage.getItem(SNAP)||"null");return v&&Array.isArray(v.prices)?v:null}catch{return null}};
 
 type Props={prices:PriceRule[];onSave:(prices:PriceRule[])=>Promise<string>};
 const copy=(prices:PriceRule[])=>prices.map(p=>({...p,aliases:[...p.aliases]}));
@@ -18,6 +24,18 @@ export default function PriceEditor({prices,onSave}:Props){
  const [status,setStatus]=useState("");
  const [resetOpen,setResetOpen]=useState(false);
  const [invalid,setInvalid]=useState<string[]>([]);
+ const [pct,setPct]=useState(5);
+ const [withMat,setWithMat]=useState(false);
+ const [preview,setPreview]=useState<PriceRule[]|null>(null);
+ const [snap,setSnap]=useState<Snap|null>(null);
+ useEffect(()=>{setSnap(readSnap())},[]);
+ function applyRaise(){
+  if(!preview)return;
+  const s:Snap={date:new Date().toISOString(),pct,prices:copy(prices)};
+  try{localStorage.setItem(SNAP,JSON.stringify(s))}catch{/* без відкату на цьому пристрої */}
+  setSnap(s);replace(preview);setPreview(null);
+  setStatus(`Ціни підняті на ${pct}% у формі. Натисни «Зберегти ціни», щоб застосувати.`);
+ }
  const active=useRef(true);
  useEffect(()=>{active.current=true;return()=>{active.current=false}},[]);
  useEffect(()=>{if(!dirty&&!saving)setDraft(copy(prices))},[prices,dirty,saving]);
@@ -43,6 +61,21 @@ export default function PriceEditor({prices,onSave}:Props){
   <p className="muted">Ставки для New estimate. Редагуй ціни й натисни «Зберегти ціни». Уже створені кошториси не перераховуються.</p>
   <p className="muted">Базові ставки: готове дзеркало — $75; звичайний світильник на готовому підключенні — $125. Нова проводка та складний монтаж рахуються окремо. Це узгоджені ставки, а не автоматична синхронізація з Homewyse.</p>
   <details><summary>Звідки беруться ціни</summary><p>Базове джерело — Homewyse.com (національні середні), кожна позиція звірена з чикагським джерелом: Angi Chicago, Homeyou Chicago, Contractor+ Chicago, iConduit Electric, Plumbing Price Guide Chicago та інші. Джерело, діапазон і дату перевірки видно під кожною позицією окремо.</p><p>Частину позицій раніше звірено з прайсами місцевих handyman-компаній (Homer Fixed It, 5 Talents Renovations) — це окремі пропозиції, а не статистика всього ринку. Там, де чикагської ціни саме по цій роботі не опубліковано, у джерелі це прямо сказано, а ставку пораховано з місцевої погодинної.</p><p>Оновлення не автоматичне. У Homer мінімальний виїзд $250 — це умова тієї компанії, не доплата до кожної позиції нашого кошторису; свої умови виїзду враховуй окремо.</p></details>
+  <details style={{margin:"10px 0"}} open={!!preview}>
+   <summary><b>⬆ Підняти всі ціни на X%</b></summary>
+   <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"end",marginTop:8}}>
+    <label style={{width:110}}>На скільки, %<input type="number" step="0.5" value={pct} onChange={e=>{setPct(Number(e.target.value)||0);setPreview(null)}}/></label>
+    <label style={{display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" style={{width:"auto"}} checked={withMat} onChange={e=>{setWithMat(e.target.checked);setPreview(null)}}/>і матеріали</label>
+    <button className="secondary" disabled={saving||!pct} onClick={()=>setPreview(raisePrices(draft,pct,withMat))}>Переглянути</button>
+   </div>
+   {preview&&<div className="statusMessage" style={{marginTop:8}}>
+    <p>Праця{withMat?" і матеріали":""} {pct>0?"+":""}{pct}% для {preview.filter((p,i)=>p.rate!==draft[i].rate||(p.materialRate||0)!==(draft[i].materialRate||0)).length} позицій. Наприклад:</p>
+    <ul style={{margin:"6px 0",paddingLeft:18}}>{preview.map((p,i)=>({p,o:draft[i]})).filter(x=>x.p.rate!==x.o.rate).slice(0,6).map(x=><li key={x.p.id} style={{fontSize:14}}>{x.p.name}: ${x.o.rate} → <b>${x.p.rate}</b>/{x.p.unit}</li>)}</ul>
+    <small className="muted">Округлення: від $20 — до долара, $5–20 — до 50¢. Старі ціни запам'ятаю — можна буде відкотити.</small>
+    <div className="actions" style={{marginTop:8}}><button className="primary" onClick={applyRaise}>Застосувати</button><button className="secondary" onClick={()=>setPreview(null)}>Скасувати</button></div>
+   </div>}
+   {snap&&!preview&&<button className="secondary full" style={{marginTop:8}} disabled={saving} onClick={()=>{if(confirm(`Повернути ціни, які були до підвищення на ${snap.pct}% (${new Date(snap.date).toLocaleDateString("uk-UA")})? Потім натисни «Зберегти ціни».`)){replace(snap.prices);setStatus("Повернуто ціни до підвищення. Натисни «Зберегти ціни».")}}}>↩ Відкотити підвищення на {snap.pct}% від {new Date(snap.date).toLocaleDateString("uk-UA")}</button>}
+  </details>
   <button className="secondary full" disabled={saving} onClick={()=>replace(applyChicagoPrices(draft))}>Застосувати перевірені ставки Чикаго ({Object.values(chicagoPrices).filter(r=>!r.keepOwnRate).length} позицій)</button>
   <div className="actions">
    <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>recommended.has(p.id)?{...p,rate:defaults.find(d=>d.id===p.id)!.rate,rateMin:undefined,rateMax:undefined}:p))}>Застосувати $75 / $125</button>

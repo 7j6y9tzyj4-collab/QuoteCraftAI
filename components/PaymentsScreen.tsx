@@ -5,6 +5,8 @@ import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
 import {imageHash,findDuplicate,matchStatementByName,baseName} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
+import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
+import type {SavedCalc} from "@/lib/calcTypes";
 import {newStatement,statementTotals,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
@@ -34,7 +36,7 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
-export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User|null;incoming?:Statement|null;onIncomingDone?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{user:User|null;calcs?:SavedCalc[];incoming?:Statement|null;onIncomingDone?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const [msg,setMsg]=useState("");
@@ -86,7 +88,7 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
    const same=list.find(s=>(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
      (incoming.client.trim()&&s.client.trim().toLowerCase()===incoming.client.trim().toLowerCase()&&s.project.trim().toLowerCase()===incoming.project.trim().toLowerCase()));
    if(same&&confirm(`Розрахунок «${same.client||"без імені"}» вже є. Замінити в ньому роботу на цей естімейт? Чеки й оплати залишаться.`)){
-     persist(list.map(s=>s.id===same.id?{...s,labor:incoming.labor,quoteToken:incoming.quoteToken||s.quoteToken,updatedAt:new Date().toISOString()}:s));
+     persist(list.map(s=>s.id===same.id?{...s,labor:incoming.labor,quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,updatedAt:new Date().toISOString()}:s));
      setOpenId(same.id);setMsg("Роботу оновлено з естімейту.");
    }else{
      persist([incoming,...list]);setOpenId(incoming.id);setMsg("Створено з естімейту. Додавай чеки й оплати.");
@@ -408,6 +410,40 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
  }
 
  const t=statementTotals(cur);
+ // ---- план / факт ----
+ const linked=findCalcFor(cur,calcs);
+ const plan=linked?planFromCalc(linked):null;
+ const matDiff=plan&&plan.materials>0?Math.round((t.materials/plan.materials-1)*1000)/10:null;
+ const earned=Math.round((t.paid-t.materials)*100)/100;
+ const hours=Number(cur.hours)||0;
+ const pf=(label:string,planV:number|null,fact:number,warn=false,note?:string)=><div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,padding:"6px 0",borderBottom:"1px solid #f2f4f7",fontSize:14}}>
+   <span>{label}{note&&<small className="muted" style={{display:"block"}}>{note}</small>}</span>
+   <span style={{textAlign:"right"}}>{planV===null?"—":money(planV)}</span>
+   <b style={{textAlign:"right",color:warn?"#b42318":undefined}}>{money(fact)}</b>
+ </div>;
+ const planView=<section className="panel">
+   <div className="head"><h2>📊 План / факт</h2></div>
+   <label style={{marginTop:6}}><small className="muted">Естімейт для порівняння</small>
+     <select value={linked?.id||(cur.calcId==="none"?"none":"")} onChange={e=>update({calcId:e.target.value||undefined})}>
+       <option value="">{linked?"":"— вибери естімейт —"}</option>
+       {calcs.map(c=><option key={c.id} value={c.id}>{c.client||"Без імені"}{c.project?` — ${c.project}`:""} · {money(c.total)} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</option>)}
+       <option value="none">Без естімейту</option>
+     </select>
+   </label>
+   <div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,marginTop:10,fontSize:12,color:"#667085"}}><span/><span style={{textAlign:"right"}}>за естімейтом</span><span style={{textAlign:"right"}}>факт</span></div>
+   {pf("Матеріали",plan?plan.materials:null,t.materials,matDiff!==null&&matDiff>=15,matDiff!==null?`чеки ${matDiff>=0?"+":""}${matDiff}% від естімейту${matDiff>=15?" ⚠":""}`:undefined)}
+   {pf("Робота",plan?plan.labor:null,t.labor,false,"у розрахунку")}
+   {pf("Отримано від клієнта",null,t.paid)}
+   {pf(t.balance>=0?"Залишок до оплати":"Переплата",null,Math.abs(t.balance))}
+   <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,padding:"10px 0 4px",fontSize:15}}>
+     <span><b>Твій заробіток</b><small className="muted" style={{display:"block"}}>отримано − чеки</small></span>
+     <b style={{textAlign:"right",color:earned>=0?"#067647":"#b42318"}}>{money(earned)}</b>
+   </div>
+   <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,alignItems:"center",marginTop:6}}>
+     <label style={{margin:0}}>Годин роботи<input type="number" min="0" step="0.5" value={cur.hours??""} placeholder="напр. 32" onChange={e=>update({hours:e.target.value===""?undefined:Math.max(0,Number(e.target.value)||0)})}/></label>
+     {hours>0&&<span style={{textAlign:"right",fontSize:14}}>робота ÷ год<b style={{display:"block",fontSize:16}}>{money(t.labor/hours)}/год</b></span>}
+   </div>
+ </section>;
  return <>
    <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← Список</button><b>Розрахунок</b><button onClick={remove} style={{color:"#b42318"}}>Видалити</button></div>
    <section className="panel grid">
@@ -460,6 +496,8 @@ export default function PaymentsScreen({user,incoming,onIncomingDone}:{user:User
        <button className="remove" onClick={()=>delLine("payments",p.id)}>×</button>
      </div>)}
    </section>
+
+   {planView}
 
    <section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>
 

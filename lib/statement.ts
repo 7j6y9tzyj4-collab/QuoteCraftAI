@@ -17,6 +17,10 @@ export type Statement={
   updatedAt:string;
   /** з якого естімейту (посилання клієнту /q/<token>) */
   quoteToken?:string;
+  /** з якого збереженого естімейту калькулятора (план/факт); "none" — не прив'язувати */
+  calcId?:string;
+  /** години роботи — щоб рахувати реальну $/год */
+  hours?:number;
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";

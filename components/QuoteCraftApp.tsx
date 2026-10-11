@@ -8,6 +8,7 @@ import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
+import PriceHistory from "@/components/PriceHistory";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
 import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
 import ServicePicker from "@/components/ServicePicker";
@@ -568,7 +569,7 @@ export default function QuoteCraftApp(){
  function currentCalc(id:string):SavedCalc{
    return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes||undefined};
  }
- function saveCalc(silent=false){
+ function saveCalc(silent=false):string|undefined{
    if(!calcItems.length){if(!silent)setCalcMessage("Спочатку додай позиції.");return}
    const id=calcSavedId||crypto.randomUUID();
    const s=currentCalc(id);
@@ -576,6 +577,7 @@ export default function QuoteCraftApp(){
    pushCalc(s);
    setCalcSavedId(id);setCalcSavedAt(s.updatedAt);
    if(!silent)setCalcMessage("Збережено. Знайдеш у вкладці Estimates → «З калькулятора».");
+   return id;
  }
  // автозбереження збереженого естімейту після змін (через 1.5 с)
  const calcAutoRef=useRef(false);
@@ -649,7 +651,8 @@ export default function QuoteCraftApp(){
    if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
    const r2=(n:number)=>Math.round(n*100)/100;
    const s=newStatement();
-   s.client=calcClient;s.project=calcProject;s.quoteToken=calcShareToken||undefined;
+   const cid=calcSavedId||saveCalc(true); // план/факт бере цифри зі збереженого естімейту
+   s.client=calcClient;s.project=calcProject;s.quoteToken=calcShareToken||undefined;s.calcId=cid||undefined;
    s.labor=calcItems.filter(li=>!li.optional).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
    if(calcDiscount>0)s.labor.push({id:crypto.randomUUID(),description:calcDiscountLabel,amount:-r2(calcDiscount)});
    const mat=r2(calcTotalsValue.materials+calcTotalsValue.supplies+calcTotalsValue.finish);
@@ -1803,11 +1806,11 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen user={user} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)}/>}
+   {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small></button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
    {screen==="saved"&&all.length>0&&<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
-   {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
+   {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceHistory saved={calcSaved} old={all} prices={prices}/><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
 
 <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
   <span className="eyebrow">ACCOUNT</span>
