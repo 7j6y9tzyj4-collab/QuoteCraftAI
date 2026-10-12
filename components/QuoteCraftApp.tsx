@@ -8,6 +8,8 @@ import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
+import TiersPanel,{TierToggles} from "@/components/TiersPanel";
+import {tierSummary,type Tiers} from "@/lib/tiers";
 import UpdateButton from "@/components/UpdateButton";
 import PriceHistory from "@/components/PriceHistory";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
@@ -144,7 +146,7 @@ export default function QuoteCraftApp(){
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
  const [calcShareToken,setCalcShareToken]=useState<string>("");
- const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null}|null>(null);
+ const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [calcLocationMultiplier,setCalcLocationMultiplier]=useState(1);
  // Пакетна знижка — на працю, як у кошторисах власника (матеріали не знижуються)
@@ -156,6 +158,7 @@ export default function QuoteCraftApp(){
  const [calcSavedId,setCalcSavedId]=useState("");
  const [calcDepositPct,setCalcDepositPct]=useState(25);
  const [calcMeasurementNotes,setCalcMeasurementNotes]=useState("");
+ const [calcTiers,setCalcTiers]=useState<Tiers|undefined>(undefined);
  const [calcPhotos,setCalcPhotos]=useState<JobPhoto[]>([]);
  const [calcPhotoBusy,setCalcPhotoBusy]=useState(false);
  const calcPhotoInput=useRef<HTMLInputElement|null>(null);
@@ -278,7 +281,7 @@ export default function QuoteCraftApp(){
    setCalcItems([]);clearCalcFields();
  }
  function clearCalcFields(){
-   setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);setCalcSavedId("");setCalcSavedAt("");setCalcDepositPct(25);setCalcMeasurementNotes("");setCalcPhotos([]);setCalcDiscountValue(0);
+   setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);setCalcSavedId("");setCalcSavedAt("");setCalcDepositPct(25);setCalcMeasurementNotes("");setCalcPhotos([]);setCalcDiscountValue(0);setCalcTiers(undefined);
  }
 
  function needsCalcRecorderFallback(){
@@ -568,7 +571,7 @@ export default function QuoteCraftApp(){
  }
  function storeCalcList(next:SavedCalc[]){setCalcSaved(next);try{localStorage.setItem(CSK,JSON.stringify(next))}catch{}}
  function currentCalc(id:string):SavedCalc{
-   return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes||undefined};
+   return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes||undefined,tiers:calcTiers};
  }
  function saveCalc(silent=false):string|undefined{
    if(!calcItems.length){if(!silent)setCalcMessage("Спочатку додай позиції.");return}
@@ -588,14 +591,14 @@ export default function QuoteCraftApp(){
    const t=setTimeout(()=>saveCalc(true),1500);
    return()=>clearTimeout(t);
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcDepositPct,calcMeasurementNotes]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcDepositPct,calcMeasurementNotes,calcTiers]);
  function openCalc(s:SavedCalc){
    if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Відкрити інший замість нього?"))return;
    calcAutoRef.current=false;
    setCalcItems(s.items||[]);setCalcClient(s.client||"");setCalcProject(s.project||"");setCalcLocationMultiplier(s.locationMultiplier??1);
    setCalcNotes(s.notes??DEFAULT_CALC_NOTES);setCalcDiscountType(s.discountType??"percent");setCalcDiscountValue(Number(s.discountValue)||0);
    setCalcIncludeFinish(s.includeFinish!==false);setCalcShareToken(s.shareToken||"");setCalcQuote(null);
-   setCalcDepositPct(s.depositPct??25);setCalcMeasurementNotes(s.measurementNotes||"");setCalcPhotos([]);
+   setCalcDepositPct(s.depositPct??25);setCalcMeasurementNotes(s.measurementNotes||"");setCalcPhotos([]);setCalcTiers(s.tiers);
    setCalcSavedId(s.id);setCalcSavedAt(s.updatedAt);setCalcPrompt("");setCalcMessage("");
    setScreen("calc");
  }
@@ -613,8 +616,13 @@ export default function QuoteCraftApp(){
  // ---- посилання клієнту (/q/<token>) ----
  useEffect(()=>{
    if(screen!=="calc"||!calcShareToken||!user){if(!calcShareToken)setCalcQuote(null);return}
-   supabase.from("shared_quotes").select("status,viewed_at,accepted_at,accepted_name").eq("token",calcShareToken).maybeSingle()
-     .then(({data}:{data:any})=>setCalcQuote(data||null));
+   supabase.from("shared_quotes").select("status,viewed_at,accepted_at,accepted_name,data").eq("token",calcShareToken).maybeSingle()
+     .then(({data}:{data:any})=>{
+       if(!data){setCalcQuote(null);return}
+       const chosenTier=typeof data.data?.chosenTier==="number"?data.data.chosenTier:undefined;
+       setCalcQuote({status:data.status,viewed_at:data.viewed_at,accepted_at:data.accepted_at,accepted_name:data.accepted_name,chosenTier});
+       if(chosenTier!==undefined)setCalcTiers(t=>t&&t.chosen!==chosenTier?{...t,chosen:chosenTier}:t);
+     });
  },[screen,calcShareToken,user]);
  async function shareCalcLink(){
    if(!user){setCalcMessage("Увійди в акаунт, щоб надіслати посилання клієнту.");return}
@@ -622,7 +630,8 @@ export default function QuoteCraftApp(){
    if(calcQuote?.status==="accepted"&&!confirm("Клієнт уже прийняв цей естімейт. Оновити сторінку за тим самим посиланням новими цифрами?"))return;
    setCalcPdfBusy(true);setCalcMessage("");
    try{
-     const data=buildQuoteSnapshot({client:calcClient,project:calcProject,items:calcItems,locationMultiplier:calcLocationMultiplier,includeFinish:calcIncludeFinish,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes});
+     const data=buildQuoteSnapshot({client:calcClient,project:calcProject,items:calcItems,locationMultiplier:calcLocationMultiplier,includeFinish:calcIncludeFinish,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes,tiers:calcTiers,discountType:calcDiscountType,discountValue:calcDiscountValue});
+     if(calcQuote?.status==="accepted"&&typeof calcTiers?.chosen==="number")data.chosenTier=calcTiers.chosen; // не губимо вибір клієнта
      let token=calcShareToken;
      if(token){
        const {data:row,error}=await supabase.from("shared_quotes").update({data,updated_at:new Date().toISOString()}).eq("token",token).select("token").maybeSingle();
@@ -651,13 +660,25 @@ export default function QuoteCraftApp(){
  function sendCalcToPayments(){
    if(!calcItems.length){setCalcMessage("Спочатку додай позиції.");return}
    const r2=(n:number)=>Math.round(n*100)/100;
+   // три варіанти: беремо той, який обрав клієнт (або питаємо)
+   let items=calcItems,totalsV=calcTotalsValue,disc=calcDiscount;
+   if(calcTiers?.enabled){
+     let ti=calcTiers.chosen;
+     if(typeof ti!=="number"){
+       const a=window.prompt(`Який варіант погодив клієнт?\n1 — ${calcTiers.names[0]}\n2 — ${calcTiers.names[1]}\n3 — ${calcTiers.names[2]}`,"2");
+       const n=Number(a);if(!(n>=1&&n<=3))return;
+       ti=n-1;setCalcTiers({...calcTiers,chosen:ti});
+     }
+     const x=tierSummary(calcItems,calcTiers,ti,{loc:calcLocationMultiplier,includeFinish:calcIncludeFinish,discountType:calcDiscountType,discountValue:calcDiscountValue});
+     items=x.items;totalsV=x.totals;disc=x.discount;
+   }
    const s=newStatement();
    const cid=calcSavedId||saveCalc(true); // план/факт бере цифри зі збереженого естімейту
    s.client=calcClient;s.project=calcProject;s.quoteToken=calcShareToken||undefined;s.calcId=cid||undefined;
-   s.labor=calcItems.filter(li=>!li.optional).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
-   if(calcDiscount>0)s.labor.push({id:crypto.randomUUID(),description:calcDiscountLabel,amount:-r2(calcDiscount)});
-   const mat=r2(calcTotalsValue.materials+calcTotalsValue.supplies+calcTotalsValue.finish);
-   if(mat>0&&!confirm(`Робота ${money(r2(calcTotalsValue.labor-calcDiscount))} переноситься в Оплати.\n\nМатеріали в естімейті: ${money(mat)}.\nOK — матеріали клієнт платить за чеками (додаватимеш чеки).\nСкасувати — додати матеріали з естімейту однією сумою.`)){
+   s.labor=items.filter(li=>!li.optional).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
+   if(disc>0)s.labor.push({id:crypto.randomUUID(),description:calcDiscountLabel,amount:-r2(disc)});
+   const mat=r2(totalsV.materials+totalsV.supplies+totalsV.finish);
+   if(mat>0&&!confirm(`Робота ${money(r2(totalsV.labor-disc))} переноситься в Оплати.\n\nМатеріали в естімейті: ${money(mat)}.\nOK — матеріали клієнт платить за чеками (додаватимеш чеки).\nСкасувати — додати матеріали з естімейту однією сумою.`)){
      s.labor.push({id:crypto.randomUUID(),description:"Materials (per estimate)",amount:mat});
    }
    setPayIncoming(s);setScreen("pay");
@@ -1764,6 +1785,7 @@ export default function QuoteCraftApp(){
           <label>Оздоблення, $/од<input type="number" min="0" step="0.01" value={li.finishRate||0} onChange={e=>updateCalcItem(li.id,{finishRate:Math.max(0,Number(e.target.value)||0),finishOwn:true,minPrice:0})}/></label>
           <div className="linetotal"><span>{li.optional?"Опційно":"Total"}</span><b>{money(c.lineTotal)}</b></div>
           <label className="noPrint" style={{display:"flex",gap:6,alignItems:"center",gridColumn:"1/-1",fontWeight:600}}><input type="checkbox" style={{width:"auto"}} checked={!!li.optional} onChange={e=>updateCalcItem(li.id,{optional:e.target.checked})}/>Опційно — показати окремо, не додавати в суму</label>
+          {calcTiers?.enabled&&<TierToggles li={li} onChange={tiers=>updateCalcItem(li.id,{tiers})}/>}
          </div>
          <small>{li.optional&&"◇ опційно, не в сумі · "}{li.laborOwn&&"✎ своя ставка · "}Праця {money(c.labor)} · Матеріали {money(c.materials)}{c.finish>0?<> · Оздоблення {money(c.finish)}</>:null}{c.supplies>0?<> · Supplies {money(c.supplies)}</>:null} · Range {money(c.low)}–{money(c.high)}</small>
         </article>;
@@ -1787,6 +1809,7 @@ export default function QuoteCraftApp(){
      </div>{calcNotes!==DEFAULT_CALC_NOTES&&<button className="secondary full noPrint" onClick={()=>setCalcNotes(DEFAULT_CALC_NOTES)}>Повернути стандартний текст умов</button>}</section>
 
     <label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"8px 0"}}><input type="checkbox" checked={calcIncludeFinish} onChange={e=>setCalcIncludeFinish(e.target.checked)}/>Включити базове оздоблення (плитка, прилади, світильники за цінами Home Depot / Floor &amp; Decor)</label>
+    <TiersPanel tiers={calcTiers} setTiers={setCalcTiers} items={calcItems} loc={calcLocationMultiplier} includeFinish={calcIncludeFinish} discountType={calcDiscountType} discountValue={calcDiscountValue} depositPct={calcDepositPct}/>
     <section className="total">
      <div><span>Labor</span><span>{money(calcTotalsValue.labor)}</span></div>
      <div><span>Materials</span><span>{money(calcTotalsValue.materials)}</span></div>
@@ -1803,7 +1826,7 @@ export default function QuoteCraftApp(){
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
-    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
+    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 

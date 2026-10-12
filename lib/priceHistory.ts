@@ -4,6 +4,7 @@ import type {Estimate,PriceRule} from "./types";
 import type {Statement} from "./statement";
 import {computeCalcLine,computeCalcTotals} from "./calcEngine";
 import {legacyIdMap} from "./catalog";
+import {tierSummary} from "./tiers";
 
 export type PriceRec={taskId:string;name:string;unit:string;date:string;client:string;project:string;qty:number;rate:number;labor:number;source:"calc"|"old"};
 const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
@@ -56,6 +57,10 @@ export function raisePrices(prices:PriceRule[],pct:number,withMaterials:boolean)
 
 // План з естімейту: робота (зі знижкою) і матеріали (+supplies +оздоблення)
 export function planFromCalc(s:SavedCalc){
+  if(s.tiers?.enabled&&typeof s.tiers.chosen==="number"){
+    const x=tierSummary(s.items||[],s.tiers,s.tiers.chosen,{loc:s.locationMultiplier??1,includeFinish:s.includeFinish!==false,discountType:s.discountType,discountValue:s.discountValue});
+    return {labor:r2(x.totals.labor-x.discount),materials:r2(x.totals.materials+x.totals.supplies+x.totals.finish),total:x.total};
+  }
   const t=computeCalcTotals(s.items||[],s.locationMultiplier??1,s.includeFinish!==false);
   const v=Math.max(0,Number(s.discountValue)||0);
   const disc=Math.min(s.discountType==="amount"?v:t.labor*v/100,t.labor);

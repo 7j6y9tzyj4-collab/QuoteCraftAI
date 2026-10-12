@@ -46,6 +46,8 @@ export type CalcItem={
   laborOwn?:boolean;
   /** оздоблення змінене вручну в цьому рядку */
   finishOwn?:boolean;
+  /** Good/Better/Best: у яких варіантах є цей рядок (0,1,2); нема — у всіх */
+  tiers?:number[];
 };
 
 export type CalcTotals={
@@ -74,6 +76,8 @@ export type CalcDraft={
   depositPct?:number;
   /** підтверджені приблизні розміри з фото — естімейт попередній */
   measurementNotes?:string;
+  /** три варіанти Good / Better / Best */
+  tiers?:import("./tiers").Tiers;
 };
 
 /** збережений естімейт з калькулятора */

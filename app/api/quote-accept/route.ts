@@ -17,11 +17,19 @@ export async function POST(req:NextRequest){
       if(e.status!=="accepted"){const {error}=await supabaseAdmin.from("estimates").update({status:"accepted"}).eq("share_token",token);if(error)throw error}
       return NextResponse.json({accepted_at:new Date().toISOString()});
     }
-    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at").eq("token",token).maybeSingle();
+    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at,data").eq("token",token).maybeSingle();
     if(!data)return NextResponse.json({error:"Estimate not found"},{status:404});
     if(data.status==="accepted")return NextResponse.json({accepted_at:data.accepted_at});
     const accepted_at=new Date().toISOString();
-    const {error}=await supabaseAdmin.from("shared_quotes").update({status:"accepted",accepted_at,accepted_name:name}).eq("token",token);
+    const upd:Record<string,unknown>={status:"accepted",accepted_at,accepted_name:name};
+    // Good / Better / Best — запам'ятовуємо, який варіант обрав клієнт
+    const tiers=(data.data as any)?.tiers;
+    if(Array.isArray(tiers)&&tiers.length){
+      const tier=Number(body?.tier);
+      if(!Number.isInteger(tier)||tier<0||tier>=tiers.length)return NextResponse.json({error:"Please choose an option."},{status:400});
+      upd.data={...(data.data as object),chosenTier:tier};
+    }
+    const {error}=await supabaseAdmin.from("shared_quotes").update(upd).eq("token",token);
     if(error)throw error;
     return NextResponse.json({accepted_at});
   }catch(e){

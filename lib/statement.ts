@@ -7,6 +7,7 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string};
 export type Payment={id:string;date:string;amount:number;method:string};
+export type ScheduleStep={id:string;label:string;amount:number;due?:string};
 export type Statement={
   id:string;
   client:string;
@@ -24,6 +25,10 @@ export type Statement={
   hours?:number;
   /** «Мої витрати»: мої інструменти й матеріали для роботи (не клієнтський розрахунок) */
   own?:boolean;
+  /** графік оплат: депозит / етапи / фінал */
+  schedule?:ScheduleStep[];
+  /** доплати (change orders) */
+  changes?:import("./changeOrder").ChangeOrder[];
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";

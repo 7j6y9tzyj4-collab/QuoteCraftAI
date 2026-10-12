@@ -1,7 +1,9 @@
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
 import type {QuoteSnapshot} from "@/lib/sharedQuote";
+import type {ChangeSnapshot} from "@/lib/changeOrder";
 import PrintButton from "@/app/e/[token]/PrintButton";
 import AcceptBox from "./AcceptBox";
+import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 
 export const dynamic="force-dynamic";
@@ -18,6 +20,33 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   }
   if(data.status==="sent"){
     await supabaseAdmin.from("shared_quotes").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("token",token);
+  }
+  if((data.data as any)?.kind==="change"){
+    const c=data.data as ChangeSnapshot;
+    return (
+      <main className="shared">
+        <div className="sharedCard">
+          <div className="sharedHead">
+            <div>
+              <span className="sharedEyebrow">{c.company}</span>
+              <h1>Change Order #{c.no}{c.title?` — ${c.title}`:""}</h1>
+              {c.client&&<p>Client: <strong>{c.client}</strong></p>}
+              {c.project&&<p>Project: {c.project}</p>}
+              <p>Date: {c.date}</p>
+              {c.contact&&<p>{c.contact}</p>}
+            </div>
+            <PrintButton/>
+          </div>
+          <table className="sharedTable">
+            <thead><tr><th>Additional work</th><th style={{textAlign:"right"}}>Amount</th></tr></thead>
+            <tbody>{c.lines.map((l,i)=><tr key={i}><td>{l.description}</td><td style={{textAlign:"right"}}>{money(l.amount)}</td></tr>)}</tbody>
+          </table>
+          <div className="sharedTotals"><div className="grand"><span>Change order total</span><span>{money(c.total)}</span></div></div>
+          {c.notes&&<p style={{whiteSpace:"pre-wrap",fontSize:14,color:"#344054",marginTop:16}}>{c.notes}</p>}
+          <AcceptBox token={token} change accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>
+        </div>
+      </main>
+    );
   }
   const q=data.data as QuoteSnapshot;
   const t=q.totals;
@@ -38,6 +67,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
         </div>
         {q.measurementNotes&&<div style={{margin:"0 0 16px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}><strong>{PRELIMINARY_NOTE}</strong><p style={{whiteSpace:"pre-wrap",margin:"8px 0 0",color:"#667085"}}>Approximate dimensions: {q.measurementNotes}</p></div>}
 
+        {q.tiers?.length?<TierAccept token={token} tiers={q.tiers} chosen={q.chosenTier} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>:<>
         <div style={{overflowX:"auto"}}>
         <table className="sharedTable">
           <thead><tr><th>Description</th><th>Qty</th><th style={{textAlign:"right"}}>Labor</th><th style={{textAlign:"right"}}>Materials</th>{showFinish&&<th style={{textAlign:"right"}}>Finish</th>}<th style={{textAlign:"right"}}>Total</th></tr></thead>
@@ -62,6 +92,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
           <div className="grand"><span>Total</span><span>{money(t.total)}</span></div>
           {(t.deposit||0)>0&&<div><span>Required deposit ({t.depositPct}%)</span><strong>{money(t.deposit||0)}</strong></div>}
         </div>
+        </>}
 
         {q.optional.length>0&&<>
           <h3 style={{marginTop:24}}>Optional items (not included in the total)</h3>
@@ -73,7 +104,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
 
         {q.notes&&<><h3 style={{marginTop:24}}>Notes &amp; exclusions</h3><p style={{whiteSpace:"pre-wrap",fontSize:14,color:"#344054"}}>{q.notes}</p></>}
 
-        <AcceptBox token={token} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>
+        {!q.tiers?.length&&<AcceptBox token={token} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>}
       </div>
     </main>
   );

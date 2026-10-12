@@ -1,6 +1,7 @@
 import {computeCalcLine} from "./calcEngine";
 import type {CalcItem,CalcTotals} from "./calcTypes";
 import {COMPANY_NAME,COMPANY_CONTACT} from "./calcPdf";
+import {tierSummary,type Tiers} from "./tiers";
 
 // Знімок естімейту з калькулятора для сторінки клієнта (/q/<token>).
 // Зберігаємо готові суми, щоб посилання не змінювалось, коли міняються ціни в Prices.
@@ -15,13 +16,17 @@ export type QuoteSnapshot={
   notes:string;
   /** приблизні розміри з фото — попередній естімейт */
   measurementNotes?:string;
+  /** три варіанти: клієнт обирає один і приймає */
+  tiers?:{name:string;lines:QuoteLine[];totals:{labor:number;materials:number;finish:number;discount:number;total:number;deposit:number}}[];
+  /** який варіант обрав клієнт (0,1,2) */
+  chosenTier?:number;
 };
 export type QuoteStatus="sent"|"viewed"|"accepted";
 
 export const unitLabel=(u:string)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"lin ft",room:"room"} as Record<string,string>)[u]||u;
 const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
 
-export function buildQuoteSnapshot(input:{client:string;project:string;items:CalcItem[];locationMultiplier:number;includeFinish:boolean;totals:CalcTotals;discount:number;discountLabel:string;grandTotal:number;notes:string;depositPct?:number;measurementNotes?:string}):QuoteSnapshot{
+export function buildQuoteSnapshot(input:{client:string;project:string;items:CalcItem[];locationMultiplier:number;includeFinish:boolean;totals:CalcTotals;discount:number;discountLabel:string;grandTotal:number;notes:string;depositPct?:number;measurementNotes?:string;tiers?:Tiers;discountType?:"percent"|"amount";discountValue?:number}):QuoteSnapshot{
   const line=(li:CalcItem):QuoteLine=>{
     const c=computeCalcLine(li,input.locationMultiplier,input.includeFinish);
     const note=li.note&&!/^Verified /.test(li.note)?li.note:"";
@@ -39,5 +44,10 @@ export function buildQuoteSnapshot(input:{client:string;project:string;items:Cal
       depositPct:input.depositPct||0,deposit:r2(input.grandTotal*(input.depositPct||0)/100)},
     notes:input.notes||"",
     measurementNotes:input.measurementNotes||undefined,
+    tiers:input.tiers?.enabled?[0,1,2].map(i=>{
+      const s=tierSummary(input.items,input.tiers!,i,{loc:input.locationMultiplier,includeFinish:input.includeFinish,discountType:input.discountType,discountValue:input.discountValue,depositPct:input.depositPct});
+      return {name:input.tiers!.names[i]||["Good","Better","Best"][i],lines:s.items.filter(x=>!x.optional).map(line),
+        totals:{labor:r2(s.totals.labor),materials:r2(s.totals.materials+s.totals.supplies),finish:r2(s.totals.finish),discount:s.discount,total:s.total,deposit:s.deposit}};
+    }):undefined,
   };
 }

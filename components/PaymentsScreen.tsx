@@ -6,6 +6,9 @@ import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromCl
 import {imageHash,findDuplicate,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
+import ChangeOrders from "@/components/ChangeOrders";
+import PaymentSchedule from "@/components/PaymentSchedule";
+import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
@@ -58,6 +61,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const [dragOn,setDragOn]=useState(false);
  const listRef=useRef<Statement[]>([]);
  listRef.current=list;
+ const [report,setReport]=useState(false);
  const [ownMonth,setOwnMonth]=useState(()=>new Date().toLocaleDateString("sv-SE").slice(0,7)); // YYYY-MM
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
@@ -75,6 +79,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  },[user]);
 
  function persist(next:Statement[]){
+   listRef.current=next;
    setList(next);
    try{localStorage.setItem(SK,JSON.stringify(next))}catch{}
    if(user&&cloudOk.current){
@@ -89,7 +94,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
    const same=list.find(s=>!s.own&&(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
      (incoming.client.trim()&&s.client.trim().toLowerCase()===incoming.client.trim().toLowerCase()&&s.project.trim().toLowerCase()===incoming.project.trim().toLowerCase()));
    if(same&&confirm(`Розрахунок «${same.client||"без імені"}» вже є. Замінити в ньому роботу на цей естімейт? Чеки й оплати залишаться.`)){
-     persist(list.map(s=>s.id===same.id?{...s,labor:incoming.labor,quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,updatedAt:new Date().toISOString()}:s));
+     persist(list.map(s=>s.id===same.id?{...s,labor:[...incoming.labor,...s.labor.filter(l=>(s.changes||[]).some(c=>c.laborLineId===l.id))],quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,updatedAt:new Date().toISOString()}:s));
      setOpenId(same.id);setMsg("Роботу оновлено з естімейту.");
    }else{
      persist([incoming,...list]);setOpenId(incoming.id);setMsg("Створено з естімейту. Додавай чеки й оплати.");
@@ -99,7 +104,8 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  },[incoming,ready]);
  function update(patch:Partial<Statement>){
    if(!cur)return;
-   persist(list.map(s=>s.id===cur.id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
+   const id=cur.id;
+   persist(listRef.current.map(s=>s.id===id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
  }
  function create(){const s=newStatement();persist([s,...list]);setOpenId(s.id);setMsg("")}
  function openOwn(){
@@ -398,6 +404,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const catOf=(r:Receipt)=>r.category||guessOwnCategory(r.items);
  function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}
 
+ if(!cur&&report)return <YearReport list={list} calcs={calcs} onClose={()=>setReport(false)}/>;
  if(!cur){
    return <>{batchView}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
@@ -412,6 +419,10 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
+     <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
+       <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
      <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
        <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
@@ -533,6 +544,8 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
      </div>)}
    </section>
 
+   <ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>
+
    {batchView}
    <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
@@ -569,6 +582,8 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
        <button className="remove" onClick={()=>delLine("payments",p.id)}>×</button>
      </div>)}
    </section>
+
+   <PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>
 
    {planView}
 

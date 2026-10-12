@@ -42,6 +42,11 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
 
   section("Labor",["Description","Amount"],s.labor.filter(l=>l.description||l.amount).map(l=>[l.description,money(Number(l.amount)||0)]),"Total labor",t.labor,{});
   if(s.receipts.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
+  if(s.schedule?.length){
+    let left=t.paid;
+    const rows=s.schedule.map(st=>{const a=Number(st.amount)||0;const got=Math.max(0,Math.min(left,a));left-=got;return [st.label||"Payment",st.due||"",got>=a-0.009?"Paid":got>0?`Paid ${money(got)}`:"Due",money(a)]});
+    section("Payment schedule",["Step","Due","Status","Amount"],rows,"Total",s.schedule.reduce((a2,x)=>a2+(Number(x.amount)||0),0),{1:{cellWidth:80},2:{cellWidth:90}});
+  }
   if(s.payments.length)section("Payments received",["Date","Method","Amount"],s.payments.map(p=>[p.date,p.method||"",money(Number(p.amount)||0)]),"Total received",t.paid,{0:{cellWidth:90}});
 
   if(y>H-M-110){doc.addPage();y=M}
