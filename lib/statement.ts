@@ -6,6 +6,9 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** номер чека (Receipt #, Order #) — для пошуку дублікатів */ receiptNo?:string;
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string};
+export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
+export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string};
+export type Payout={id:string;date:string;workerId:string;amount:number};
 export type StatusKey="active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
 export type ScheduleStep={id:string;label:string;amount:number;due?:string};
@@ -32,6 +35,12 @@ export type Statement={
   changes?:import("./changeOrder").ChangeOrder[];
   /** статус проєкту, вибраний вручну; нема — рахується автоматично */
   status?:StatusKey;
+  /** команда проєкту: я і помічники, зі ставкою $/год */
+  crew?:CrewMember[];
+  /** облік годин по людях */
+  workLog?:WorkEntry[];
+  /** виплати помічникам */
+  payouts?:Payout[];
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";
@@ -75,4 +84,20 @@ export function statementStatus(s:Statement):StatusKey{
   if(s.status&&STATUS_META[s.status])return s.status;
   const t=statementTotals(s);
   return t.total>0&&t.paid>0&&t.balance<=0.005?"done":"active";
+}
+
+// ---- команда: години, нараховано, виплачено, винен ----
+export type CrewRow={id:string;name:string;rate:number;self:boolean;hours:number;accrued:number;paid:number;owed:number};
+export function crewSummary(s:Statement){
+  const crew=s.crew||[];
+  const rows:CrewRow[]=crew.map(c=>{
+    const hours=r2((s.workLog||[]).filter(w=>w.workerId===c.id).reduce((a,w)=>a+(Number(w.hours)||0),0));
+    const accrued=r2(hours*(Number(c.rate)||0));
+    const paid=r2((s.payouts||[]).filter(p=>p.workerId===c.id).reduce((a,p)=>a+(Number(p.amount)||0),0));
+    return {id:c.id,name:c.name,rate:Number(c.rate)||0,self:!!c.self,hours,accrued,paid,owed:r2(accrued-paid)};
+  });
+  const sum=(k:"hours"|"accrued"|"paid"|"owed")=>r2(rows.reduce((a,r)=>a+r[k],0));
+  const helpers=rows.filter(r=>!r.self);
+  const cost=r2(helpers.reduce((a,r)=>a+r.accrued,0));
+  return {rows,hours:sum("hours"),accrued:sum("accrued"),paid:sum("paid"),owed:sum("owed"),cost,helperOwed:r2(helpers.reduce((a,r)=>a+r.owed,0))};
 }

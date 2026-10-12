@@ -8,9 +8,10 @@ import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
+import CrewPanel from "@/components/CrewPanel";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
-import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -502,8 +503,9 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const linked=findCalcFor(cur,calcs);
  const plan=linked?planFromCalc(linked):null;
  const matDiff=plan&&plan.materials>0?Math.round((t.materials/plan.materials-1)*1000)/10:null;
- const earned=Math.round((t.paid-t.materials)*100)/100;
- const hours=Number(cur.hours)||0;
+ const crewSm=crewSummary(cur);
+ const earned=Math.round((t.paid-t.materials-crewSm.cost)*100)/100;
+ const hours=crewSm.hours>0?crewSm.hours:(Number(cur.hours)||0);
  const pf=(label:string,planV:number|null,fact:number,warn=false,note?:string)=><div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,padding:"6px 0",borderBottom:"1px solid #f2f4f7",fontSize:14}}>
    <span>{label}{note&&<small className="muted" style={{display:"block"}}>{note}</small>}</span>
    <span style={{textAlign:"right"}}>{planV===null?"—":money(planV)}</span>
@@ -524,11 +526,11 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
    {pf("Отримано від клієнта",null,t.paid)}
    {pf(t.balance>=0?"Залишок до оплати":"Переплата",null,Math.abs(t.balance))}
    <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,padding:"10px 0 4px",fontSize:15}}>
-     <span><b>Твій заробіток</b><small className="muted" style={{display:"block"}}>отримано − чеки</small></span>
+     <span><b>Твій заробіток</b><small className="muted" style={{display:"block"}}>отримано − чеки{crewSm.cost>0?` − помічники ${money(crewSm.cost)}`:""}</small></span>
      <b style={{textAlign:"right",color:earned>=0?"#067647":"#b42318"}}>{money(earned)}</b>
    </div>
    <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,alignItems:"center",marginTop:6}}>
-     <label style={{margin:0}}>Годин роботи<input type="number" min="0" step="0.5" value={cur.hours??""} placeholder="напр. 32" onChange={e=>update({hours:e.target.value===""?undefined:Math.max(0,Number(e.target.value)||0)})}/></label>
+     {crewSm.hours>0?<span style={{fontSize:14}}>Годин: <b>{crewSm.hours}</b><small className="muted" style={{display:"block"}}>з обліку команди вище</small></span>:<label style={{margin:0}}>Годин роботи<input type="number" min="0" step="0.5" value={cur.hours??""} placeholder="напр. 32" onChange={e=>update({hours:e.target.value===""?undefined:Math.max(0,Number(e.target.value)||0)})}/></label>}
      {hours>0&&<span style={{textAlign:"right",fontSize:14}}>робота ÷ год<b style={{display:"block",fontSize:16}}>{money(t.labor/hours)}/год</b></span>}
    </div>
  </section>;
@@ -593,6 +595,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
 
    <PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>
 
+   <CrewPanel st={cur} all={list} onPatch={update}/>
    {planView}
 
    <section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>
