@@ -10,7 +10,7 @@ import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
-import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -52,6 +52,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const [picking,setPicking]=useState(false);
  const [zoneOn,setZoneOn]=useState(false);
  const [withPhotos,setWithPhotos]=useState(true);
+ const [statusFilter,setStatusFilter]=useState<"all"|"open"|"done">("all");
  const [ready,setReady]=useState(false); // список з акаунта вже завантажено
  // пакет чеків: перегляд перед збереженням
  const [batch,setBatch]=useState<Draft[]|null>(null);
@@ -427,9 +428,12 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
        <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
-     {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:clients.map(s=>{const t=statementTotals(s);return(
-       <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}}>
-         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small></span>
+     {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
+       {([["all","Всі"],["open","Не завершені"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>k==="all"||(k==="done")===(statementStatus(s)==="done")).length;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
+     </div>}
+     {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>statusFilter==="all"||(statusFilter==="done")===(statementStatus(s)==="done")).sort((a,b)=>(statementStatus(a)==="done"?1:0)-(statementStatus(b)==="done"?1:0)).map(s=>{const t=statementTotals(s);const st=statementStatus(s);const m=STATUS_META[st];return(
+       <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}} style={{borderLeft:`6px solid ${m.color}`,background:m.bg,opacity:st==="done"?0.85:1}}>
+         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":"● "}{m.label}{s.status?" ✎":""}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;
@@ -533,6 +537,10 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
    <section className="panel grid">
      <label>Client<input value={cur.client} onChange={e=>update({client:e.target.value})}/></label>
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
+    <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>
+      <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined})].label}</option>
+      {(Object.keys(STATUS_META) as StatusKey[]).map(k=><option key={k} value={k}>{STATUS_META[k].label}</option>)}
+    </select></label>
    </section>
 
    <section className="panel">

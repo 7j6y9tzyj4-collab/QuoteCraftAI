@@ -6,6 +6,7 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** номер чека (Receipt #, Order #) — для пошуку дублікатів */ receiptNo?:string;
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string};
+export type StatusKey="active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
 export type ScheduleStep={id:string;label:string;amount:number;due?:string};
 export type Statement={
@@ -29,6 +30,8 @@ export type Statement={
   schedule?:ScheduleStep[];
   /** доплати (change orders) */
   changes?:import("./changeOrder").ChangeOrder[];
+  /** статус проєкту, вибраний вручну; нема — рахується автоматично */
+  status?:StatusKey;
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";
@@ -59,4 +62,17 @@ export function guessOwnCategory(items:string):string{
   if(TOOL.test(items||""))return "Інструменти";
   if(CONSUMABLE.test(items||""))return "Витратні";
   return "Матеріали";
+}
+
+// ---- статус проєкту: автоматично за залишком, але можна змінити вручну ----
+export const STATUS_META:Record<StatusKey,{label:string;color:string;bg:string}>={
+  active:{label:"В роботі",color:"#b54708",bg:"#fffaeb"},
+  waiting:{label:"Чекаю оплату",color:"#175cd3",bg:"#eff8ff"},
+  done:{label:"Завершено",color:"#067647",bg:"#ecfdf3"},
+};
+/** авто: залишок 0 і оплата була — «Завершено», інакше «В роботі»; ручний вибір має пріоритет */
+export function statementStatus(s:Statement):StatusKey{
+  if(s.status&&STATUS_META[s.status])return s.status;
+  const t=statementTotals(s);
+  return t.total>0&&t.paid>0&&t.balance<=0.005?"done":"active";
 }
