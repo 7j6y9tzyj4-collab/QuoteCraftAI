@@ -9,6 +9,7 @@ import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
+import HoursCalendar from "@/components/HoursCalendar";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
@@ -64,6 +65,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const listRef=useRef<Statement[]>([]);
  listRef.current=list;
  const [report,setReport]=useState(false);
+ const [hoursCal,setHoursCal]=useState(false);
  const [ownMonth,setOwnMonth]=useState(()=>new Date().toLocaleDateString("sv-SE").slice(0,7)); // YYYY-MM
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
@@ -107,6 +109,9 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  function update(patch:Partial<Statement>){
    if(!cur)return;
    const id=cur.id;
+   persist(listRef.current.map(s=>s.id===id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
+ }
+ function patchStatement(id:string,patch:Partial<Statement>){
    persist(listRef.current.map(s=>s.id===id?{...s,...patch,updatedAt:new Date().toISOString()}:s));
  }
  function create(){const s=newStatement();persist([s,...list]);setOpenId(s.id);setMsg("")}
@@ -406,6 +411,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  const catOf=(r:Receipt)=>r.category||guessOwnCategory(r.items);
  function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}
 
+ if(!cur&&hoursCal)return <HoursCalendar list={list} onPatch={patchStatement} onClose={()=>setHoursCal(false)}/>;
  if(!cur&&report)return <YearReport list={list} calcs={calcs} onClose={()=>setReport(false)}/>;
  if(!cur){
    return <>{batchView}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
@@ -421,6 +427,10 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
+     <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
+       <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
      <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
        <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
        <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
