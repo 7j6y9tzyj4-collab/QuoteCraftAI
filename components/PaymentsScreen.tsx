@@ -6,6 +6,8 @@ import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromCl
 import {imageHash,findDuplicate,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import DateInput from "@/components/DateInput";
+import ClientPicker from "@/components/ClientPicker";
+import type {Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
@@ -42,9 +44,11 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
-export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{user:User|null;calcs?:SavedCalc[];incoming?:Statement|null;onIncomingDone?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened}:{user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
+ // відкрити конкретний розрахунок (з картки клієнта)
+ useEffect(()=>{if(openReq){setOpenId(openReq);onOpened?.()}},[openReq,onOpened]);
  const [msg,setMsg]=useState("");
  const [busy,setBusy]=useState(false);
  const cloudOk=useRef(false);
@@ -548,7 +552,7 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
  return <>
    <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← Список</button><b>Розрахунок</b><button onClick={remove} style={{color:"#b42318"}}>Видалити</button></div>
    <section className="panel grid">
-     <label>Client<input value={cur.client} onChange={e=>update({client:e.target.value})}/></label>
+     <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
     <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>
       <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined})].label}</option>

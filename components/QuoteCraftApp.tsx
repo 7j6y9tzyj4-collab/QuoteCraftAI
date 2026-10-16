@@ -8,6 +8,9 @@ import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
+import ClientPicker from "@/components/ClientPicker";
+import ClientsScreen from "@/components/ClientsScreen";
+import {type Client} from "@/lib/clients";
 import TiersPanel,{TierToggles} from "@/components/TiersPanel";
 import {tierSummary,type Tiers} from "@/lib/tiers";
 import UpdateButton from "@/components/UpdateButton";
@@ -108,7 +111,7 @@ type AIItem={
 };
 
 export default function QuoteCraftApp(){
- const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices"|"calc"|"pay">("home");
+ const [screen,setScreen]=useState<"home"|"new"|"saved"|"prices"|"calc"|"pay"|"clients">("home");
  const [all,setAll]=useState<Estimate[]>([]);
  const [prices,setPrices]=useState<PriceRule[]>(defaults);
  const [cur,setCur]=useState<Estimate>(fresh());
@@ -148,6 +151,43 @@ export default function QuoteCraftApp(){
  const [calcShareToken,setCalcShareToken]=useState<string>("");
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
+ const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
+ // ---- клієнти (таблиця user_clients, по рядку на клієнта; локальна копія qc_clients) ----
+ const [clients,setClients]=useState<Client[]>([]);
+ const [payStatements,setPayStatements]=useState<Statement[]>([]); // список Оплат для історії клієнта
+ useEffect(()=>{try{setClients(JSON.parse(localStorage.getItem("qc_clients")||"[]"))}catch{}},[]);
+ useEffect(()=>{
+   if(!user)return;
+   let on=true;
+   supabase.from("user_clients").select("id,data,updated_at").eq("user_id",user.id).then(({data,error}:{data:any[]|null;error:any})=>{
+     if(!on||error||!data)return;
+     const cloud:Client[]=data.map(r=>({...(r.data as Client),id:r.id,updatedAt:r.updated_at}));
+     setClients(local=>{
+       const map=new Map<string,Client>();
+       for(const c of cloud)map.set(c.id,c);
+       for(const l of local){const c=map.get(l.id);if(!c||new Date(l.updatedAt)>new Date(c.updatedAt)){map.set(l.id,l);pushClient(l)}}
+       const next=[...map.values()];
+       try{localStorage.setItem("qc_clients",JSON.stringify(next))}catch{}
+       return next;
+     });
+   });
+   supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{if(on&&Array.isArray(data?.statements))setPayStatements(data.statements)});
+   return()=>{on=false};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[user,screen==="clients"]);
+ function pushClient(c:Client){
+   if(!user)return;
+   supabase.from("user_clients").upsert({id:c.id,user_id:user.id,data:c,updated_at:c.updatedAt},{onConflict:"id"})
+     .then(({error}:{error:any})=>{if(error&&/user_clients/.test(error.message))setMessage("Клієнти збережені на цьому пристрої. Щоб бачити на телефоні — потрібна таблиця user_clients (Claude зробить).")});
+ }
+ function saveClient(c:Client){
+   setClients(prev=>{const next=[c,...prev.filter(x=>x.id!==c.id)];try{localStorage.setItem("qc_clients",JSON.stringify(next))}catch{}return next});
+   pushClient(c);
+ }
+ function deleteClient(id:string){
+   setClients(prev=>{const next=prev.filter(x=>x.id!==id);try{localStorage.setItem("qc_clients",JSON.stringify(next))}catch{}return next});
+   if(user)supabase.from("user_clients").delete().eq("id",id).then(()=>{});
+ }
  const [calcLocationMultiplier,setCalcLocationMultiplier]=useState(1);
  // Пакетна знижка — на працю, як у кошторисах власника (матеріали не знижуються)
  const [calcDiscountType,setCalcDiscountType]=useState<"percent"|"amount">("percent");
@@ -1754,7 +1794,7 @@ export default function QuoteCraftApp(){
       {calcTranscribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
-    <section className="panel grid noPrint"><label>Client<input value={calcClient} onChange={e=>setCalcClient(e.target.value)}/></label><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label><label>Знижка на роботу<select value={calcDiscountType} onChange={e=>setCalcDiscountType(e.target.value as "percent"|"amount")}><option value="percent">відсоток, %</option><option value="amount">сума, $</option></select></label><label>{calcDiscountType==="percent"?"Знижка, %":"Знижка, $"}<input type="number" min="0" step={calcDiscountType==="percent"?"1":"10"} value={calcDiscountValue} onChange={e=>setCalcDiscountValue(Math.max(0,Number(e.target.value)||0))}/></label><label>Deposit, %<input type="number" min="0" max="100" step="5" value={calcDepositPct} onChange={e=>setCalcDepositPct(Math.min(100,Math.max(0,Number(e.target.value)||0)))}/></label></section>
+    <section className="panel grid noPrint"><ClientPicker value={calcClient} onChange={setCalcClient} clients={clients} onAdd={saveClient}/><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label><label>Знижка на роботу<select value={calcDiscountType} onChange={e=>setCalcDiscountType(e.target.value as "percent"|"amount")}><option value="percent">відсоток, %</option><option value="amount">сума, $</option></select></label><label>{calcDiscountType==="percent"?"Знижка, %":"Знижка, $"}<input type="number" min="0" step={calcDiscountType==="percent"?"1":"10"} value={calcDiscountValue} onChange={e=>setCalcDiscountValue(Math.max(0,Number(e.target.value)||0))}/></label><label>Deposit, %<input type="number" min="0" max="100" step="5" value={calcDepositPct} onChange={e=>setCalcDepositPct(Math.min(100,Math.max(0,Number(e.target.value)||0)))}/></label></section>
     {calcMeasurementNotes&&<section className="panel noPrint"><b>Попередній естімейт — потрібні заміри на обʼєкті</b><p>{PRELIMINARY_NOTE}</p><details><summary>Підтверджені приблизні розміри</summary><p style={{whiteSpace:"pre-wrap"}}>{calcMeasurementNotes}</p></details><button className="secondary" onClick={()=>{if(confirm("Прибрати позначку «попередній»? (коли вже зробив точні заміри)"))setCalcMeasurementNotes("")}}>Заміри зроблено — прибрати позначку</button></section>}
 
     <section className="panel"><div className="head"><h2>Line items</h2><button className="add noPrint" onClick={addCalcItem}>＋ Add item</button></div>
@@ -1830,7 +1870,8 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)}/>}
+   {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
+   {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small></button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
    {screen==="saved"&&all.length>0&&<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
@@ -1874,6 +1915,6 @@ export default function QuoteCraftApp(){
 </div>
 </section>}
   </main>
-  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")}>$<span>Оплати</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
+  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")}>$<span>Оплати</span></button><button className={screen==="clients"?"active":""} onClick={()=>setScreen("clients")}>👤<span>Клієнти</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
  </div>
 }
