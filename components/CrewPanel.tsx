@@ -1,6 +1,7 @@
 "use client";
 import type {Statement,CrewMember,WorkEntry,Payout} from "@/lib/statement";
 import {crewSummary} from "@/lib/statement";
+import DateInput from "@/components/DateInput";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const today=()=>new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});
@@ -47,8 +48,8 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
     {crew.length>0&&<>
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Години</h3>
         <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:crew[0].id,hours:0}]})}>＋ Години</button></div>
-      {log.map(w=><div key={w.id} style={{display:"grid",gridTemplateColumns:"minmax(0,100px) minmax(0,1fr) 72px 42px",gap:6,marginTop:8}}>
-        <input value={w.date} onChange={e=>setLog(w.id,{date:e.target.value})}/>
+      {log.map(w=><div key={w.id} style={{display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
+        <DateInput value={w.date} onChange={v=>setLog(w.id,{date:v})}/>
         <select value={w.workerId} onChange={e=>setLog(w.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
         <input type="number" min="0" step="0.5" value={w.hours||""} placeholder="год" onChange={e=>setLog(w.id,{hours:Math.max(0,Number(e.target.value)||0)})}/>
         <button className="remove" onClick={()=>onPatch({workLog:log.filter(x=>x.id!==w.id)})}>×</button>
@@ -57,8 +58,8 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
 
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Виплати помічникам</h3>
         <button className="add" onClick={()=>onPatch({payouts:[...pay,{id:uid(),date:today(),workerId:(crew.find(c=>!c.self)||crew[0]).id,amount:0}]})}>＋ Виплата</button></div>
-      {pay.map(x=><div key={x.id} style={{display:"grid",gridTemplateColumns:"minmax(0,100px) minmax(0,1fr) 90px 42px",gap:6,marginTop:8}}>
-        <input value={x.date} onChange={e=>setPay(x.id,{date:e.target.value})}/>
+      {pay.map(x=><div key={x.id} style={{display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 84px 42px",gap:6,marginTop:8}}>
+        <DateInput value={x.date} onChange={v=>setPay(x.id,{date:v})}/>
         <select value={x.workerId} onChange={e=>setPay(x.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
         <input type="number" min="0" step="0.01" value={x.amount||""} placeholder="$" onChange={e=>setPay(x.id,{amount:Math.max(0,Number(e.target.value)||0)})}/>
         <button className="remove" onClick={()=>onPatch({payouts:pay.filter(y=>y.id!==x.id)})}>×</button>
