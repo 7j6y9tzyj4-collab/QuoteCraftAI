@@ -5,6 +5,7 @@ import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
 import {imageHash,findDuplicate,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
+import DateInput from "@/components/DateInput";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
@@ -483,8 +484,8 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
        {rs.sort((a,b)=>normDate(a.date).localeCompare(normDate(b.date))).map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 1fr 42px",gap:8,marginTop:10,alignItems:"start",paddingBottom:10,borderBottom:"1px solid #f2f4f7"}}>
          <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
          <div style={{display:"grid",gap:6,minWidth:0}}>
-           <div style={{display:"grid",gridTemplateColumns:"minmax(0,110px) minmax(0,1fr) minmax(0,100px)",gap:6}}>
-             <input value={r.date} style={!normDate(r.date)?{borderColor:"#f04438"}:undefined} onChange={e=>setLine<Receipt>("receipts",r.id,{date:e.target.value})}/>
+           <div style={{display:"grid",gridTemplateColumns:"minmax(0,130px) minmax(0,1fr) minmax(0,100px)",gap:6}}>
+             <DateInput value={r.date} style={!normDate(r.date)?{borderColor:"#f04438"}:undefined} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
              <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
              <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
            </div>
@@ -581,9 +582,9 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
          style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 110px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
+     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 130px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
-       <input value={r.date} onChange={e=>setLine<Receipt>("receipts",r.id,{date:e.target.value})}/>
+       <DateInput value={r.date} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
        <div style={{display:"grid",gap:6}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
@@ -595,8 +596,8 @@ export default function PaymentsScreen({user,calcs=[],incoming,onIncomingDone}:{
 
    <section className="panel">
      <div className="head"><h2>Оплати клієнта</h2><button className="add" onClick={()=>update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}>＋ Оплата</button></div>
-     {cur.payments.map((p:Payment)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 42px",gap:8,marginTop:8}}>
-       <input value={p.date} onChange={e=>setLine<Payment>("payments",p.id,{date:e.target.value})}/>
+     {cur.payments.map((p:Payment)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"130px 1fr 110px 42px",gap:8,marginTop:8}}>
+       <DateInput value={p.date} onChange={v=>setLine<Payment>("payments",p.id,{date:v})}/>
        <select value={p.method} onChange={e=>setLine<Payment>("payments",p.id,{method:e.target.value})}>{METHODS.map(m=><option key={m}>{m}</option>)}</select>
        <input type="number" step="0.01" value={p.amount} onChange={e=>setLine<Payment>("payments",p.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("payments",p.id)}>×</button>

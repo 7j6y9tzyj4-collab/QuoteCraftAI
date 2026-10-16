@@ -2,6 +2,7 @@
 import type {Statement,ScheduleStep} from "@/lib/statement";
 import {statementTotals} from "@/lib/statement";
 import {normDate} from "@/lib/receiptBatch";
+import DateInput from "@/components/DateInput";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
@@ -50,10 +51,10 @@ export default function PaymentSchedule({st,contractTotal,depositPct,onPatch}:{s
       Наступна оплата: <b>{next.label||"етап"} — {money(r2((Number(next.amount)||0)-next.got))}</b>{next.due?` до ${next.due}`:""}{next.overdue?" — прострочено":""}
     </p>}
     {steps.length>0&&!next&&<p style={{margin:"10px 0",color:"#067647",fontSize:14}}>✓ Усі етапи оплачено.</p>}
-    {rows.map(r=><div key={r.id} style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 105px 100px 36px",gap:6,marginTop:8,alignItems:"center"}}>
+    {rows.map(r=><div key={r.id} style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 130px 100px 36px",gap:6,marginTop:8,alignItems:"center"}}>
       <span title={r.done?"оплачено":r.got>0?"частково":""}>{r.done?"✅":r.got>0?"◐":r.overdue?"⚠️":"○"}</span>
       <input placeholder="Deposit / Progress / Final" value={r.label} onChange={e=>set(r.id,{label:e.target.value})}/>
-      <input placeholder="до MM/DD/YYYY" value={r.due||""} onChange={e=>set(r.id,{due:e.target.value||undefined})}/>
+      <DateInput value={r.due||""} onChange={v=>set(r.id,{due:v||undefined})}/>
       <input type="number" step="0.01" value={r.amount} onChange={e=>set(r.id,{amount:Number(e.target.value)||0})}/>
       <button className="remove" onClick={()=>onPatch({schedule:steps.filter(s=>s.id!==r.id)})}>×</button>
     </div>)}

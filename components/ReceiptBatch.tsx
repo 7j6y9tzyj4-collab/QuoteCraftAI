@@ -1,6 +1,7 @@
 "use client";
 import type {Statement} from "@/lib/statement";
 import {baseName} from "@/lib/receiptBatch";
+import DateInput from "@/components/DateInput";
 
 // Один чек з пакета до збереження (можна виправити суму/дату/магазин).
 export type Draft={
@@ -59,8 +60,8 @@ export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTar
               {d.status==="ok"&&d.confidence<0.7&&<b style={{color:"#b54708"}}> · перевір суму</b>}
               {d.dupOf&&<b style={{color:"#93370d"}}> · вже є: {d.dupOf}</b>}</small>
             {d.status==="error"?<small style={{color:"#b42318"}}>Не прочитав: {d.error}</small>:<>
-              <div style={{display:"grid",gridTemplateColumns:"minmax(0,110px) minmax(0,1fr) minmax(0,110px)",gap:6}}>
-                <input placeholder="Дата" value={d.date} onChange={e=>onPatch(d.key,{date:e.target.value})}/>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,130px) minmax(0,1fr) minmax(0,110px)",gap:6}}>
+                <DateInput value={d.date} onChange={v=>onPatch(d.key,{date:v})}/>
                 <input placeholder="Магазин" value={d.store} onChange={e=>onPatch(d.key,{store:e.target.value})}/>
                 <input type="number" step="0.01" value={d.amount} onChange={e=>onPatch(d.key,{amount:Number(e.target.value)||0})}/>
               </div>
