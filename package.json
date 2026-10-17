@@ -9,6 +9,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@react-three/drei": "^10.0.6",
+    "@react-three/fiber": "^9.1.2",
     "@supabase/supabase-js": "^2.112.0",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
@@ -16,12 +18,14 @@
     "openai": "^5.12.2",
     "pdfjs-dist": "5.4.296",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.170.0",
     "typescript": "^5.0.0"
   }
 }
