@@ -2,7 +2,8 @@
 import {useMemo,useRef} from "react";
 import * as THREE from "three";
 import {Canvas,useFrame,useThree} from "@react-three/fiber";
-import {OrbitControls,Html} from "@react-three/drei";
+import {OrbitControls,Html,useGLTF} from "@react-three/drei";
+import {Suspense,useEffect,useState} from "react";
 import {fmtInches} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
@@ -103,10 +104,45 @@ function Flat({w,d,H,light}:{w:number;d:number;H:number;light?:boolean}){
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
   return <mesh position={[w/2*IN,h/2*IN,d/2*IN]}><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color}/></mesh>;
 }
+// Готові моделі (Kenney Furniture Kit, CC0, /public/models). Вписуються в габарит w×h×d; rotY — щоб «перед» дивився в кімнату.
+const MODELS:Record<string,{file:string;h:number;rotY?:number;ceiling?:boolean}>={
+  toilet:{file:"toilet.glb",h:30,rotY:Math.PI},
+  vanity:{file:"bathroomSinkSquare.glb",h:34,rotY:Math.PI},
+  sink:{file:"bathroomSink.glb",h:34,rotY:Math.PI},
+  tub:{file:"bathtub.glb",h:20,rotY:Math.PI},
+  shower:{file:"showerRound.glb",h:80,rotY:Math.PI},
+  washer:{file:"washer.glb",h:36,rotY:Math.PI},
+  dryer:{file:"dryer.glb",h:36,rotY:Math.PI},
+  cabinet:{file:"kitchenCabinet.glb",h:36,rotY:Math.PI},
+  light:{file:"lampSquareCeiling.glb",h:10,ceiling:true},
+  fan:{file:"ceilingFan.glb",h:10,ceiling:true},
+};
+function GlbFixture({f,H}:{f:FixBox;H:number}){
+  const m=MODELS[f.type];
+  const {scene}=useGLTF("/models/"+m.file);
+  const [obj,setObj]=useState<THREE.Object3D|null>(null);
+  useEffect(()=>{
+    const o=scene.clone(true);
+    o.rotation.set(0,m.rotY||0,0);o.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(o);const sz=new THREE.Vector3();box.getSize(sz);
+    const h=Math.min(m.h,H-2);
+    const sx=f.w*IN/Math.max(sz.x,1e-6),sy=h*IN/Math.max(sz.y,1e-6),sz2=f.d*IN/Math.max(sz.z,1e-6);
+    // тримаємо пропорції моделі: рівномірний масштаб по ширині/глибині, висота — за таблицею
+    const su=Math.min(sx,sz2);
+    const g=new THREE.Group();g.add(o);o.scale.set(su,sy,su);o.updateMatrixWorld(true);
+    const b2=new THREE.Box3().setFromObject(o);
+    // ставимо: лівий край на x=0, задня стінка до стіни (z=0), низ на підлогу (або під стелю)
+    const cx=(b2.min.x+b2.max.x)/2;
+    o.position.set(f.w*IN/2-cx,-(b2.min.y)+(m.ceiling?(H*IN-(b2.max.y-b2.min.y)):0),-(b2.min.z)+(f.d*IN-(b2.max.z-b2.min.z))/2*(m.ceiling?1:0));
+    o.traverse(n=>{const mm=n as THREE.Mesh;if(mm.isMesh){mm.castShadow=true;mm.receiveShadow=true}});
+    setObj(g);
+  },[scene,f.w,f.d,H,m]);
+  return obj?<primitive object={obj}/>:null;
+}
 function Fixture({f,H,geom}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>}){
   // локальна система: початок у p0, x вздовж стіни, z у кімнату
   const ang=Math.atan2(geom.dir[f.k][1],geom.dir[f.k][0]);
-  const inner=(()=>{switch(f.type){
+  const inner=MODELS[f.type]?<Suspense fallback={<Box w={f.w} d={f.d} h={MODELS[f.type].h} color="#e5e7eb"/>}><GlbFixture f={f} H={H}/></Suspense>:(()=>{switch(f.type){
     case "toilet":return <Toilet w={f.w} d={f.d}/>;
     case "vanity":return <Vanity w={f.w} d={f.d}/>;
     case "sink":return <Sink w={f.w} d={f.d}/>;
