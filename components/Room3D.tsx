@@ -13,7 +13,7 @@ const IN=1/12;
 const T=4; // товщина стіни, дюйми
 const WALL_COLOR="#f4f1ea",FLOOR_COLOR="#e8e4dc",PORC="#fbfbfd",CHROME="#b8c0cc",WOOD="#c9a77c",GLASS="#cfe3ff";
 
-function Wall({a,b,H,segs,camRef}:{a:V;b:V;H:number;segs:WallSeg[];camRef:React.MutableRefObject<THREE.Vector3>}){
+function Wall({a,b,H,segs,camRef,color}:{a:V;b:V;H:number;segs:WallSeg[];camRef:React.MutableRefObject<THREE.Vector3>;color?:string}){
   const len=Math.hypot(b[0]-a[0],b[1]-a[1]);
   const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
   // прорізи на цій стіні у відстанях від a
@@ -34,7 +34,7 @@ function Wall({a,b,H,segs,camRef}:{a:V;b:V;H:number;segs:WallSeg[];camRef:React.
   return <group position={[a[0]*IN,0,a[1]*IN]} rotation={[0,-ang,0]}>
     {pieces.map((p,i)=><mesh key={i} position={[(p.x0+p.x1)/2*IN,(p.z0+p.z1)/2*IN,-T/2*IN]} castShadow receiveShadow>
       <boxGeometry args={[(p.x1-p.x0)*IN,(p.z1-p.z0)*IN,T*IN]}/>
-      <meshStandardMaterial ref={el=>{if(el)mats.current[i]=el}} color={WALL_COLOR} roughness={0.9} transparent opacity={1}/>
+      <meshStandardMaterial ref={el=>{if(el)mats.current[i]=el}} color={color||WALL_COLOR} roughness={0.9} transparent opacity={1}/>
     </mesh>)}
     {ops.map((o,i)=>o.door?<mesh key={"d"+i} position={[(o.s0+o.s1)/2*IN,o.z1/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,o.z1*IN,1*IN]}/><meshStandardMaterial color="#d9cbb3" transparent opacity={0.35}/></mesh>
       :<mesh key={"w"+i} position={[(o.s0+o.s1)/2*IN,(o.z0+o.z1)/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,(o.z1-o.z0)*IN,0.5*IN]}/><meshStandardMaterial color={GLASS} transparent opacity={0.35}/></mesh>)}
@@ -101,11 +101,35 @@ function Washer({w,d,dryer}:{w:number;d:number;dryer?:boolean}){
 function Flat({w,d,H,light}:{w:number;d:number;H:number;light?:boolean}){
   return <mesh position={[w/2*IN,(H-1)*IN,d/2*IN]}>{light?<cylinderGeometry args={[Math.min(w,d)/2*IN,Math.min(w,d)/2*IN,1.5*IN,24]}/>:<boxGeometry args={[w*IN,1.5*IN,d*IN]}/>}<meshStandardMaterial color={light?"#fff7d6":"#f3f4f6"} emissive={light?"#ffe9a8":"#000"} emissiveIntensity={light?0.6:0}/></mesh>;
 }
+// Аксесуари (малюються кодом): дзеркало, світло над дзеркалом, тримач рушників. y — низ над підлогою, дюйми.
+function Mirror({w,h,y,round}:{w:number;h:number;y:number;round:boolean}){
+  const r=Math.min(w,h)/2;
+  return <group position={[w/2*IN,(y+h/2)*IN,1*IN]}>
+    {round?<mesh rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[r*IN,r*IN,0.8*IN,48]}/><meshStandardMaterial color="#2b2f36"/></mesh>:<mesh><boxGeometry args={[w*IN,h*IN,0.8*IN]}/><meshStandardMaterial color="#2b2f36"/></mesh>}
+    {round?<mesh rotation={[Math.PI/2,0,0]} position={[0,0,0.5*IN]}><cylinderGeometry args={[(r-0.6)*IN,(r-0.6)*IN,0.4*IN,48]}/><meshStandardMaterial color="#d6e4f0" metalness={0.2} roughness={0.15}/></mesh>:<mesh position={[0,0,0.5*IN]}><boxGeometry args={[(w-1.2)*IN,(h-1.2)*IN,0.4*IN]}/><meshStandardMaterial color="#d6e4f0" metalness={0.2} roughness={0.15}/></mesh>}
+  </group>;
+}
+function VanityLight({w,y,n}:{w:number;y:number;n:number}){
+  const sp=w/n;
+  return <group>
+    <mesh position={[w/2*IN,(y+6)*IN,2*IN]}><boxGeometry args={[w*IN,1*IN,1*IN]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>
+    {Array.from({length:n},(_,i)=><group key={i} position={[(sp*(i+0.5))*IN,0,3*IN]}>
+      <mesh position={[0,(y+3)*IN,0]}><cylinderGeometry args={[1.8*IN,1.8*IN,5*IN,20,1,true]}/><meshStandardMaterial color={GLASS} transparent opacity={0.35} side={THREE.DoubleSide}/></mesh>
+      <mesh position={[0,(y+3)*IN,0]}><sphereGeometry args={[1*IN,12,8]}/><meshStandardMaterial color="#fff3c4" emissive="#ffd166" emissiveIntensity={1.2}/></mesh>
+      <mesh position={[0,(y+5.8)*IN,0]}><cylinderGeometry args={[2*IN,2*IN,0.6*IN,20]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>
+    </group>)}
+  </group>;
+}
+function TowelBar({w,y,ring}:{w:number;y:number;ring:boolean}){
+  return ring?<mesh position={[w/2*IN,(y+4)*IN,2*IN]}><torusGeometry args={[3.5*IN,0.3*IN,10,32]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>
+  :<group><mesh position={[w/2*IN,(y+1)*IN,2.5*IN]} rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.35*IN,0.35*IN,w*IN,12]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>
+    {[1.5,w-1.5].map((x,i)=><mesh key={i} position={[x*IN,(y+1)*IN,1.2*IN]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.4*IN,0.4*IN,2.5*IN,10]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>)}</group>;
+}
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
   return <mesh position={[w/2*IN,h/2*IN,d/2*IN]}><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color}/></mesh>;
 }
 // Готові моделі (Kenney Furniture Kit, CC0, /public/models) — варіанти в lib/survey FIXTURE_MODELS. Вписуються в габарит w×h×d, перед — у кімнату.
-function GlbFixture({f,H}:{f:FixBox;H:number}){
+function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
   const m=fixtureModel(f.type,f.model)!;
   const {scene}=useGLTF("/models/"+m.file);
   const [obj,setObj]=useState<THREE.Object3D|null>(null);
@@ -123,16 +147,21 @@ function GlbFixture({f,H}:{f:FixBox;H:number}){
     const cx=(b2.min.x+b2.max.x)/2;
     const y0=m.ceiling?Math.max(0,H*IN-(b2.max.y-b2.min.y)):Math.min((m.y||0)*IN,Math.max(0,H*IN-(b2.max.y-b2.min.y)));
     o.position.set(f.w*IN/2-cx,-(b2.min.y)+y0,-(b2.min.z)+(f.d*IN-(b2.max.z-b2.min.z))/2*(m.ceiling?1:0));
-    o.traverse(n=>{const mm=n as THREE.Mesh;if(mm.isMesh){mm.castShadow=true;mm.receiveShadow=true}});
+    o.traverse(n=>{const mm=n as THREE.Mesh;if(mm.isMesh){mm.castShadow=true;mm.receiveShadow=true;
+      if(tint){const mat=mm.material as THREE.MeshStandardMaterial;if(mat&&/wood/i.test(mat.name||"")){const c=mat.clone();c.color.set(tint);mm.material=c}}}});
     setObj(g);
-  },[scene,f.w,f.d,H,m]);
+  },[scene,f.w,f.d,H,m,tint]);
   return obj?<primitive object={obj}/>:null;
 }
-function Fixture({f,H,geom}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>}){
+function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>;look?:Room["look"]}){
   // локальна система: початок у p0, x вздовж стіни, z у кімнату
   const ang=Math.atan2(geom.dir[f.k][1],geom.dir[f.k][0]);
   const mdl=fixtureModel(f.type,f.model);
-  const inner=mdl?<Suspense fallback={<Box w={f.w} d={f.d} h={mdl.h} color="#e5e7eb"/>}><GlbFixture f={f} H={H}/></Suspense>:(()=>{switch(f.type){
+  const tint=(f.type==="vanity"||f.type==="sink"||f.type==="cabinet")&&look?.vanity?look.vanity:undefined;
+  const inner=mdl&&mdl.file?<Suspense fallback={<Box w={f.w} d={f.d} h={mdl.h} color="#e5e7eb"/>}><GlbFixture f={f} H={H} tint={tint}/></Suspense>:(()=>{switch(f.type){
+    case "mirror":return <Mirror w={f.w} h={mdl?.h||24} y={Math.min(mdl?.y||40,H-(mdl?.h||24)-2)} round={(f.model||"round")==="round"}/>;
+    case "vanityLight":return <VanityLight w={f.w} y={Math.min(mdl?.y||72,H-10)} n={f.model==="bar2"?2:f.model==="bar3"?3:4}/>;
+    case "towelBar":return <TowelBar w={f.w} y={mdl?.y||48} ring={f.model==="ring"}/>;
     case "toilet":return <Toilet w={f.w} d={f.d}/>;
     case "vanity":return <Vanity w={f.w} d={f.d}/>;
     case "sink":return <Sink w={f.w} d={f.d}/>;
@@ -161,23 +190,23 @@ function Scene({room,dims,captureRef}:{room:Room;dims:boolean;captureRef?:React.
   useFrame(()=>{camRef.current.copy(camera.position)});
   const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;
   const shape=useMemo(()=>{const s=new THREE.Shape();pts.forEach((p,i)=>{if(i===0)s.moveTo(p[0]*IN,p[1]*IN);else s.lineTo(p[0]*IN,p[1]*IN)});s.closePath();return s},[pts]);
-  const tile=room.floorTile;
+  const tile=room.floorTile;const look=room.look;
   // плитка: текстура з однієї плитки, повторюється за розміром (ShapeGeometry має UV у світових одиницях)
   const tex=useMemo(()=>{
     if(!tile||tile.w<=0||tile.h<=0)return null;
     const c=document.createElement("canvas");const S=128;c.width=S;c.height=Math.max(8,Math.round(S*tile.h/tile.w));
-    const ctx=c.getContext("2d")!;ctx.fillStyle="#ebe7df";ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle="#cfc9bd";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
+    const ctx=c.getContext("2d")!;ctx.fillStyle=look?.floor||"#ebe7df";ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle="rgba(0,0,0,.18)";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
     const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/(tile.w*IN),1/(tile.h*IN));t.anisotropy=4;return t;
-  },[tile]);
+  },[tile,look?.floor]);
   if(!g)return null;
   return <>
     <ambientLight intensity={1.1}/>
     <hemisphereLight args={["#ffffff","#cfc8bd",0.8]}/>
     <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={1.6} castShadow/>
     <directionalLight position={[-L*IN,H*IN*1.5,-W*IN]} intensity={0.5}/>
-    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={FLOOR_COLOR} side={THREE.DoubleSide}/>}</mesh>
-    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef}/>})}
-    {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g}/>)}
+    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={look?.floor||FLOOR_COLOR} side={THREE.DoubleSide}/>}</mesh>
+    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
+    {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
     {dims&&<Dims g={g}/>}
     <OrbitControls target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;

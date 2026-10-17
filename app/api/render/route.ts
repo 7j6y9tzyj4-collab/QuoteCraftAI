@@ -13,12 +13,14 @@ export async function POST(req:NextRequest){
     const sketch=String(b.sketch||"");
     if(!IMG.test(sketch)||sketch.length>2_000_000)return NextResponse.json({error:"Нема 3D-ескізу (PNG до 2 МБ)."},{status:400});
     const photos:string[]=(Array.isArray(b.photos)?b.photos:[]).filter((p:unknown)=>typeof p==="string"&&IMG.test(p)&&p.length<=750000).slice(0,3);
-    const room=String(b.room||"room").slice(0,120),wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,600),tile=String(b.tile||"").slice(0,60);
+    const room=String(b.room||"room").slice(0,120),wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,600),tile=String(b.tile||"").slice(0,60),openings=String(b.openings||"").slice(0,300),look=String(b.look||"").slice(0,120);
     const prompt=[
       `Photorealistic interior photograph of a freshly renovated ${room}, shot with a wide-angle lens.`,
       `The FIRST image is a simple 3D sketch: reproduce its camera angle and layout exactly — same walls, same door and window positions, and keep every fixture in the same place and of the same kind (${fixtures||"as drawn"}).`,
       photos.length?`The other images are photos of the room before renovation — keep the same architecture, ceiling height and window light, but show it finished and clean.`:"",
+      openings?`Openings: ${openings}. The light-colored rectangular gap in a wall of the sketch is a DOOR opening (draw a door or doorway), not a window, unless listed as window.`:"",
       tile?`Floor: ${tile} tile.`:"",
+      look&&!wish?`Current colors to keep unless the wishes say otherwise: ${look}.`:"",
       wish?`Client wishes / finishes: ${wish}`:"Finishes: modern, light, neutral; porcelain tile, white fixtures, chrome, warm lighting.",
       "Realistic materials, soft natural light, high detail. No people, no text, no labels, no dimension tags, no watermark.",
     ].filter(Boolean).join(" ");

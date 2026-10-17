@@ -4,14 +4,14 @@ export type Opening={id:string;name:string;w:string;h:string;count:number;/** с
 export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean;/** варіант 3D-моделі (див. FIXTURE_MODELS) */model?:string};
 export const FIXTURES:Record<string,{name:string;w:number;d:number}>={
   toilet:{name:"Унітаз",w:20,d:28},vanity:{name:"Умивальник / тумба",w:30,d:21},sink:{name:"Раковина",w:20,d:18},tub:{name:"Ванна",w:60,d:30},shower:{name:"Душ",w:36,d:36},
-  washer:{name:"Пральна",w:27,d:30},dryer:{name:"Сушка",w:27,d:30},fan:{name:"Вентилятор",w:12,d:12},light:{name:"Світильник",w:10,d:10},heater:{name:"Радіатор",w:24,d:6},cabinet:{name:"Шафа",w:36,d:24},other:{name:"Інше",w:24,d:24},
+  washer:{name:"Пральна",w:27,d:30},dryer:{name:"Сушка",w:27,d:30},fan:{name:"Вентилятор",w:12,d:12},light:{name:"Світильник",w:10,d:10},heater:{name:"Радіатор",w:24,d:6},cabinet:{name:"Шафа",w:36,d:24},mirror:{name:"Дзеркало",w:24,d:2},vanityLight:{name:"Світло над дзеркалом",w:30,d:5},towelBar:{name:"Тримач рушників",w:24,d:3},other:{name:"Інше",w:24,d:24},
 };
 export type SurveyPhoto={id:string;path?:string;dataUrl?:string};
 export type PlanTask={name:string;qty:number;unit:string;basis:string;note?:string};
 export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string;seen?:{type:string;wall:string;t:number;style?:string;note:string}[];floorTile?:{w:number;h:number}|null};
 /** додаткова ділянка нестандартної кімнати: ніша/виступ (додати) або вирізаний кут (відняти). depth — глибина від стіни */
 export type Part={id:string;name:string;kind:"add"|"cut";length:string;depth:string;/** ніша: стіна A–D; виріз: кут AB/BC/CD/DA */wall?:string;/** ніша: start|middle|end */pos?:string};
-export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[];fixtures?:Fixture[];/** плитка на підлозі з фото, дюйми */floorTile?:{w:number;h:number}|null;/** фотореалістичні рендери (AI) */renders?:SurveyPhoto[];/** побажання до рендеру: плитка, кольори, стиль */renderWish?:string};
+export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[];fixtures?:Fixture[];/** плитка на підлозі з фото, дюйми */floorTile?:{w:number;h:number}|null;/** фотореалістичні рендери (AI) */renders?:SurveyPhoto[];/** побажання до рендеру: плитка, кольори, стиль */renderWish?:string;/** кольори з фото (hex): стіни, підлога, тумба */look?:{wall?:string;floor?:string;vanity?:string}};
 export type Survey={id:string;date:string;title:string;address?:string;rooms:Room[];notes:string;createdAt:string;updatedAt:string;estimateId?:string};
 
 // "70", "7 3/4", "7-3/4", "7 15/16", "70.5", "5' 3 1/2\"" → дюйми
@@ -97,6 +97,10 @@ export const FIXTURE_MODELS:Record<string,{id:string;name:string;file:string;h:n
   dryer:[{id:"dryer",name:"Сушка",file:"dryer.glb",h:36}],
   cabinet:[{id:"base",name:"Нижня шафа",file:"kitchenCabinet.glb",h:36},{id:"upper",name:"Навісна шафа",file:"kitchenCabinetUpper.glb",h:30,y:54},{id:"tall",name:"Пенал з дзеркалом",file:"bathroomCabinet.glb",h:72},{id:"mirror",name:"Дзеркало",file:"bathroomMirror.glb",h:30,y:42}],
   light:[{id:"light",name:"Світильник",file:"lampSquareCeiling.glb",h:10,ceiling:true}],
+  // file:"" — малюється кодом (Room3D), не GLB
+  mirror:[{id:"round",name:"Кругле",file:"",h:24,y:42},{id:"rect",name:"Прямокутне",file:"",h:30,y:40},{id:"framed",name:"В рамі (шафка)",file:"bathroomMirror.glb",h:30,y:40}],
+  vanityLight:[{id:"bar4",name:"4 плафони",file:"",h:8,y:72},{id:"bar3",name:"3 плафони",file:"",h:8,y:72},{id:"bar2",name:"2 плафони",file:"",h:8,y:72}],
+  towelBar:[{id:"bar",name:"Планка",file:"",h:2,y:48},{id:"ring",name:"Кільце",file:"",h:8,y:48}],
   fan:[{id:"fan",name:"Вентилятор",file:"ceilingFan.glb",h:10,ceiling:true}],
 };
 export function fixtureModel(type:string,model?:string){const v=FIXTURE_MODELS[type];if(!v)return null;return v.find(x=>x.id===model)||v[0]}

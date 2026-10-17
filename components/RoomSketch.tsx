@@ -26,6 +26,9 @@ function fixtureSymbol(type:string,w:number,d:number){
     case "light":return <g><circle cx={w/2} cy={d/2} r={Math.min(w,d)/2} {...st}/><circle cx={w/2} cy={d/2} r={Math.min(w,d)/5} {...thin}/></g>;
     case "heater":return <g><rect x={0} y={0} width={w} height={d} {...st}/>{Array.from({length:Math.max(2,Math.floor(w/3))},(_,i)=><line key={i} x1={(i+1)*w/(Math.max(2,Math.floor(w/3))+1)} y1={0} x2={(i+1)*w/(Math.max(2,Math.floor(w/3))+1)} y2={d} {...thin}/>)}</g>;
     case "cabinet":return <g><rect x={0} y={0} width={w} height={d} {...st}/><line x1={0} y1={0} x2={w} y2={d} {...thin}/><line x1={w} y1={0} x2={0} y2={d} {...thin}/></g>;
+    case "mirror":return <g><rect x={0} y={0} width={w} height={Math.max(d,1.5)} {...st}/><line x1={0} y1={0} x2={w} y2={Math.max(d,1.5)} {...thin}/></g>;
+    case "vanityLight":return <g>{[0.2,0.5,0.8].map((t,i)=><circle key={i} cx={w*t} cy={Math.max(d,2)/2} r={Math.max(d,2)/2} {...st}/>)}</g>;
+    case "towelBar":return <line x1={0} y1={Math.max(d,1.5)/2} x2={w} y2={Math.max(d,1.5)/2} stroke="#344054" strokeWidth={SW*1.5} vectorEffect="non-scaling-stroke"/>;
     default:return <rect x={0} y={0} width={w} height={d} rx={1} {...st}/>;
   }
 }

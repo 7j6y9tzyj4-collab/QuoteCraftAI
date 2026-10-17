@@ -135,7 +135,9 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
       const photos=await roomPhotosData(room,3);
       const fixtures=(room.fixtures||[]).map(f=>`${FIXTURES[f.type]?.name||f.type}${f.model?` (${FIXTURE_MODELS[f.type]?.find(v=>v.id===f.model)?.name||f.model})`:""} on wall ${f.wall}`).join(", ");
       const tile=room.floorTile?`${room.floorTile.w}×${room.floorTile.h} in`:"";
-      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"bathroom",wish:room.renderWish||"",fixtures,tile}),signal:AbortSignal.timeout(90000)});
+      const openings=room.openings.map(o=>`${/вікно|window/i.test(o.name)?"window":"door"} ${o.w}×${o.h} in on wall ${o.wall||"?"}`).join(", ");
+      const look=room.look?Object.entries(room.look).filter(([,v])=>v).map(([k,v])=>`${k} ${v}`).join(", "):"";
+      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"bathroom",wish:room.renderWish||"",fixtures,tile,openings,look}),signal:AbortSignal.timeout(90000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"Render error");
       const id=uid();let item:SurveyPhoto={id,dataUrl:d.image};
       if(user){
@@ -155,25 +157,31 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     if(p.path&&user)supabase.storage.from(BUCKET).remove([p.path]).then(()=>{});
   }
 
-  async function makePlan(rid:string,lang:"uk"|"en"="uk"){
+  async function makePlan(rid:string,lang:"uk"|"en"="uk",sceneOnly=false){
     const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
-    if(!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
+    if(sceneOnly&&!room.photos.length){setMsg("Спочатку додай фото кімнати.");return}
+    if(!sceneOnly&&!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
     setBusyRoom(rid);setMsg("");
     try{
       const photos=await roomPhotosData(room,6);
-      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
+      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
       else{
-        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;style?:string;note:string}[];
-        // сантехніка з фото: додаємо тільки ті типи, яких ще нема (ручні не чіпаємо)
-        const have=new Set((cur.fixtures||[]).map(f=>f.type));
-        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:FIXTURES[f.type].w,d:FIXTURES[f.type].d,fromPhoto:true,...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}));
+        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;style?:string;w?:number;note:string}[];
+        // сантехніка з фото: додаємо тільки ті типи, яких ще нема (ручні не чіпаємо); у режимі «розставити з фото» — замінюємо всі, що були з фото
+        const keep=sceneOnly?(cur.fixtures||[]).filter(f=>!f.fromPhoto):(cur.fixtures||[]);
+        const have=new Set(keep.map(f=>f.type));
+        const okW=(f:{type:string;w?:number})=>{const n=Number(f.w)||0;return n>=6&&n<=120?Math.round(n):FIXTURES[f.type].w};
+        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:okW(f),d:FIXTURES[f.type].d,fromPhoto:true,...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}));
         const tile=d.floorTile&&Number(d.floorTile.w)>0&&Number(d.floorTile.h)>0?{w:Number(d.floorTile.w),h:Number(d.floorTile.h)}:cur.floorTile||null;
-        setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString(),seen,floorTile:tile},fixtures:[...(cur.fixtures||[]),...added],floorTile:tile});
+        const hex=(v:unknown)=>typeof v==="string"&&/^#[0-9a-fA-F]{6}$/.test(v)?v:undefined;
+        const look={...(cur.look||{}),...(hex(d.look?.wall)?{wall:hex(d.look.wall)}:{}),...(hex(d.look?.floor)?{floor:hex(d.look.floor)}:{}),...(hex(d.look?.vanity)?{vanity:hex(d.look.vanity)}:{})};
+        if(sceneOnly)setRoom(rid,{fixtures:[...keep,...added],floorTile:tile,look});
+        else setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString(),seen,floorTile:tile},fixtures:[...keep,...added],floorTile:tile,look});
       }
-    }catch(e){setMsg("План не вийшов: "+(e instanceof Error?e.message:String(e)))}
+    }catch(e){setMsg((sceneOnly?"Розставити не вийшло: ":"План не вийшов: ")+(e instanceof Error?e.message:String(e)))}
     finally{setBusyRoom("")}
   }
   const setTask=(rid:string,i:number,patch:Partial<PlanTask>|null)=>{
@@ -247,6 +255,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         <div className="actions" style={{flexWrap:"wrap"}}>
           <button className="primary" disabled={busy} onClick={()=>{targetRoom.current=r.id;camRef.current?.click()}}>📷 Фото</button>
           <button className="secondary" disabled={busy} onClick={()=>{targetRoom.current=r.id;fileRef.current?.click()}}>🖼 З галереї</button>
+          {!!r.photos.length&&<button className="secondary" disabled={busy} onClick={()=>makePlan(r.id,"uk",true)} title="AI подивиться фото і розставить сантехніку, дзеркало, світло, кольори стін і підлоги на план і 3D">{busy?"Дивлюсь…":"🏠 Розставити з фото"}</button>}
           <button className="secondary" disabled={busy&&recRoom!==r.id} onClick={()=>toggleRec(r.id)} style={recRoom===r.id?{background:"#fee4e2",color:"#b42318"}:undefined}>{recRoom===r.id?"⏹ Стоп":"🎙 Наговорити"}</button>
         </div>
         <label style={{marginTop:8}}>Що треба зробити (українською)<BTextarea rows={3} value={r.notes} placeholder="зняти стару плитку, нова ванна, плитка на стіни до стелі, вентилятор, фарбування" onCommit={v=>setRoom(r.id,{notes:v})}/></label>
