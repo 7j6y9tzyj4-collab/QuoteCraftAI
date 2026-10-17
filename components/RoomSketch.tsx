@@ -1,4 +1,5 @@
 "use client";
+import {useState} from "react";
 import {parseInches,fmtInches,roomAreas,type Room,type Opening,type Part} from "@/lib/survey";
 
 // Ескіз кімнати з розмірів: вид зверху з нішами/вирізами й дверима/вікнами, розгортка 4 стін.
@@ -43,8 +44,32 @@ export default function RoomSketch({room,onOpening,onPart}:{room:Room;onOpening?
   const mid=(k:number)=>add(corner[k],dir[k],len[k]/2);
   const lbl=(kk:number)=>{const m=mid(kk);const edge=kk===0?minY:kk===1?maxX:kk===2?maxY:minX;const o:V=kk%2?[edge,m[1]]:[m[0],edge];const oo=add(o,nrm[kk],14/k);return {x:X(oo[0]),y:Y(oo[1]),rot:kk%2?90*(kk===1?1:-1):0}};
   const areas=roomAreas(room);
+  const [view,setView]=useState<"2d"|"3d">("2d");
+  // ---- 3D (ізометрія): підлога + стіни по контуру, прорізи на стінах ----
+  const Hh=H||96;
+  const c30=Math.cos(Math.PI/6),s30=Math.sin(Math.PI/6);
+  const P=(x:number,y:number,z:number):V=>[(x-y)*c30,(x+y)*s30-z*0.75];
+  const allP:V[]=[];for(const q of pts){allP.push(P(q[0],q[1],0),P(q[0],q[1],Hh))}
+  const ix=allP.map(p=>p[0]),iy=allP.map(p=>p[1]);
+  const iminX=Math.min(...ix),imaxX=Math.max(...ix),iminY=Math.min(...iy),imaxY=Math.max(...iy);
+  const ik=Math.min((vw-2*pad)/(imaxX-iminX),(300-2*pad)/(imaxY-iminY));
+  const IX=(p:V)=>pad+(p[0]-iminX)*ik,IY=(p:V)=>pad+(p[1]-iminY)*ik;
+  const ivh=(imaxY-iminY)*ik+2*pad;
+  const walls3=pts.map((a,i)=>{const b=pts[(i+1)%pts.length];return {a,b,depth:(a[0]+a[1]+b[0]+b[1])/4}}).filter(w=>w.a[0]!==w.b[0]||w.a[1]!==w.b[1]).sort((x,y)=>x.depth-y.depth);
+  const quad=(a:V,b:V,z0:number,z1:number)=>[P(a[0],a[1],z0),P(b[0],b[1],z0),P(b[0],b[1],z1),P(a[0],a[1],z1)].map(q=>`${IX(q)},${IY(q)}`).join(" ");
+  const onSeg=(a:V,b:V)=>(q:V)=>Math.abs((b[0]-a[0])*(q[1]-a[1])-(b[1]-a[1])*(q[0]-a[0]))<0.01&&Math.min(a[0],b[0])-0.01<=q[0]&&q[0]<=Math.max(a[0],b[0])+0.01&&Math.min(a[1],b[1])-0.01<=q[1]&&q[1]<=Math.max(a[1],b[1])+0.01;
+  const openH=(o:{door:boolean})=>o.door?[0,80]:[36,84];
+  const view3d=<svg viewBox={`0 0 ${vw} ${ivh}`} width="100%" style={{maxWidth:440,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+    <polygon points={pts.map(q=>`${IX(P(q[0],q[1],0))},${IY(P(q[0],q[1],0))}`).join(" ")} fill="#e4e7ec" stroke="#98a2b3" strokeWidth={1}/>
+    {walls3.map((w,i)=>{const front=w.depth>(L+W)/4;return <g key={i}>
+      <polygon points={quad(w.a,w.b,0,Hh)} fill={front?"none":"#f2f4f7"} stroke={front?"#b2ccff":"#101828"} strokeWidth={front?1:2} strokeDasharray={front?"4 3":undefined}/>
+      {segs.filter(sg=>onSeg(w.a,w.b)(sg.p)&&onSeg(w.a,w.b)(sg.q)).map((sg,j)=>{const [z0,z1]=openH(sg);return <polygon key={j} points={quad(sg.p,sg.q,z0,Math.min(z1,Hh))} fill={sg.door?"#dbe7ff":"#d1fadf"} stroke={sg.door?"#2f6df6":"#12b76a"} strokeWidth={1}/>})}
+    </g>})}
+    <text x={vw/2} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fill="#344054">{room.name||"Кімната"} · {f(L)} × {f(W)} × {f(Hh)}</text>
+  </svg>;
   return <div style={{marginTop:10}}>
-    <svg viewBox={`0 0 ${vw} ${vh}`} width="100%" style={{maxWidth:440,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+    <div style={{display:"flex",gap:6,marginBottom:6}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}</div>
+    {view==="3d"?view3d:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" style={{maxWidth:440,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       <polygon points={poly} fill="#f8fafc" stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
       {segs.map((s,i)=><g key={i}>
         <line x1={X(s.p[0])} y1={Y(s.p[1])} x2={X(s.q[0])} y2={Y(s.q[1])} stroke="#fff" strokeWidth={5}/>
@@ -56,17 +81,14 @@ export default function RoomSketch({room,onOpening,onPart}:{room:Room;onOpening?
       {parts.map((p,i)=>{if(p.kind!=="add")return null;const kk=WALLS.indexOf(p.wall as any);if(kk<0)return null;const free=len[kk];const t=p.pos==="start"?0:p.pos==="middle"?(free-p.a)/2:free-p.a;const c=add(add(corner[kk],dir[kk],t+p.a/2),nrm[kk],p.d/2);return <text key={"a"+i} x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="#344054">{p.name||"ніша"} {f(p.a)}×{f(p.d)}</text>})}
       <text x={X(L/2)} y={Y(W/2)-4} textAnchor="middle" fontSize={13} fontWeight={800} fill="#101828">{room.name||"Кімната"}</text>
       <text x={X(L/2)} y={Y(W/2)+12} textAnchor="middle" fontSize={11} fill="#667085">{areas.floorSqft} sq ft{H?` · стеля ${f(H)}`:""}</text>
-    </svg>
+    </svg>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>
       {WALLS.map((wl,kk)=>{const opsA=byWall[wl].reduce((a,o)=>a+(parseInches(o.w)||0)*(parseInches(o.h)||0)/144*(o.count||1),0);const extra=parts.filter(p=>p.kind==="add"&&p.wall===wl).reduce((a,p)=>a+2*p.d,0);const area=H?Math.round(((len[kk]+extra)*H/144-opsA)*10)/10:null;
         return <div key={wl} className="linetotal" style={{padding:8}}><span>Стіна {wl}</span><b style={{fontSize:13}}>{f(len[kk])}{H?` × ${f(H)}`:""}</b><small className="muted" style={{display:"block",fontSize:11}}>{area!==null?`${area} sq ft`:"висота?"}{extra?" (з нішею)":""}{byWall[wl].length?` · ${byWall[wl].map(o=>o.name).join(", ")}`:""}</small></div>})}
     </div>
-    {(onOpening&&ops.length>0||onPart&&parts.length>0)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8,alignItems:"center"}}><small className="muted">Де на плані:</small>
+    {onOpening&&ops.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8,alignItems:"center"}}><small className="muted">Де на плані:</small>
       {onOpening&&ops.map(o=><span key={o.id} style={{display:"inline-flex",gap:4,alignItems:"center",fontSize:13}}>{o.name}<select value={o.wall} onChange={e=>onOpening(o.id,{wall:e.target.value})} style={{width:"auto",padding:"4px 6px"}}>{WALLS.map(x=><option key={x}>{x}</option>)}</select></span>)}
-      {onPart&&parts.map(p=><span key={p.id} style={{display:"inline-flex",gap:4,alignItems:"center",fontSize:13}}>{p.kind==="cut"?"виріз, кут":"ніша, стіна"}
-        <select value={p.wall} onChange={e=>onPart(p.id,{wall:e.target.value})} style={{width:"auto",padding:"4px 6px"}}>{(p.kind==="cut"?["AB","BC","CD","DA"]:[...WALLS]).map(x=><option key={x}>{x}</option>)}</select>
-        {p.kind==="add"&&<select value={p.pos} onChange={e=>onPart(p.id,{pos:e.target.value})} style={{width:"auto",padding:"4px 6px"}}><option value="start">початок</option><option value="middle">середина</option><option value="end">кінець</option></select>}
-      </span>)}
+
     </div>}
     <small className="muted">Схема за твоїми розмірами, не креслення. Розміри стін A–D — головного прямокутника.</small>
   </div>;

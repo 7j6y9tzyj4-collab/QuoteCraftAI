@@ -5,7 +5,7 @@ import {supabase} from "@/lib/supabase";
 import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
-import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask} from "@/lib/survey";
+import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part} from "@/lib/survey";
 import RoomSketch from "@/components/RoomSketch";
 
 const BUCKET="receipts";
@@ -19,11 +19,26 @@ function Thumb({p,onRemove}:{p:SurveyPhoto;onRemove:()=>void}){
   return <figure style={{position:"relative",margin:0}}>{src?<a href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{width:96,height:96,objectFit:"cover",borderRadius:12,border:"1px solid #d0d5dd"}}/></a>:<div style={{width:96,height:96,borderRadius:12,background:"#eef2f7"}}/>}<button onClick={onRemove} style={{position:"absolute",top:-6,right:-6,width:24,height:24,borderRadius:12,background:"#fff0ee",color:"#b42318",fontWeight:800}}>×</button></figure>;
 }
 
+// Поля з локальним буфером: батьківський стан оновлюється, коли поле втрачає фокус (або Enter).
+// Інакше на iPhone кожна цифра перемальовує весь екран і клавіатура «скидає» поле.
+function BInput({value,onCommit,...rest}:{value:string;onCommit:(v:string)=>void}&Omit<React.InputHTMLAttributes<HTMLInputElement>,"value"|"onChange">){
+  const [v,setV]=useState(value);const [focus,setFocus]=useState(false);
+  useEffect(()=>{if(!focus)setV(value)},[value,focus]);
+  return <input {...rest} value={v} onChange={e=>setV(e.target.value)} onFocus={()=>setFocus(true)}
+    onBlur={()=>{setFocus(false);if(v!==value)onCommit(v)}} onKeyDown={e=>{if(e.key==="Enter")(e.target as HTMLInputElement).blur()}}/>;
+}
+function BTextarea({value,onCommit,...rest}:{value:string;onCommit:(v:string)=>void}&Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>,"value"|"onChange">){
+  const [v,setV]=useState(value);const [focus,setFocus]=useState(false);
+  useEffect(()=>{if(!focus)setV(value)},[value,focus]);
+  return <textarea {...rest} value={v} onChange={e=>setV(e.target.value)} onFocus={()=>setFocus(true)} onBlur={()=>{setFocus(false);if(v!==value)onCommit(v)}}/>;
+}
 // поле розміру в дюймах з дробами; поруч — як програма це зрозуміла
 function DimInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){
-  const v=parseInches(value);
-  return <label>{label}<input inputMode="decimal" placeholder='напр. 70 або 7 15/16' value={value} onChange={e=>onChange(e.target.value)} style={value&&v===null?{borderColor:"#f04438"}:undefined}/>
-    <small className="muted" style={{fontWeight:400}}>{value?(v!==null?`= ${fmtInches(v)} = ${Math.round(v/12*100)/100} ft`:"не зрозумів — пиши дюйми: 70, 7 3/4"):"дюйми"}</small></label>;
+  const [live,setLive]=useState(value);
+  useEffect(()=>setLive(value),[value]);
+  const v=parseInches(live);
+  return <label>{label}<BInput inputMode="decimal" placeholder='напр. 70 або 7 15/16' value={value} onCommit={onChange} onInput={e=>setLive((e.target as HTMLInputElement).value)} style={live&&v===null?{borderColor:"#f04438"}:undefined}/>
+    <small className="muted" style={{fontWeight:400}}>{live?(v!==null?`= ${fmtInches(v)} = ${Math.round(v/12*100)/100} ft`:"не зрозумів — пиши дюйми: 70, 7 3/4"):"дюйми"}</small></label>;
 }
 
 export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack,onToEstimate}:{
@@ -132,15 +147,15 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   return <>
     <div className="screenbar noPrint"><button onClick={onBack}>← Клієнт</button><b>📋 Огляд</b><span/></div>
     <section className="panel grid">
-      <label>Назва<input value={survey.title} onChange={e=>save({title:e.target.value})}/></label>
-      <label>Дата<input value={survey.date} onChange={e=>save({date:e.target.value})}/></label>
-      <label className="wide">Адреса об'єкта<input value={survey.address||""} onChange={e=>save({address:e.target.value})}/></label>
+      <label>Назва<BInput value={survey.title} onCommit={v=>save({title:v})}/></label>
+      <label>Дата<BInput value={survey.date} onCommit={v=>save({date:v})}/></label>
+      <label className="wide">Адреса об'єкта<BInput value={survey.address||""} onCommit={v=>save({address:v})}/></label>
     </section>
 
     {survey.rooms.map((r,idx)=>{
       const a=roomAreas(r);const busy=busyRoom===r.id;
       return <section className="panel" key={r.id}>
-        <div className="head"><input value={r.name} placeholder={`Кімната ${idx+1}`} onChange={e=>setRoom(r.id,{name:e.target.value})} style={{fontWeight:800,fontSize:17,border:0,padding:"4px 0",background:"transparent"}}/>
+        <div className="head"><BInput value={r.name} placeholder={`Кімната ${idx+1}`} onCommit={v=>setRoom(r.id,{name:v})} style={{fontWeight:800,fontSize:17,border:0,padding:"4px 0",background:"transparent"}}/>
           <button className="remove" onClick={()=>{if(confirm(`Прибрати «${r.name||"кімнату"}»?`))save({rooms:survey.rooms.filter(x=>x.id!==r.id)})}}>×</button></div>
 
         <div className="grid3" style={{marginTop:8}}>
@@ -151,12 +166,21 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         <details style={{marginTop:8}} open={!!r.parts?.length}>
           <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, виступ, вирізаний кут)</summary>
           <small className="muted">Головний прямокутник — вище. Тут додай ділянки: <b>ніша/виступ</b> — додається до підлоги й стін; <b>вирізаний кут</b> (Г-подібна кімната) — віднімається від підлоги.</small>
-          {(r.parts||[]).map(p=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 90px 90px 36px",gap:6,marginTop:6,alignItems:"end"}}>
-            <label>Що<select value={p.kind} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,kind:e.target.value as "add"|"cut"}:x)})}><option value="add">Ніша / виступ (+)</option><option value="cut">Вирізаний кут (−)</option></select></label>
-            <label>Довжина<input inputMode="decimal" placeholder="дюйми" value={p.length} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,length:e.target.value}:x)})}/></label>
-            <label>Глибина<input inputMode="decimal" placeholder="дюйми" value={p.depth} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,depth:e.target.value}:x)})}/></label>
-            <button className="remove" onClick={()=>setRoom(r.id,{parts:(r.parts||[]).filter(x=>x.id!==p.id)})}>×</button>
-          </div>)}
+          {(r.parts||[]).map(p=>{const setP=(patch:Partial<Part>)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,...patch}:x)});
+            return <div key={p.id} style={{marginTop:8,padding:8,background:"#f8fafc",borderRadius:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 84px 84px 36px",gap:6,alignItems:"end"}}>
+              <label>Що<select value={p.kind} onChange={e=>setP({kind:e.target.value as "add"|"cut",wall:undefined})}><option value="add">Ніша / виступ (+)</option><option value="cut">Вирізаний кут (−)</option></select></label>
+              <label>Довжина<BInput inputMode="decimal" placeholder="дюйми" value={p.length} onCommit={v=>setP({length:v})}/></label>
+              <label>Глибина<BInput inputMode="decimal" placeholder="дюйми" value={p.depth} onCommit={v=>setP({depth:v})}/></label>
+              <button className="remove" onClick={()=>setRoom(r.id,{parts:(r.parts||[]).filter(x=>x.id!==p.id)})}>×</button>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,alignItems:"center",fontSize:13}}>
+              {p.kind==="cut"?<><span className="muted">Який кут:</span><select value={p.wall||"AB"} onChange={e=>setP({wall:e.target.value})} style={{width:"auto",padding:"6px 8px"}}><option value="AB">верх-право (A/B)</option><option value="BC">низ-право (B/C)</option><option value="CD">низ-ліво (C/D)</option><option value="DA">верх-ліво (D/A)</option></select></>
+              :<><span className="muted">На стіні:</span><select value={p.wall||"A"} onChange={e=>setP({wall:e.target.value})} style={{width:"auto",padding:"6px 8px"}}><option value="A">A (верх)</option><option value="B">B (право)</option><option value="C">C (низ)</option><option value="D">D (ліво)</option></select>
+                <select value={p.pos||"end"} onChange={e=>setP({pos:e.target.value})} style={{width:"auto",padding:"6px 8px"}}><option value="start">на початку</option><option value="middle">по середині</option><option value="end">в кінці</option></select></>}
+              <BInput placeholder="назва (душ, шафа)" value={p.name} onCommit={v=>setP({name:v})} style={{width:140,padding:"6px 8px"}}/>
+            </div>
+          </div>})}
           <button className="secondary" style={{marginTop:8,padding:"6px 10px",fontSize:13}} onClick={()=>setRoom(r.id,{parts:[...(r.parts||[]),{id:uid(),name:"",kind:"add",length:"",depth:""}]})}>＋ Ділянка</button>
         </details>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,alignItems:"center"}}>
@@ -180,7 +204,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           <button className="secondary" disabled={busy} onClick={()=>{targetRoom.current=r.id;fileRef.current?.click()}}>🖼 З галереї</button>
           <button className="secondary" disabled={busy&&recRoom!==r.id} onClick={()=>toggleRec(r.id)} style={recRoom===r.id?{background:"#fee4e2",color:"#b42318"}:undefined}>{recRoom===r.id?"⏹ Стоп":"🎙 Наговорити"}</button>
         </div>
-        <label style={{marginTop:8}}>Що треба зробити (українською)<textarea rows={3} value={r.notes} placeholder="зняти стару плитку, нова ванна, плитка на стіни до стелі, вентилятор, фарбування" onChange={e=>setRoom(r.id,{notes:e.target.value})}/></label>
+        <label style={{marginTop:8}}>Що треба зробити (українською)<BTextarea rows={3} value={r.notes} placeholder="зняти стару плитку, нова ванна, плитка на стіни до стелі, вентилятор, фарбування" onCommit={v=>setRoom(r.id,{notes:v})}/></label>
         <div className="actions" style={{marginTop:8}}>
           <button className="primary" disabled={busy} onClick={()=>makePlan(r.id)}>{busy?"Думаю…":r.plan?"🔄 Скласти план заново":"🧠 Скласти план робіт"}</button>
         </div>
@@ -190,8 +214,8 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {r.plan.condition&&<p className="muted" style={{fontSize:14,margin:"6px 0 0"}}><b>Що є зараз:</b> {r.plan.condition}</p>}
           <div style={{marginTop:10}}>
             {r.plan.tasks.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 72px 64px 36px",gap:6,marginTop:6,alignItems:"start"}}>
-              <div><input value={t.name} onChange={e=>setTask(r.id,i,{name:e.target.value})}/>{(t.basis||t.note)&&<small className="muted">{[t.basis,t.note].filter(Boolean).join(" · ")}</small>}</div>
-              <input type="number" step="0.5" value={t.qty} onChange={e=>setTask(r.id,i,{qty:Number(e.target.value)||0})}/>
+              <div><BInput value={t.name} onCommit={v=>setTask(r.id,i,{name:v})}/>{(t.basis||t.note)&&<small className="muted">{[t.basis,t.note].filter(Boolean).join(" · ")}</small>}</div>
+              <BInput type="number" step="0.5" value={String(t.qty)} onCommit={v=>setTask(r.id,i,{qty:Number(v)||0})}/>
               <select value={t.unit} onChange={e=>setTask(r.id,i,{unit:e.target.value})}>{Object.entries(UNIT).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
               <button className="remove" onClick={()=>setTask(r.id,i,null)}>×</button>
             </div>)}
@@ -207,7 +231,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     })}
 
     <div className="actions"><button className="secondary" onClick={()=>save({rooms:[...survey.rooms,newRoom(`Кімната ${survey.rooms.length+1}`)]})}>＋ Ще кімната</button></div>
-    <section className="panel"><label>Загальні нотатки по об'єкту<textarea rows={2} value={survey.notes} onChange={e=>save({notes:e.target.value})} placeholder="паркування, доступ, що купує клієнт, терміни"/></label></section>
+    <section className="panel"><label>Загальні нотатки по об'єкту<BTextarea rows={2} value={survey.notes} onCommit={v=>save({notes:v})} placeholder="паркування, доступ, що купує клієнт, терміни"/></label></section>
     {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
     <div className="actions noPrint"><button className="primary huge" disabled={!ready} onClick={()=>onToEstimate(survey)}>🧮 В естімейт — усі кімнати</button></div>
     <small className="muted" style={{display:"block",margin:"6px 4px 16px"}}>Кімнати з планом підуть у калькулятор з кількостями з розмірів. Без плану — піде твій текст «що треба зробити».</small>
