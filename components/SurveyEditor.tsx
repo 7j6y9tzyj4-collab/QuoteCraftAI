@@ -170,7 +170,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
         </div>}
         {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
-        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})}/>
+        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})}/>
 
         <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"12px 0"}}>
           {r.photos.map(p=><Thumb key={p.id} p={p} onRemove={()=>removePhoto(r.id,p)}/>)}
