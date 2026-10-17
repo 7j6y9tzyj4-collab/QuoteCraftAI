@@ -106,14 +106,14 @@ function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
 }
 // Готові моделі (Kenney Furniture Kit, CC0, /public/models). Вписуються в габарит w×h×d; rotY — щоб «перед» дивився в кімнату.
 const MODELS:Record<string,{file:string;h:number;rotY?:number;ceiling?:boolean}>={
-  toilet:{file:"toilet.glb",h:30,rotY:Math.PI},
-  vanity:{file:"bathroomSinkSquare.glb",h:34,rotY:Math.PI},
-  sink:{file:"bathroomSink.glb",h:34,rotY:Math.PI},
-  tub:{file:"bathtub.glb",h:20,rotY:Math.PI},
-  shower:{file:"showerRound.glb",h:80,rotY:Math.PI},
-  washer:{file:"washer.glb",h:36,rotY:Math.PI},
-  dryer:{file:"dryer.glb",h:36,rotY:Math.PI},
-  cabinet:{file:"kitchenCabinet.glb",h:36,rotY:Math.PI},
+  toilet:{file:"toilet.glb",h:30},
+  vanity:{file:"bathroomSinkSquare.glb",h:34},
+  sink:{file:"bathroomSink.glb",h:34},
+  tub:{file:"bathtub.glb",h:20},
+  shower:{file:"showerRound.glb",h:80},
+  washer:{file:"washer.glb",h:36},
+  dryer:{file:"dryer.glb",h:36},
+  cabinet:{file:"kitchenCabinet.glb",h:36},
   light:{file:"lampSquareCeiling.glb",h:10,ceiling:true},
   fan:{file:"ceilingFan.glb",h:10,ceiling:true},
 };
@@ -180,9 +180,10 @@ function Scene({room,dims}:{room:Room;dims:boolean}){
   },[tile]);
   if(!g)return null;
   return <>
-    <ambientLight intensity={0.55}/>
-    <hemisphereLight args={["#ffffff","#b0a090",0.5]}/>
-    <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={0.9} castShadow/>
+    <ambientLight intensity={1.1}/>
+    <hemisphereLight args={["#ffffff","#cfc8bd",0.8]}/>
+    <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={1.6} castShadow/>
+    <directionalLight position={[-L*IN,H*IN*1.5,-W*IN]} intensity={0.5}/>
     <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={FLOOR_COLOR} side={THREE.DoubleSide}/>}</mesh>
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef}/>})}
     {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g}/>)}
@@ -191,25 +192,25 @@ function Scene({room,dims}:{room:Room;dims:boolean}){
   </>;
 }
 
-const Tag=({p,text,color="#1d4ed8"}:{p:[number,number,number];text:string;color?:string})=><Html position={p} center zIndexRange={[10,0]} style={{pointerEvents:"none"}}><div style={{background:"rgba(255,255,255,.9)",border:`1px solid ${color}`,color,borderRadius:6,padding:"1px 5px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{text}</div></Html>;
+const Tag=({p,text,color="#1d4ed8"}:{p:[number,number,number];text:string;color?:string})=><Html position={p} center zIndexRange={[10,0]} occlude={false} style={{pointerEvents:"none"}}><div style={{background:"rgba(255,255,255,.92)",border:`1px solid ${color}`,color,borderRadius:6,padding:"1px 5px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{text}</div></Html>;
 function Dims({g}:{g:NonNullable<ReturnType<typeof roomGeom>>}){
   const {pts,H}=g;
   return <>
-    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<6)return null;return <Tag key={"w"+i} p={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} text={fmtInches(l)}/>})}
+    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<12)return null;return <Tag key={"w"+i} p={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} text={fmtInches(l)}/>})}
     <Tag p={[pts[0][0]*IN,H/2*IN,pts[0][1]*IN]} text={"↕ "+fmtInches(H)} color="#067647"/>
-    {g.segs.map((s,i)=><Tag key={"o"+i} p={[(s.p[0]+s.q[0])/2*IN,(s.z0+s.z1)/2*IN,(s.p[1]+s.q[1])/2*IN]} text={`${fmtInches(Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]))} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>)}
+    {g.segs.filter((s,i,arr)=>arr.findIndex(x=>Math.abs(x.p[0]-s.p[0])<1&&Math.abs(x.p[1]-s.p[1])<1&&Math.abs(x.z0-s.z0)<1)===i).map((s,i)=><Tag key={"o"+i} p={[(s.p[0]+s.q[0])/2*IN,(s.z0+s.z1)/2*IN,(s.p[1]+s.q[1])/2*IN]} text={`${fmtInches(Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]))} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>)}
     {g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(FIX_H3[f.type]||30)*IN+3*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
   </>;
 }
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=true}:{room:Room;dims?:boolean}){
+export default function Room3D({room,dims=true,height=340}:{room:Room;dims?:boolean;height?:number|string}){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
-  return <div style={{height:340,borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none"}}>
-    <Canvas shadows camera={{position:[g.L*IN*1.3,g.H*IN*0.9,g.W*IN+diag*0.7],fov:50}} dpr={[1,1.5]}>
+  return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
+    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,1.5]}>
       <Scene room={room} dims={dims}/>
     </Canvas>
-    <div style={{position:"relative",top:-24,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
+    <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
   </div>;
 }
