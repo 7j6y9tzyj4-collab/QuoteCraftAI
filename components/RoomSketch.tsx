@@ -31,7 +31,8 @@ function fixtureSymbol(type:string,w:number,d:number){
 }
 const FIX_H:Record<string,number>={toilet:30,vanity:34,sink:34,tub:20,shower:80,washer:36,dryer:36,fan:6,light:6,heater:24,cabinet:84,other:30};
 const CEIL=new Set(["fan","light"]);
-export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;onOpening?:(id:string,patch:Partial<Opening>)=>void;onPart?:(id:string,patch:Partial<Part>)=>void;onFixture?:(id:string,patch:Partial<Fixture>|null)=>void}){
+export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,rendering}:{room:Room;onOpening?:(id:string,patch:Partial<Opening>)=>void;onPart?:(id:string,patch:Partial<Part>)=>void;onFixture?:(id:string,patch:Partial<Fixture>|null)=>void;onRender?:(sketchPng:string)=>void;rendering?:boolean}){
+  const captureRef=useRef<(()=>string|null)|null>(null);
   const L=parseInches(room.length),W=parseInches(room.width),H=parseInches(room.height);
   if(!L||!W)return null;
   const corner:V[]=[[0,0],[L,0],[L,W],[0,W]];
@@ -122,10 +123,11 @@ export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;
     <text x={vw/2} y={ivh-8} textAnchor="middle" fontSize={11} fill="#98a2b3">тягни пальцем, щоб покрутити</text>
   </svg>;
   return <div style={{marginTop:10}}>
-    <div style={{display:"flex",gap:6,marginBottom:6}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
+    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
       <button type="button" onClick={()=>setDims(d=>!d)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 Розміри</button>
+      {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
       <button type="button" onClick={()=>setFull(f=>!f)} title="На весь екран" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:full?"#344054":"#eef2f7",color:full?"#fff":"#344054"}}>{full?"✕":"⛶"}</button></div>
-    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340}/>:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340} captureRef={captureRef}/>:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       {room.floorTile&&room.floorTile.w>0&&room.floorTile.h>0&&<defs><pattern id={"tile"+room.id} x={X(0)} y={Y(0)} width={room.floorTile.w*k} height={room.floorTile.h*k} patternUnits="userSpaceOnUse"><rect width={room.floorTile.w*k} height={room.floorTile.h*k} fill="#f8fafc" stroke="#d0d5dd" strokeWidth={0.6}/></pattern></defs>}
       <polygon points={poly} fill={room.floorTile?`url(#tile${room.id})`:"#f8fafc"} stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
       {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);
@@ -150,11 +152,12 @@ export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;
     </svg>;
     if(!full)return body;
     return <div style={{position:"fixed",inset:0,zIndex:9999,background:"#fff",display:"flex",flexDirection:"column",padding:"max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom))"}}>
-      <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+      <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
         <b style={{fontSize:15}}>{room.name||"Кімната"}</b>
         {(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
         <button type="button" onClick={()=>setDims(d=>!d)} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏</button>
-        <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕ Закрити</button>
+        {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
+        <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕</button>
       </div>
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:view==="3d"?"stretch":"center",justifyContent:"center"}}>{body}</div>
     </div>;})()}

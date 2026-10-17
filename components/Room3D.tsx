@@ -153,10 +153,11 @@ function Fixture({f,H,geom}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeo
   return <group matrixAutoUpdate={false} matrix={m}>{inner}</group>;
 }
 
-function Scene({room,dims}:{room:Room;dims:boolean}){
+function Scene({room,dims,captureRef}:{room:Room;dims:boolean;captureRef?:React.MutableRefObject<(()=>string|null)|null>}){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
-  const {camera}=useThree();
+  const {camera,gl,scene}=useThree();
+  useEffect(()=>{if(captureRef)captureRef.current=()=>{try{gl.render(scene,camera);return gl.domElement.toDataURL("image/png")}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
   useFrame(()=>{camRef.current.copy(camera.position)});
   const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;
   const shape=useMemo(()=>{const s=new THREE.Shape();pts.forEach((p,i)=>{if(i===0)s.moveTo(p[0]*IN,p[1]*IN);else s.lineTo(p[0]*IN,p[1]*IN)});s.closePath();return s},[pts]);
@@ -194,13 +195,13 @@ function Dims({g}:{g:NonNullable<ReturnType<typeof roomGeom>>}){
 }
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return FIX_H3[f.type]||30;return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=true,height=340}:{room:Room;dims?:boolean;height?:number|string}){
+export default function Room3D({room,dims=true,height=340,captureRef}:{room:Room;dims?:boolean;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>}){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
-    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true}}>
-      <Scene room={room} dims={dims}/>
+    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}}>
+      <Scene room={room} dims={dims} captureRef={captureRef}/>
     </Canvas>
     <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
   </div>;

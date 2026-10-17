@@ -13,10 +13,10 @@ const UNIT:Record<string,string>={sqft:"sq ft",linear_ft:"lin ft",each:"шт",ho
 const uid=()=>crypto.randomUUID();
 
 // мініатюра фото з приватного сховища
-function Thumb({p,onRemove}:{p:SurveyPhoto;onRemove:()=>void}){
+function Thumb({p,onRemove,big}:{p:SurveyPhoto;onRemove:()=>void;big?:boolean}){
   const [src,setSrc]=useState<string|null>(p.dataUrl||null);
   useEffect(()=>{if(p.dataUrl){setSrc(p.dataUrl);return}if(!p.path)return;let on=true;supabase.storage.from(BUCKET).createSignedUrl(p.path,3600).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});return()=>{on=false}},[p.path,p.dataUrl]);
-  return <figure style={{position:"relative",margin:0}}>{src?<a href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{width:96,height:96,objectFit:"cover",borderRadius:12,border:"1px solid #d0d5dd"}}/></a>:<div style={{width:96,height:96,borderRadius:12,background:"#eef2f7"}}/>}<button onClick={onRemove} style={{position:"absolute",top:-6,right:-6,width:24,height:24,borderRadius:12,background:"#fff0ee",color:"#b42318",fontWeight:800}}>×</button></figure>;
+  return <figure style={{position:"relative",margin:0}}>{src?<a href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{width:big?200:96,height:big?200:96,objectFit:"cover",borderRadius:12,border:"1px solid #d0d5dd"}}/></a>:<div style={{width:big?200:96,height:big?200:96,borderRadius:12,background:"#eef2f7"}}/>}<button onClick={onRemove} style={{position:"absolute",top:-6,right:-6,width:24,height:24,borderRadius:12,background:"#fff0ee",color:"#b42318",fontWeight:800}}>×</button></figure>;
 }
 
 // Поля з локальним буфером: батьківський стан оновлюється, коли поле втрачає фокус (або Enter).
@@ -117,18 +117,50 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     }catch{setMsg("Немає доступу до мікрофона. Дозволь у Налаштування → Safari → Мікрофон.")}
   }
 
+  const [renderingRoom,setRenderingRoom]=useState("");
+  async function roomPhotosData(room:Room,max:number){
+    const photos:string[]=[];
+    for(const p of room.photos.slice(0,max)){
+      let d=p.dataUrl||"";
+      if(!d&&p.path){const {data}=await supabase.storage.from(BUCKET).download(p.path);if(data)d=await new Promise<string>(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result));fr.readAsDataURL(data)})}
+      if(d){try{d=await shrinkImage(d,1400,.8)}catch{}if(d.length<=750000)photos.push(d)}
+    }
+    return photos;
+  }
+  // 📸 Фото-рендер: 3D-ескіз (ракурс) + фото кімнати + побажання → AI-картинка «після ремонту»
+  async function makeRender(rid:string,sketchPng:string){
+    const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
+    setRenderingRoom(rid);setMsg("");
+    try{
+      const photos=await roomPhotosData(room,3);
+      const fixtures=(room.fixtures||[]).map(f=>`${FIXTURES[f.type]?.name||f.type}${f.model?` (${FIXTURE_MODELS[f.type]?.find(v=>v.id===f.model)?.name||f.model})`:""} on wall ${f.wall}`).join(", ");
+      const tile=room.floorTile?`${room.floorTile.w}×${room.floorTile.h} in`:"";
+      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"bathroom",wish:room.renderWish||"",fixtures,tile}),signal:AbortSignal.timeout(90000)});
+      const d=await r.json();if(!r.ok)throw new Error(d?.error||"Render error");
+      const id=uid();let item:SurveyPhoto={id,dataUrl:d.image};
+      if(user){
+        const path=`${user.id}/surveys/${sRef.current.id}/${rid}/render-${id}.png`;
+        const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(d.image),{contentType:"image/png",upsert:true});
+        if(!error)item={id,path};
+      }
+      const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
+      setRoom(rid,{renders:[...(cur.renders||[]),item]});
+    }catch(e){setMsg("Рендер: "+(e instanceof Error?e.message:String(e)))}
+    finally{setRenderingRoom("")}
+  }
+  function removeRender(rid:string,p:SurveyPhoto){
+    if(!confirm("Видалити рендер?"))return;
+    const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
+    setRoom(rid,{renders:(room.renders||[]).filter(x=>x.id!==p.id)});
+    if(p.path&&user)supabase.storage.from(BUCKET).remove([p.path]).then(()=>{});
+  }
+
   async function makePlan(rid:string,lang:"uk"|"en"="uk"){
     const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
     if(!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
     setBusyRoom(rid);setMsg("");
     try{
-      // фото для AI: з сховища → data URL (зменшені)
-      const photos:string[]=[];
-      for(const p of room.photos.slice(0,6)){
-        let d=p.dataUrl||"";
-        if(!d&&p.path){const {data}=await supabase.storage.from(BUCKET).download(p.path);if(data)d=await new Promise<string>(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result));fr.readAsDataURL(data)})}
-        if(d){try{d=await shrinkImage(d,1400,.8)}catch{}if(d.length<=750000)photos.push(d)}
-      }
+      const photos=await roomPhotosData(room,6);
       const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
@@ -201,7 +233,13 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
         </div>}
         {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
-        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})} onFixture={(id,patch)=>{const list=r.fixtures||[];if(patch===null)setRoom(r.id,{fixtures:list.filter(x=>x.id!==id)});else if(list.some(x=>x.id===id))setRoom(r.id,{fixtures:list.map(x=>x.id===id?{...x,...patch}:x)});else setRoom(r.id,{fixtures:[...list,patch as Fixture]})}}/>
+        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})} onFixture={(id,patch)=>{const list=r.fixtures||[];if(patch===null)setRoom(r.id,{fixtures:list.filter(x=>x.id!==id)});else if(list.some(x=>x.id===id))setRoom(r.id,{fixtures:list.map(x=>x.id===id?{...x,...patch}:x)});else setRoom(r.id,{fixtures:[...list,patch as Fixture]})}} onRender={png=>makeRender(r.id,png)} rendering={renderingRoom===r.id}/>
+        <div style={{marginTop:8}}>
+          <label>📸 Побажання до фото-рендеру (плитка, кольори, стиль — українською можна)</label>
+          <BInput value={r.renderWish||""} onCommit={v=>setRoom(r.id,{renderWish:v})} placeholder="напр.: плитка 12×24 сіра під бетон, біла тумба, чорні крани, LED-дзеркало"/>
+          {renderingRoom===r.id&&<div className="muted" style={{fontSize:12,marginTop:4}}>⏳ Малюю… зазвичай 20–40 секунд.</div>}
+          {!!(r.renders||[]).length&&<div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:8}}>{(r.renders||[]).map(p=><Thumb key={p.id} p={p} onRemove={()=>removeRender(r.id,p)} big/>)}</div>}
+        </div>
 
         <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"12px 0"}}>
           {r.photos.map(p=><Thumb key={p.id} p={p} onRemove={()=>removePhoto(r.id,p)}/>)}
