@@ -2,6 +2,7 @@
 import {useRef,useState} from "react";
 import dynamic from "next/dynamic";
 const Room3D=dynamic(()=>import("@/components/Room3D"),{ssr:false,loading:()=>null});
+import type {ExportFn,ExportFmt} from "@/components/Room3D";
 import {parseInches,fmtInches,roomAreas,FIXTURES,FIXTURE_MODELS,type Room,type Opening,type Part,type Fixture} from "@/lib/survey";
 
 // Ескіз кімнати з розмірів: вид зверху з нішами/вирізами й дверима/вікнами, розгортка 4 стін.
@@ -36,6 +37,14 @@ const FIX_H:Record<string,number>={toilet:30,vanity:34,sink:34,tub:20,shower:80,
 const CEIL=new Set(["fan","light"]);
 export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,rendering}:{room:Room;onOpening?:(id:string,patch:Partial<Opening>)=>void;onPart?:(id:string,patch:Partial<Part>)=>void;onFixture?:(id:string,patch:Partial<Fixture>|null)=>void;onRender?:(sketchPng:string)=>void;rendering?:boolean}){
   const captureRef=useRef<(()=>string|null)|null>(null);
+  const exportRef=useRef<ExportFn|null>(null);
+  const [exp,setExp]=useState(false);
+  async function download(fmt:ExportFmt){
+    const fn=exportRef.current;if(!fn){alert("3D ще не готове — спробуй за секунду.");return}
+    try{const blob=await fn(fmt);const name=`${(room.name||"room").replace(/[^\w\u0400-\u04ff -]+/g,"").trim()||"room"}.${fmt}`;
+      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
+    catch(e){alert("Експорт не вийшов: "+(e instanceof Error?e.message:String(e)))}
+  }
   const L=parseInches(room.length),W=parseInches(room.width),H=parseInches(room.height);
   if(!L||!W)return null;
   const corner:V[]=[[0,0],[L,0],[L,W],[0,W]];
@@ -75,6 +84,13 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   const [view,setView]=useState<"2d"|"3d">("2d");
   const [dims,setDims]=useState(true);
   const [full,setFull]=useState(false);
+  const exportRow=exp&&view==="3d"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,fontSize:12,alignItems:"center"}}>
+    <button type="button" onClick={()=>download("obj")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ OBJ — SketchUp</button>
+    <button type="button" onClick={()=>download("glb")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ GLB</button>
+    <button type="button" onClick={()=>download("usdz")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ USDZ — AR на iPhone</button>
+    <span className="muted">SketchUp Pro: File → Import → OBJ, Units: Feet</span>
+  </div>;
+
   // ---- 3D, яке можна крутити пальцем (як у SketchUp): поворот навколо центру кімнати ----
   const [rot,setRot]=useState({yaw:35,pitch:30});
   const dragRef=useRef<{x:number;y:number;yaw:number;pitch:number}|null>(null);
@@ -129,8 +145,10 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
     <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
       <button type="button" onClick={()=>setDims(d=>!d)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 Розміри</button>
       {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
+      {view==="3d"&&<button type="button" onClick={()=>setExp(e=>!e)} title="Експорт 3D" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:exp?"#344054":"#eef2f7",color:exp?"#fff":"#344054"}}>⬇ 3D</button>}
       <button type="button" onClick={()=>setFull(f=>!f)} title="На весь екран" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:full?"#344054":"#eef2f7",color:full?"#fff":"#344054"}}>{full?"✕":"⛶"}</button></div>
-    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340} captureRef={captureRef}/>:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+    {exportRow}
+    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340} captureRef={captureRef} exportRef={exportRef}/>:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       {room.floorTile&&room.floorTile.w>0&&room.floorTile.h>0&&<defs><pattern id={"tile"+room.id} x={X(0)} y={Y(0)} width={room.floorTile.w*k} height={room.floorTile.h*k} patternUnits="userSpaceOnUse"><rect width={room.floorTile.w*k} height={room.floorTile.h*k} fill="#f8fafc" stroke="#d0d5dd" strokeWidth={0.6}/></pattern></defs>}
       <polygon points={poly} fill={room.floorTile?`url(#tile${room.id})`:"#f8fafc"} stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
       {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);
@@ -162,6 +180,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
         <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕</button>
       </div>
+      {exportRow}
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:view==="3d"?"stretch":"center",justifyContent:"center"}}>{body}</div>
     </div>;})()}
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>

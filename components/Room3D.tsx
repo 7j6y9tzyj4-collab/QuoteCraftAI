@@ -7,6 +7,8 @@ import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
+export type ExportFmt="obj"|"glb"|"usdz";
+export type ExportFn=(fmt:ExportFmt)=>Promise<Blob>;
 
 // 3D кімната: стіни з прорізами, підлога з плиткою, сантехніка з простих форм. Одиниці — фути (дюйми/12).
 const IN=1/12;
@@ -183,11 +185,20 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
   return <group matrixAutoUpdate={false} matrix={m}>{inner}</group>;
 }
 
-function Scene({room,dims,captureRef}:{room:Room;dims:boolean;captureRef?:React.MutableRefObject<(()=>string|null)|null>}){
+function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:boolean;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
   useEffect(()=>{if(captureRef)captureRef.current=()=>{try{gl.render(scene,camera);return gl.domElement.toDataURL("image/png")}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
+  // Експорт сцени: OBJ (SketchUp Pro → File → Import, одиниці: feet), GLB (будь-який 3D-в'юер), USDZ (iPhone AR Quick Look)
+  useEffect(()=>{if(!exportRef)return;exportRef.current=async(fmt)=>{
+    // без підписів і світла — тільки геометрія кімнати
+    const src=scene.clone(true);src.traverse(n=>{n.userData={}});
+    if(fmt==="obj"){const {OBJExporter}=await import("three/examples/jsm/exporters/OBJExporter.js");return new Blob([new OBJExporter().parse(src)],{type:"model/obj"})}
+    if(fmt==="usdz"){const {USDZExporter}=await import("three/examples/jsm/exporters/USDZExporter.js");const u8=await new USDZExporter().parseAsync(src);return new Blob([u8 as unknown as BlobPart],{type:"model/vnd.usdz+zip"})}
+    const {GLTFExporter}=await import("three/examples/jsm/exporters/GLTFExporter.js");
+    const buf=await new GLTFExporter().parseAsync(src,{binary:true}) as ArrayBuffer;return new Blob([buf],{type:"model/gltf-binary"});
+  };return()=>{if(exportRef)exportRef.current=null}},[exportRef,scene]);
   useFrame(()=>{camRef.current.copy(camera.position)});
   const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;
   const shape=useMemo(()=>{const s=new THREE.Shape();pts.forEach((p,i)=>{if(i===0)s.moveTo(p[0]*IN,p[1]*IN);else s.lineTo(p[0]*IN,p[1]*IN)});s.closePath();return s},[pts]);
@@ -225,13 +236,13 @@ function Dims({g}:{g:NonNullable<ReturnType<typeof roomGeom>>}){
 }
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return FIX_H3[f.type]||30;return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=true,height=340,captureRef}:{room:Room;dims?:boolean;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>}){
+export default function Room3D({room,dims=true,height=340,captureRef,exportRef}:{room:Room;dims?:boolean;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
     <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}}>
-      <Scene room={room} dims={dims} captureRef={captureRef}/>
+      <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef}/>
     </Canvas>
     <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
   </div>;
