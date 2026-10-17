@@ -4,7 +4,7 @@ import * as THREE from "three";
 import {Canvas,useFrame,useThree} from "@react-three/fiber";
 import {OrbitControls,Html,useGLTF} from "@react-three/drei";
 import {Suspense,useEffect,useState} from "react";
-import {fmtInches} from "@/lib/survey";
+import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
 
@@ -28,7 +28,7 @@ function Wall({a,b,H,segs,camRef}:{a:V;b:V;H:number;segs:WallSeg[];camRef:React.
   useFrame(()=>{
     const c=camRef.current;const mx=(a[0]+b[0])/2*IN,my=(a[1]+b[1])/2*IN;
     const dot=(c.x-mx)*nx+(c.z-my)*ny; // камера з боку зовнішньої нормалі → стіна між нами й кімнатою
-    const op=dot>0?0.1:1;
+    const op=dot>0?0.03:1;
     for(const m of mats.current){if(m&&m.opacity!==op){m.opacity=op;m.depthWrite=op>=1;m.needsUpdate=true}}
   });
   return <group position={[a[0]*IN,0,a[1]*IN]} rotation={[0,-ang,0]}>
@@ -104,26 +104,14 @@ function Flat({w,d,H,light}:{w:number;d:number;H:number;light?:boolean}){
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
   return <mesh position={[w/2*IN,h/2*IN,d/2*IN]}><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color}/></mesh>;
 }
-// Готові моделі (Kenney Furniture Kit, CC0, /public/models). Вписуються в габарит w×h×d; rotY — щоб «перед» дивився в кімнату.
-const MODELS:Record<string,{file:string;h:number;rotY?:number;ceiling?:boolean}>={
-  toilet:{file:"toilet.glb",h:30},
-  vanity:{file:"bathroomSinkSquare.glb",h:34},
-  sink:{file:"bathroomSink.glb",h:34},
-  tub:{file:"bathtub.glb",h:20},
-  shower:{file:"showerRound.glb",h:80},
-  washer:{file:"washer.glb",h:36},
-  dryer:{file:"dryer.glb",h:36},
-  cabinet:{file:"kitchenCabinet.glb",h:36},
-  light:{file:"lampSquareCeiling.glb",h:10,ceiling:true},
-  fan:{file:"ceilingFan.glb",h:10,ceiling:true},
-};
+// Готові моделі (Kenney Furniture Kit, CC0, /public/models) — варіанти в lib/survey FIXTURE_MODELS. Вписуються в габарит w×h×d, перед — у кімнату.
 function GlbFixture({f,H}:{f:FixBox;H:number}){
-  const m=MODELS[f.type];
+  const m=fixtureModel(f.type,f.model)!;
   const {scene}=useGLTF("/models/"+m.file);
   const [obj,setObj]=useState<THREE.Object3D|null>(null);
   useEffect(()=>{
     const o=scene.clone(true);
-    o.rotation.set(0,m.rotY||0,0);o.updateMatrixWorld(true);
+    o.updateMatrixWorld(true);
     const box=new THREE.Box3().setFromObject(o);const sz=new THREE.Vector3();box.getSize(sz);
     const h=Math.min(m.h,H-2);
     const sx=f.w*IN/Math.max(sz.x,1e-6),sy=h*IN/Math.max(sz.y,1e-6),sz2=f.d*IN/Math.max(sz.z,1e-6);
@@ -133,7 +121,8 @@ function GlbFixture({f,H}:{f:FixBox;H:number}){
     const b2=new THREE.Box3().setFromObject(o);
     // ставимо: лівий край на x=0, задня стінка до стіни (z=0), низ на підлогу (або під стелю)
     const cx=(b2.min.x+b2.max.x)/2;
-    o.position.set(f.w*IN/2-cx,-(b2.min.y)+(m.ceiling?(H*IN-(b2.max.y-b2.min.y)):0),-(b2.min.z)+(f.d*IN-(b2.max.z-b2.min.z))/2*(m.ceiling?1:0));
+    const y0=m.ceiling?Math.max(0,H*IN-(b2.max.y-b2.min.y)):Math.min((m.y||0)*IN,Math.max(0,H*IN-(b2.max.y-b2.min.y)));
+    o.position.set(f.w*IN/2-cx,-(b2.min.y)+y0,-(b2.min.z)+(f.d*IN-(b2.max.z-b2.min.z))/2*(m.ceiling?1:0));
     o.traverse(n=>{const mm=n as THREE.Mesh;if(mm.isMesh){mm.castShadow=true;mm.receiveShadow=true}});
     setObj(g);
   },[scene,f.w,f.d,H,m]);
@@ -142,7 +131,8 @@ function GlbFixture({f,H}:{f:FixBox;H:number}){
 function Fixture({f,H,geom}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>}){
   // локальна система: початок у p0, x вздовж стіни, z у кімнату
   const ang=Math.atan2(geom.dir[f.k][1],geom.dir[f.k][0]);
-  const inner=MODELS[f.type]?<Suspense fallback={<Box w={f.w} d={f.d} h={MODELS[f.type].h} color="#e5e7eb"/>}><GlbFixture f={f} H={H}/></Suspense>:(()=>{switch(f.type){
+  const mdl=fixtureModel(f.type,f.model);
+  const inner=mdl?<Suspense fallback={<Box w={f.w} d={f.d} h={mdl.h} color="#e5e7eb"/>}><GlbFixture f={f} H={H}/></Suspense>:(()=>{switch(f.type){
     case "toilet":return <Toilet w={f.w} d={f.d}/>;
     case "vanity":return <Vanity w={f.w} d={f.d}/>;
     case "sink":return <Sink w={f.w} d={f.d}/>;
@@ -199,16 +189,17 @@ function Dims({g}:{g:NonNullable<ReturnType<typeof roomGeom>>}){
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<12)return null;return <Tag key={"w"+i} p={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} text={fmtInches(l)}/>})}
     <Tag p={[pts[0][0]*IN,H/2*IN,pts[0][1]*IN]} text={"↕ "+fmtInches(H)} color="#067647"/>
     {g.segs.filter((s,i,arr)=>arr.findIndex(x=>Math.abs(x.p[0]-s.p[0])<1&&Math.abs(x.p[1]-s.p[1])<1&&Math.abs(x.z0-s.z0)<1)===i).map((s,i)=><Tag key={"o"+i} p={[(s.p[0]+s.q[0])/2*IN,(s.z0+s.z1)/2*IN,(s.p[1]+s.q[1])/2*IN]} text={`${fmtInches(Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]))} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>)}
-    {g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(FIX_H3[f.type]||30)*IN+3*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
+    {g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(fixTop(f,H)+3)*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
   </>;
 }
+function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return FIX_H3[f.type]||30;return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
 export default function Room3D({room,dims=true,height=340}:{room:Room;dims?:boolean;height?:number|string}){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
-    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,1.5]}>
+    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true}}>
       <Scene room={room} dims={dims}/>
     </Canvas>
     <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>

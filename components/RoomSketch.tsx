@@ -2,7 +2,7 @@
 import {useRef,useState} from "react";
 import dynamic from "next/dynamic";
 const Room3D=dynamic(()=>import("@/components/Room3D"),{ssr:false,loading:()=>null});
-import {parseInches,fmtInches,roomAreas,FIXTURES,type Room,type Opening,type Part,type Fixture} from "@/lib/survey";
+import {parseInches,fmtInches,roomAreas,FIXTURES,FIXTURE_MODELS,type Room,type Opening,type Part,type Fixture} from "@/lib/survey";
 
 // Ескіз кімнати з розмірів: вид зверху з нішами/вирізами й дверима/вікнами, розгортка 4 стін.
 const WALLS=["A","B","C","D"] as const; // A — верх (довжина), B — право (ширина), C — низ, D — ліво
@@ -177,6 +177,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;
       {(room.fixtures||[]).map(fx=><div key={fx.id} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:6,fontSize:13}}>
         <b style={{minWidth:90}}>{fx.label||FIXTURES[fx.type]?.name||fx.type}{fx.fromPhoto?" 📷":""}</b>
         <select value={fx.wall} onChange={e=>onFixture(fx.id,{wall:e.target.value})} style={{width:"auto",padding:"4px 6px"}}>{WALLS.map(x=><option key={x}>{x}</option>)}</select>
+        {(FIXTURE_MODELS[fx.type]||[]).length>1&&<select value={fx.model||FIXTURE_MODELS[fx.type][0].id} onChange={e=>onFixture(fx.id,{model:e.target.value})} style={{width:"auto",padding:"4px 6px"}} title="вигляд у 3D">{FIXTURE_MODELS[fx.type].map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>}
         <input type="range" min={0} max={1} step={0.05} value={fx.t} onChange={e=>onFixture(fx.id,{t:Number(e.target.value)})} style={{width:110,padding:0}}/>
         <input inputMode="decimal" defaultValue={fx.w} onBlur={e=>onFixture(fx.id,{w:Number(e.target.value)||fx.w})} style={{width:52,padding:"4px 6px"}} title="ширина, дюйми"/>×<input inputMode="decimal" defaultValue={fx.d} onBlur={e=>onFixture(fx.id,{d:Number(e.target.value)||fx.d})} style={{width:52,padding:"4px 6px"}} title="глибина, дюйми"/>
         <button onClick={()=>onFixture(fx.id,null)} style={{background:"#fff0ee",color:"#b42318",borderRadius:8,padding:"2px 8px"}}>×</button>

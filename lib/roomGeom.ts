@@ -5,7 +5,7 @@ export const WALLS=["A","B","C","D"] as const;
 export const add=(a:V,b:V,k=1):V=>[a[0]+b[0]*k,a[1]+b[1]*k];
 
 export type WallSeg={p:V;q:V;k:number;door:boolean;swing:"in"|"out";hinge:"left"|"right";id:string;z0:number;z1:number};
-export type FixBox={id:string;type:string;p0:V;p1:V;p2:V;p3:V;w:number;d:number;k:number;label?:string};
+export type FixBox={id:string;type:string;p0:V;p1:V;p2:V;p3:V;w:number;d:number;k:number;label?:string;model?:string};
 
 export function roomGeom(room:Room){
   const L=parseInches(room.length)||0,W=parseInches(room.width)||0,H=parseInches(room.height)||96;
@@ -34,7 +34,7 @@ export function roomGeom(room:Room){
     for(const o of list)for(let c=0;c<(o.count||1);c++){const start=typeof o.t==="number"&&c===0?Math.max(0,Math.min(len[k]-o.ow,o.t*(len[k]-o.ow))):cur;const door=/двер|door/i.test(o.name);
       segs.push({p:add(corner[k],dir[k],start),q:add(corner[k],dir[k],start+o.ow),k,door,swing:o.swing||"in",hinge:o.hinge||"left",id:o.id,z0:door?0:Math.max(0,Math.min(H-o.oh,H-o.oh-12)),z1:door?Math.min(o.oh||80,H):Math.min(H,Math.max(0,Math.min(H-o.oh,H-o.oh-12))+o.oh)});cur=start+o.ow+gap}}
   const fixtures:FixBox[]=(room.fixtures||[]).flatMap(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return [];const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));
-    const p0=add(corner[kk],dir[kk],t*(len[kk]-w));const p1=add(p0,dir[kk],w);const p2=add(p1,nrm[kk],-d);const p3=add(p0,nrm[kk],-d);return [{id:fx.id,type:fx.type,p0,p1,p2,p3,w,d,k:kk,label:fx.label}]});
+    const p0=add(corner[kk],dir[kk],t*(len[kk]-w));const p1=add(p0,dir[kk],w);const p2=add(p1,nrm[kk],-d);const p3=add(p0,nrm[kk],-d);return [{id:fx.id,type:fx.type,p0,p1,p2,p3,w,d,k:kk,label:fx.label,model:fx.model}]});
   return {L,W,H,corner,dir,nrm,len,pts,segs,fixtures,parts,cut};
 }
 // чи лежить точка q на відрізку a–b

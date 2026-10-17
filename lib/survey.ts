@@ -1,14 +1,14 @@
 // Огляд об'єкта: кімнати з розмірами в дюймах (з дробами), фото, нотатки, AI-план робіт.
 export type Opening={id:string;name:string;w:string;h:string;count:number;/** стіна A/B/C/D на ескізі */wall?:string;/** двері: всередину/назовні */swing?:"in"|"out";/** петлі: ліворуч/праворуч (дивлячись з кімнати) */hinge?:"left"|"right";/** положення на стіні 0..1 */t?:number};
 /** сантехніка й обладнання на плані */
-export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean};
+export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean;/** варіант 3D-моделі (див. FIXTURE_MODELS) */model?:string};
 export const FIXTURES:Record<string,{name:string;w:number;d:number}>={
   toilet:{name:"Унітаз",w:20,d:28},vanity:{name:"Умивальник / тумба",w:30,d:21},sink:{name:"Раковина",w:20,d:18},tub:{name:"Ванна",w:60,d:30},shower:{name:"Душ",w:36,d:36},
   washer:{name:"Пральна",w:27,d:30},dryer:{name:"Сушка",w:27,d:30},fan:{name:"Вентилятор",w:12,d:12},light:{name:"Світильник",w:10,d:10},heater:{name:"Радіатор",w:24,d:6},cabinet:{name:"Шафа",w:36,d:24},other:{name:"Інше",w:24,d:24},
 };
 export type SurveyPhoto={id:string;path?:string;dataUrl?:string};
 export type PlanTask={name:string;qty:number;unit:string;basis:string;note?:string};
-export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string;seen?:{type:string;wall:string;t:number;note:string}[];floorTile?:{w:number;h:number}|null};
+export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string;seen?:{type:string;wall:string;t:number;style?:string;note:string}[];floorTile?:{w:number;h:number}|null};
 /** додаткова ділянка нестандартної кімнати: ніша/виступ (додати) або вирізаний кут (відняти). depth — глибина від стіни */
 export type Part={id:string;name:string;kind:"add"|"cut";length:string;depth:string;/** ніша: стіна A–D; виріз: кут AB/BC/CD/DA */wall?:string;/** ніша: start|middle|end */pos?:string};
 export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[];fixtures?:Fixture[];/** плитка на підлозі з фото, дюйми */floorTile?:{w:number;h:number}|null};
@@ -85,3 +85,18 @@ export function surveyToPrompt(s:Survey):string{
   if(s.notes.trim())lines.push("Загалом: "+s.notes.trim());
   return lines.join("\n");
 }
+
+/** Варіанти 3D-моделей (Kenney Furniture Kit, /public/models). Перший — за замовчуванням. h — висота, дюйми; y — низ над підлогою (для навісних); ceiling — під стелю. */
+export const FIXTURE_MODELS:Record<string,{id:string;name:string;file:string;h:number;y?:number;ceiling?:boolean}[]>={
+  toilet:[{id:"toilet",name:"Унітаз",file:"toilet.glb",h:30}],
+  vanity:[{id:"vanityDrawer",name:"Тумба з умивальником",file:"bathroomCabinetDrawer.glb",h:34},{id:"sinkSquare",name:"Підвісний умивальник",file:"bathroomSinkSquare.glb",h:34},{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34}],
+  sink:[{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34},{id:"sinkSquare",name:"Підвісний",file:"bathroomSinkSquare.glb",h:34},{id:"vanityDrawer",name:"Тумба з умивальником",file:"bathroomCabinetDrawer.glb",h:34}],
+  tub:[{id:"tub",name:"Ванна",file:"bathtub.glb",h:20}],
+  shower:[{id:"showerSquare",name:"Квадратний",file:"shower.glb",h:80},{id:"showerRound",name:"Кутовий заокруглений",file:"showerRound.glb",h:80}],
+  washer:[{id:"washer",name:"Пральна",file:"washer.glb",h:36},{id:"stacked",name:"Пральна + сушка (стовпчик)",file:"washerDryerStacked.glb",h:72}],
+  dryer:[{id:"dryer",name:"Сушка",file:"dryer.glb",h:36}],
+  cabinet:[{id:"base",name:"Нижня шафа",file:"kitchenCabinet.glb",h:36},{id:"upper",name:"Навісна шафа",file:"kitchenCabinetUpper.glb",h:30,y:54},{id:"tall",name:"Пенал з дзеркалом",file:"bathroomCabinet.glb",h:72},{id:"mirror",name:"Дзеркало",file:"bathroomMirror.glb",h:30,y:42}],
+  light:[{id:"light",name:"Світильник",file:"lampSquareCeiling.glb",h:10,ceiling:true}],
+  fan:[{id:"fan",name:"Вентилятор",file:"ceilingFan.glb",h:10,ceiling:true}],
+};
+export function fixtureModel(type:string,model?:string){const v=FIXTURE_MODELS[type];if(!v)return null;return v.find(x=>x.id===model)||v[0]}

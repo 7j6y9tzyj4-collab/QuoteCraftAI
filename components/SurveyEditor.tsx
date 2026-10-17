@@ -5,7 +5,7 @@ import {supabase} from "@/lib/supabase";
 import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
-import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,FIXTURES,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part,type Fixture} from "@/lib/survey";
+import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,FIXTURES,FIXTURE_MODELS,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part,type Fixture} from "@/lib/survey";
 import RoomSketch from "@/components/RoomSketch";
 
 const BUCKET="receipts";
@@ -134,10 +134,10 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
       else{
-        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;note:string}[];
+        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;style?:string;note:string}[];
         // сантехніка з фото: додаємо тільки ті типи, яких ще нема (ручні не чіпаємо)
         const have=new Set((cur.fixtures||[]).map(f=>f.type));
-        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:FIXTURES[f.type].w,d:FIXTURES[f.type].d,fromPhoto:true}));
+        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:FIXTURES[f.type].w,d:FIXTURES[f.type].d,fromPhoto:true,...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}));
         const tile=d.floorTile&&Number(d.floorTile.w)>0&&Number(d.floorTile.h)>0?{w:Number(d.floorTile.w),h:Number(d.floorTile.h)}:cur.floorTile||null;
         setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString(),seen,floorTile:tile},fixtures:[...(cur.fixtures||[]),...added],floorTile:tile});
       }
