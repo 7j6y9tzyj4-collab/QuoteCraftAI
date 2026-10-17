@@ -7,6 +7,7 @@ import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
 import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,FIXTURES,FIXTURE_MODELS,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part,type Fixture} from "@/lib/survey";
 import RoomSketch from "@/components/RoomSketch";
+import {importScan,type ScanPayload} from "@/lib/scanImport";
 
 const BUCKET="receipts";
 const UNIT:Record<string,string>={sqft:"sq ft",linear_ft:"lin ft",each:"шт",hour:"год",room:"кімн."};
@@ -118,6 +119,34 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   }
 
   const [renderingRoom,setRenderingRoom]=useState("");
+  // 📡 LiDAR-скан з iPhone: веб створює токен → відкриває додаток QuoteCraft Scan → чекає payload у scan_inbox
+  const [scanWait,setScanWait]=useState<{rid:string;token:string}|null>(null);
+  const scanTimer=useRef<ReturnType<typeof setInterval>|null>(null);
+  function stopScanWait(){if(scanTimer.current)clearInterval(scanTimer.current);scanTimer.current=null;setScanWait(null)}
+  async function startScan(rid:string){
+    if(!user){setMsg("Увійди в акаунт, щоб приймати скани.");return}
+    const token=crypto.randomUUID().replace(/-/g,"");
+    const {error}=await supabase.from("scan_inbox").insert({token,user_id:user.id,survey_id:sRef.current.id,room_id:rid});
+    if(error){setMsg("Скан: "+error.message+(/scan_inbox/.test(error.message)?" (таблиця scan_inbox ще не створена)":""));return}
+    setScanWait({rid,token});setMsg("");
+    const started=Date.now();
+    scanTimer.current=setInterval(async()=>{
+      if(Date.now()-started>20*60e3){stopScanWait();setMsg("Скан не прийшов за 20 хв — спробуй ще раз.");return}
+      const {data}=await supabase.from("scan_inbox").select("payload").eq("token",token).maybeSingle();
+      if(data?.payload){
+        stopScanWait();
+        try{
+          const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
+          const {note,...patch}=importScan(data.payload as ScanPayload,cur);
+          setRoom(rid,patch);setMsg("✅ "+note);
+        }catch(e){setMsg("Скан: "+(e instanceof Error?e.message:String(e)))}
+        supabase.from("scan_inbox").delete().eq("token",token).then(()=>{});
+      }
+    },3000);
+    // відкриваємо додаток (custom URL scheme). Якщо не встановлений — нічого не станеться, підказка нижче.
+    window.location.href=`quotecraftscan://scan?token=${token}&api=${encodeURIComponent(window.location.origin)}`;
+  }
+  useEffect(()=>()=>{if(scanTimer.current)clearInterval(scanTimer.current)},[]);
   async function roomPhotosData(room:Room,max:number){
     const photos:string[]=[];
     for(const p of room.photos.slice(0,max)){
@@ -255,6 +284,8 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         <div className="actions" style={{flexWrap:"wrap"}}>
           <button className="primary" disabled={busy} onClick={()=>{targetRoom.current=r.id;camRef.current?.click()}}>📷 Фото</button>
           <button className="secondary" disabled={busy} onClick={()=>{targetRoom.current=r.id;fileRef.current?.click()}}>🖼 З галереї</button>
+          <button className="secondary" disabled={busy||!!scanWait} onClick={()=>startScan(r.id)} title="Відкриває додаток QuoteCraft Scan на iPhone (LiDAR). Після сканування розміри, двері/вікна і сантехніка з'являться тут самі.">📡 Сканувати LiDAR</button>
+          {scanWait?.rid===r.id&&<span className="muted" style={{fontSize:12,alignSelf:"center"}}>⏳ Чекаю скан з iPhone… <button type="button" onClick={stopScanWait} style={{background:"transparent",color:"#b42318",fontWeight:700}}>скасувати</button></span>}
           {!!r.photos.length&&<button className="secondary" disabled={busy} onClick={()=>makePlan(r.id,"uk",true)} title="AI подивиться фото і розставить сантехніку, дзеркало, світло, кольори стін і підлоги на план і 3D">{busy?"Дивлюсь…":"🏠 Розставити з фото"}</button>}
           <button className="secondary" disabled={busy&&recRoom!==r.id} onClick={()=>toggleRec(r.id)} style={recRoom===r.id?{background:"#fee4e2",color:"#b42318"}:undefined}>{recRoom===r.id?"⏹ Стоп":"🎙 Наговорити"}</button>
         </div>
