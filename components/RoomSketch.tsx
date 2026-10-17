@@ -7,6 +7,26 @@ const WALLS=["A","B","C","D"] as const; // A — верх (довжина), B �
 type V=[number,number];
 const add=(a:V,b:V,k=1):V=>[a[0]+b[0]*k,a[1]+b[1]*k];
 
+
+// Умовні позначення як на планах: у дюймах, (0,0) — на стіні ліворуч, y — углиб кімнати
+const SW=1.2; // товщина лінії в дюймах (масштабується)
+function fixtureSymbol(type:string,w:number,d:number){
+  const st={fill:"#fff",stroke:"#344054",strokeWidth:SW,vectorEffect:"non-scaling-stroke" as const};
+  const thin={fill:"none",stroke:"#667085",strokeWidth:SW*0.7,vectorEffect:"non-scaling-stroke" as const};
+  switch(type){
+    case "toilet":{const tw=w*0.9,td=d*0.3;return <g><rect x={(w-tw)/2} y={0} width={tw} height={td} rx={1.5} {...st}/><ellipse cx={w/2} cy={td+(d-td)/2} rx={w*0.42} ry={(d-td)/2*0.95} {...st}/><ellipse cx={w/2} cy={td+(d-td)/2+1} rx={w*0.28} ry={(d-td)/2*0.6} {...thin}/></g>}
+    case "vanity":return <g><rect x={0} y={0} width={w} height={d} rx={1} {...st}/><ellipse cx={w/2} cy={d*0.5} rx={Math.min(w*0.3,9)} ry={Math.min(d*0.32,6.5)} {...st}/><circle cx={w/2} cy={d*0.18} r={0.9} {...thin}/></g>;
+    case "sink":return <g><rect x={0} y={0} width={w} height={d} rx={3} {...st}/><ellipse cx={w/2} cy={d*0.55} rx={w*0.36} ry={d*0.32} {...thin}/><circle cx={w/2} cy={d*0.2} r={0.9} {...thin}/></g>;
+    case "tub":return <g><rect x={0} y={0} width={w} height={d} rx={2} {...st}/><rect x={2.5} y={2.5} width={w-5} height={d-5} rx={Math.min(w,d)*0.35} {...thin}/><circle cx={w*0.12} cy={d/2} r={1.6} {...thin}/></g>;
+    case "shower":return <g><rect x={0} y={0} width={w} height={d} {...st}/><line x1={0} y1={0} x2={w} y2={d} {...thin}/><line x1={w} y1={0} x2={0} y2={d} {...thin}/><circle cx={w/2} cy={d/2} r={2} {...st}/></g>;
+    case "washer":case "dryer":return <g><rect x={0} y={0} width={w} height={d} rx={1} {...st}/><circle cx={w/2} cy={d*0.55} r={Math.min(w,d)*0.33} {...thin}/><rect x={2} y={1.5} width={w-4} height={3} {...thin}/></g>;
+    case "fan":return <g><circle cx={w/2} cy={d/2} r={Math.min(w,d)/2} {...st}/><path d={`M${w/2},${d/2} m-4,-4 l8,8 m0,-8 l-8,8`} {...thin}/></g>;
+    case "light":return <g><circle cx={w/2} cy={d/2} r={Math.min(w,d)/2} {...st}/><circle cx={w/2} cy={d/2} r={Math.min(w,d)/5} {...thin}/></g>;
+    case "heater":return <g><rect x={0} y={0} width={w} height={d} {...st}/>{Array.from({length:Math.max(2,Math.floor(w/3))},(_,i)=><line key={i} x1={(i+1)*w/(Math.max(2,Math.floor(w/3))+1)} y1={0} x2={(i+1)*w/(Math.max(2,Math.floor(w/3))+1)} y2={d} {...thin}/>)}</g>;
+    case "cabinet":return <g><rect x={0} y={0} width={w} height={d} {...st}/><line x1={0} y1={0} x2={w} y2={d} {...thin}/><line x1={w} y1={0} x2={0} y2={d} {...thin}/></g>;
+    default:return <rect x={0} y={0} width={w} height={d} rx={1} {...st}/>;
+  }
+}
 export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;onOpening?:(id:string,patch:Partial<Opening>)=>void;onPart?:(id:string,patch:Partial<Part>)=>void;onFixture?:(id:string,patch:Partial<Fixture>|null)=>void}){
   const L=parseInches(room.length),W=parseInches(room.width),H=parseInches(room.height);
   if(!L||!W)return null;
@@ -83,8 +103,11 @@ export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;
     {view==="3d"?view3d:<svg viewBox={`0 0 ${vw} ${vh}`} width="100%" style={{maxWidth:440,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       {room.floorTile&&room.floorTile.w>0&&room.floorTile.h>0&&<defs><pattern id={"tile"+room.id} x={X(0)} y={Y(0)} width={room.floorTile.w*k} height={room.floorTile.h*k} patternUnits="userSpaceOnUse"><rect width={room.floorTile.w*k} height={room.floorTile.h*k} fill="#f8fafc" stroke="#d0d5dd" strokeWidth={0.6}/></pattern></defs>}
       <polygon points={poly} fill={room.floorTile?`url(#tile${room.id})`:"#f8fafc"} stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
-      {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);const pIn=add(p0,nrm[kk],-d);const c=add(add(p0,dir[kk],w/2),nrm[kk],-d/2);const pts4=[p0,add(p0,dir[kk],w),add(pIn,dir[kk],w),pIn].map(q=>`${X(q[0])},${Y(q[1])}`).join(" ");const lab=fx.label||FIXTURES[fx.type]?.name||fx.type;
-        return <g key={fx.id}><polygon points={pts4} fill={fx.type==="tub"||fx.type==="shower"?"#dbe7ff":fx.type==="toilet"||fx.type==="sink"||fx.type==="vanity"?"#e0f2fe":"#f2f4f7"} stroke="#475467" strokeWidth={1}/><text x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#344054">{lab.length>12?lab.slice(0,11)+"…":lab}</text></g>})}
+      {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);
+        // локальні координати: x — вздовж стіни, y — від стіни в кімнату; одиниці — дюйми
+        const m=`matrix(${k*dir[kk][0]} ${k*dir[kk][1]} ${-k*nrm[kk][0]} ${-k*nrm[kk][1]} ${X(p0[0])} ${Y(p0[1])})`;
+        const c=add(add(p0,dir[kk],w/2),nrm[kk],-d/2);const lab=fx.label||FIXTURES[fx.type]?.name||fx.type;
+        return <g key={fx.id}><g transform={m}>{fixtureSymbol(fx.type,w,d)}</g>{(fx.type==="other"||fx.type==="cabinet"||fx.label)&&<text x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#344054">{lab.length>12?lab.slice(0,11)+"…":lab}</text>}</g>})}
       {segs.map((s,i)=><g key={i}>
         <line x1={X(s.p[0])} y1={Y(s.p[1])} x2={X(s.q[0])} y2={Y(s.q[1])} stroke="#fff" strokeWidth={5}/>
         <line x1={X(s.p[0])} y1={Y(s.p[1])} x2={X(s.q[0])} y2={Y(s.q[1])} stroke={s.door?"#2f6df6":"#12b76a"} strokeWidth={s.door?2:4} strokeDasharray={s.door?undefined:"3 3"}/>
