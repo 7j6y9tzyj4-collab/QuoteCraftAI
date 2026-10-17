@@ -24,11 +24,3 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
     info:
       path: Sources/Info.plist
-      properties:
-        CFBundleDisplayName: QuoteCraft Scan
-        NSCameraUsageDescription: Камера потрібна для LiDAR-сканування кімнати.
-        UIRequiredDeviceCapabilities: [arkit]
-        UILaunchScreen: {}
-        CFBundleURLTypes:
-          - CFBundleURLName: com.kvhouse.quotecraftscan
-            CFBundleURLSchemes: [quotecraftscan]

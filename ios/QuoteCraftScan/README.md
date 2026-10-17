@@ -3,8 +3,8 @@
 Міні-додаток: сканує кімнату через Apple RoomPlan і відправляє стіни/двері/вікна/об'єкти в QuoteCraft.
 
 Збірка (Mac):
-1. `brew install xcodegen` (один раз), Xcode з App Store.
-2. `cd ios/QuoteCraftScan && xcodegen generate && open QuoteCraftScan.xcodeproj`
+1. Xcode з App Store.
+2. Відкрити `ios/QuoteCraftScan/QuoteCraftScan.xcodeproj` (готовий; `project.yml` — для xcodegen, якщо захочеться перегенерувати).
 3. Xcode → Signing & Capabilities → Team: свій Apple ID. Підключити iPhone кабелем, обрати його, ▶︎ Run.
 4. На iPhone: Settings → General → VPN & Device Management → довірити розробнику (один раз).
 
