@@ -139,9 +139,10 @@ function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
     const box=new THREE.Box3().setFromObject(o);const sz=new THREE.Vector3();box.getSize(sz);
     const h=Math.min(m.h,H-2);
     const sx=f.w*IN/Math.max(sz.x,1e-6),sy=h*IN/Math.max(sz.y,1e-6),sz2=f.d*IN/Math.max(sz.z,1e-6);
-    // тримаємо пропорції моделі: рівномірний масштаб по ширині/глибині, висота — за таблицею
+    // ширина і глибина — точно за введеними розмірами (модель трохи розтягується); унітаз і п'єдестал — пропорційно
+    const keepRatio=f.type==="toilet"||(f.type==="sink"&&(f.model||"pedestal")==="pedestal")||(f.type==="vanity"&&f.model==="pedestal");
     const su=Math.min(sx,sz2);
-    const g=new THREE.Group();g.add(o);o.scale.set(su,sy,su);o.updateMatrixWorld(true);
+    const g=new THREE.Group();g.add(o);o.scale.set(keepRatio?su:sx,sy,keepRatio?su:sz2);o.updateMatrixWorld(true);
     const b2=new THREE.Box3().setFromObject(o);
     // ставимо: лівий край на x=0, задня стінка до стіни (z=0), низ на підлогу (або під стелю)
     const cx=(b2.min.x+b2.max.x)/2;
