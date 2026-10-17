@@ -5,7 +5,7 @@ import {supabase} from "@/lib/supabase";
 import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
-import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part} from "@/lib/survey";
+import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,FIXTURES,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part,type Fixture} from "@/lib/survey";
 import RoomSketch from "@/components/RoomSketch";
 
 const BUCKET="receipts";
@@ -133,7 +133,14 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
-      else setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString()}});
+      else{
+        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;note:string}[];
+        // сантехніка з фото: додаємо тільки ті типи, яких ще нема (ручні не чіпаємо)
+        const have=new Set((cur.fixtures||[]).map(f=>f.type));
+        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:FIXTURES[f.type].w,d:FIXTURES[f.type].d,fromPhoto:true}));
+        const tile=d.floorTile&&Number(d.floorTile.w)>0&&Number(d.floorTile.h)>0?{w:Number(d.floorTile.w),h:Number(d.floorTile.h)}:cur.floorTile||null;
+        setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString(),seen,floorTile:tile},fixtures:[...(cur.fixtures||[]),...added],floorTile:tile});
+      }
     }catch(e){setMsg("План не вийшов: "+(e instanceof Error?e.message:String(e)))}
     finally{setBusyRoom("")}
   }
@@ -194,7 +201,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
         </div>}
         {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
-        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})}/>
+        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})} onFixture={(id,patch)=>{const list=r.fixtures||[];if(patch===null)setRoom(r.id,{fixtures:list.filter(x=>x.id!==id)});else if(list.some(x=>x.id===id))setRoom(r.id,{fixtures:list.map(x=>x.id===id?{...x,...patch}:x)});else setRoom(r.id,{fixtures:[...list,patch as Fixture]})}}/>
 
         <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"12px 0"}}>
           {r.photos.map(p=><Thumb key={p.id} p={p} onRemove={()=>removePhoto(r.id,p)}/>)}
