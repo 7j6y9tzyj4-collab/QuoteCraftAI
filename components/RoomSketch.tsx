@@ -1,5 +1,5 @@
 "use client";
-import {parseInches,fmtInches,type Room,type Opening} from "@/lib/survey";
+import {parseInches,fmtInches,roomAreas,type Room,type Opening} from "@/lib/survey";
 
 // Ескіз кімнати з розмірів: вид зверху (двері/вікна на стінах) і розгортка 4 стін з площами.
 const WALLS=["A","B","C","D"] as const; // A — верхня (довжина), B — права (ширина), C — нижня, D — ліва
@@ -39,7 +39,7 @@ export default function RoomSketch({room,onOpening}:{room:Room;onOpening?:(id:st
       <text x={x0-8} y={y0+h/2} textAnchor="middle" fontSize={12} fontWeight={700} fill="#344054" transform={`rotate(-90 ${x0-8} ${y0+h/2})`}>D · {f(W)}</text>
       <text x={x0+w+10} y={y0+h/2} textAnchor="middle" fontSize={12} fontWeight={700} fill="#344054" transform={`rotate(90 ${x0+w+10} ${y0+h/2})`}>B · {f(W)}</text>
       <text x={x0+w/2} y={y0+h/2-4} textAnchor="middle" fontSize={13} fontWeight={800} fill="#101828">{room.name||"Кімната"}</text>
-      <text x={x0+w/2} y={y0+h/2+12} textAnchor="middle" fontSize={11} fill="#667085">{Math.round(L*W/144*10)/10} sq ft{H?` · стеля ${f(H)}`:""}</text>
+      <text x={x0+w/2} y={y0+h/2+12} textAnchor="middle" fontSize={11} fill="#667085">{roomAreas(room).floorSqft} sq ft{room.parts?.length?" (з нішами/вирізами)":""}{H?` · стеля ${f(H)}`:""}</text>
     </svg>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>
       {WALLS.map(wl=>{const len=wl==="A"||wl==="C"?L:W;const opsA=byWall[wl].reduce((a,o)=>a+(parseInches(o.w)||0)*(parseInches(o.h)||0)/144*(o.count||1),0);const area=wallArea(len);
