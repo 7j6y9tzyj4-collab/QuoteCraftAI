@@ -42,6 +42,11 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   async function download(fmt:ExportFmt){
     const fn=exportRef.current;if(!fn){alert("3D ще не готове — спробуй за секунду.");return}
     try{const blob=await fn(fmt);const name=`${(room.name||"room").replace(/[^\w\u0400-\u04ff -]+/g,"").trim()||"room"}.${fmt}`;
+      const file=new File([blob],name,{type:blob.type});
+      // iPhone: USDZ → одразу AR Quick Look (посилання rel="ar" з картинкою всередині); інше — через share sheet («Зберегти у Файли»)
+      const ios=/iPhone|iPad/.test(navigator.userAgent);
+      if(ios&&fmt==="usdz"){const url=URL.createObjectURL(blob);const a=document.createElement("a");a.rel="ar";a.href=url;const img=document.createElement("img");img.alt="";img.style.display="none";a.appendChild(img);document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},60000);return}
+      if(ios&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:name});return}
       const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
     catch(e){alert("Експорт не вийшов: "+(e instanceof Error?e.message:String(e)))}
   }
