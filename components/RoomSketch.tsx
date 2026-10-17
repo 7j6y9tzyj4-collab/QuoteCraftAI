@@ -27,6 +27,8 @@ function fixtureSymbol(type:string,w:number,d:number){
     default:return <rect x={0} y={0} width={w} height={d} rx={1} {...st}/>;
   }
 }
+const FIX_H:Record<string,number>={toilet:30,vanity:34,sink:34,tub:20,shower:80,washer:36,dryer:36,fan:6,light:6,heater:24,cabinet:84,other:30};
+const CEIL=new Set(["fan","light"]);
 export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;onOpening?:(id:string,patch:Partial<Opening>)=>void;onPart?:(id:string,patch:Partial<Part>)=>void;onFixture?:(id:string,patch:Partial<Fixture>|null)=>void}){
   const L=parseInches(room.length),W=parseInches(room.width),H=parseInches(room.height);
   if(!L||!W)return null;
@@ -84,13 +86,30 @@ export default function RoomSketch({room,onOpening,onPart,onFixture}:{room:Room;
   const onSeg=(a:V,b:V)=>(q:V)=>Math.abs((b[0]-a[0])*(q[1]-a[1])-(b[1]-a[1])*(q[0]-a[0]))<0.01&&Math.min(a[0],b[0])-0.01<=q[0]&&q[0]<=Math.max(a[0],b[0])+0.01&&Math.min(a[1],b[1])-0.01<=q[1]&&q[1]<=Math.max(a[1],b[1])+0.01;
   const openH=(o:{door:boolean})=>o.door?[0,80]:[36,84];
   const floorUp=depth(cx,cy,0)<depth(cx,cy,Hh); // дивимось зверху → підлогу малюємо першою
+  // сантехніка в 3D: коробки заданої висоти (вентилятор/світильник — під стелею)
+  const boxes=(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const h=Math.min(FIX_H[fx.type]||30,Hh);const t=Math.max(0,Math.min(1,fx.t||0));
+    const p0=add(corner[kk],dir[kk],t*(len[kk]-w));const p1=add(p0,dir[kk],w);const p2=add(p1,nrm[kk],-d);const p3=add(p0,nrm[kk],-d);
+    const z0=CEIL.has(fx.type)?Hh-h:0,z1=z0+h;const base=[p0,p1,p2,p3];
+    const pt=(q:V,z:number)=>{const r=P(q[0],q[1],z);return `${IX(r)},${IY(r)}`};
+    const col=fx.type==="tub"||fx.type==="shower"?"#dbe7ff":fx.type==="toilet"||fx.type==="sink"||fx.type==="vanity"?"#e0f2fe":"#eef2f7";
+    const faces=[
+      {pts:base.map(q=>pt(q,z1)).join(" "),fill:col,dep:depth((p0[0]+p2[0])/2,(p0[1]+p2[1])/2,z1)},
+      ...base.map((q,i)=>{const r=base[(i+1)%4];return {pts:[pt(q,z0),pt(r,z0),pt(r,z1),pt(q,z1)].join(" "),fill:"#f8fafc",dep:depth((q[0]+r[0])/2,(q[1]+r[1])/2,(z0+z1)/2)}}),
+    ].sort((a,b)=>a.dep-b.dep);
+    return {faces,dep:depth((p0[0]+p2[0])/2,(p0[1]+p2[1])/2,(z0+z1)/2)};
+  }).filter(Boolean).sort((a,b)=>a!.dep-b!.dep) as {faces:{pts:string;fill:string;dep:number}[];dep:number}[];
   const floorPoly=<polygon points={pts.map(q=>`${IX(P(q[0],q[1],0))},${IY(P(q[0],q[1],0))}`).join(" ")} fill="#e4e7ec" stroke="#98a2b3" strokeWidth={1}/>;
   const view3d=<svg viewBox={`0 0 ${vw} ${ivh}`} width="100%" style={{maxWidth:440,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12,touchAction:"none",cursor:"grab",userSelect:"none"}}
     onPointerDown={e=>{dragRef.current={x:e.clientX,y:e.clientY,yaw:rot.yaw,pitch:rot.pitch};(e.target as Element).setPointerCapture?.(e.pointerId)}}
     onPointerMove={e=>{const d=dragRef.current;if(!d)return;setRot({yaw:d.yaw+(e.clientX-d.x)*0.6,pitch:Math.max(5,Math.min(85,d.pitch+(e.clientY-d.y)*0.4))})}}
     onPointerUp={()=>{dragRef.current=null}} onPointerCancel={()=>{dragRef.current=null}}>
     {floorUp&&floorPoly}
-    {walls3.map((w,i)=>{const front=facing(w);return <g key={i}>
+    {walls3.filter(w=>!facing(w)).map((w,i)=><g key={"b"+i}>
+      <polygon points={quad(w.a,w.b,0,Hh)} fill="#f2f4f7" stroke="#101828" strokeWidth={2}/>
+      {segs.filter(sg=>onSeg(w.a,w.b)(sg.p)&&onSeg(w.a,w.b)(sg.q)).map((sg,j)=>{const [z0,z1]=openH(sg);return <polygon key={j} points={quad(sg.p,sg.q,z0,Math.min(z1,Hh))} fill={sg.door?"#dbe7ff":"#d1fadf"} stroke={sg.door?"#2f6df6":"#12b76a"} strokeWidth={1}/>})}
+    </g>)}
+    {boxes.map((bx,i)=><g key={"f"+i}>{bx.faces.map((f,j)=><polygon key={j} points={f.pts} fill={f.fill} stroke="#475467" strokeWidth={0.8}/>)}</g>)}
+    {walls3.filter(w=>facing(w)).map((w,i)=>{const front=true;return <g key={i}>
       <polygon points={quad(w.a,w.b,0,Hh)} fill={front?"none":"#f2f4f7"} stroke={front?"#b2ccff":"#101828"} strokeWidth={front?1:2} strokeDasharray={front?"4 3":undefined}/>
       {segs.filter(sg=>onSeg(w.a,w.b)(sg.p)&&onSeg(w.a,w.b)(sg.q)).map((sg,j)=>{const [z0,z1]=openH(sg);return <polygon key={j} points={quad(sg.p,sg.q,z0,Math.min(z1,Hh))} fill={sg.door?"#dbe7ff":"#d1fadf"} stroke={sg.door?"#2f6df6":"#12b76a"} strokeWidth={1} opacity={front?0.6:1}/>})}
     </g>})}
