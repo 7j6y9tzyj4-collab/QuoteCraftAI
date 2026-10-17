@@ -6,6 +6,7 @@ import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
 import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask} from "@/lib/survey";
+import RoomSketch from "@/components/RoomSketch";
 
 const BUCKET="receipts";
 const UNIT:Record<string,string>={sqft:"sq ft",linear_ft:"lin ft",each:"шт",hour:"год",room:"кімн."};
@@ -147,6 +148,17 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           <DimInput label="Ширина" value={r.width} onChange={v=>setRoom(r.id,{width:v})}/>
           <DimInput label="Висота" value={r.height} onChange={v=>setRoom(r.id,{height:v})}/>
         </div>
+        <details style={{marginTop:8}} open={!!r.parts?.length}>
+          <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, виступ, вирізаний кут)</summary>
+          <small className="muted">Головний прямокутник — вище. Тут додай ділянки: <b>ніша/виступ</b> — додається до підлоги й стін; <b>вирізаний кут</b> (Г-подібна кімната) — віднімається від підлоги.</small>
+          {(r.parts||[]).map(p=><div key={p.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 90px 90px 36px",gap:6,marginTop:6,alignItems:"end"}}>
+            <label>Що<select value={p.kind} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,kind:e.target.value as "add"|"cut"}:x)})}><option value="add">Ніша / виступ (+)</option><option value="cut">Вирізаний кут (−)</option></select></label>
+            <label>Довжина<input inputMode="decimal" placeholder="дюйми" value={p.length} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,length:e.target.value}:x)})}/></label>
+            <label>Глибина<input inputMode="decimal" placeholder="дюйми" value={p.depth} onChange={e=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,depth:e.target.value}:x)})}/></label>
+            <button className="remove" onClick={()=>setRoom(r.id,{parts:(r.parts||[]).filter(x=>x.id!==p.id)})}>×</button>
+          </div>)}
+          <button className="secondary" style={{marginTop:8,padding:"6px 10px",fontSize:13}} onClick={()=>setRoom(r.id,{parts:[...(r.parts||[]),{id:uid(),name:"",kind:"add",length:"",depth:""}]})}>＋ Ділянка</button>
+        </details>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,alignItems:"center"}}>
           <small className="muted">Прорізи:</small>
           {r.openings.map(o=><span key={o.id} style={{display:"inline-flex",gap:4,alignItems:"center",background:"#eef2f7",borderRadius:10,padding:"4px 8px",fontSize:13}}>{o.name} {o.w}×{o.h}{o.count>1?` ×${o.count}`:""}<button onClick={()=>setRoom(r.id,{openings:r.openings.filter(x=>x.id!==o.id)})} style={{background:"transparent",color:"#b42318",padding:"0 4px"}}>×</button></span>)}
@@ -158,6 +170,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
         </div>}
         {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
+        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})}/>
 
         <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"12px 0"}}>
           {r.photos.map(p=><Thumb key={p.id} p={p} onRemove={()=>removePhoto(r.id,p)}/>)}

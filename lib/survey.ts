@@ -1,9 +1,11 @@
 // Огляд об'єкта: кімнати з розмірами в дюймах (з дробами), фото, нотатки, AI-план робіт.
-export type Opening={id:string;name:string;w:string;h:string;count:number};
+export type Opening={id:string;name:string;w:string;h:string;count:number;/** стіна A/B/C/D на ескізі */wall?:string};
 export type SurveyPhoto={id:string;path?:string;dataUrl?:string};
 export type PlanTask={name:string;qty:number;unit:string;basis:string;note?:string};
 export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string};
-export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan};
+/** додаткова ділянка нестандартної кімнати: ніша/виступ (додати) або вирізаний кут (відняти). depth — глибина від стіни */
+export type Part={id:string;name:string;kind:"add"|"cut";length:string;depth:string};
+export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[]};
 export type Survey={id:string;date:string;title:string;address?:string;rooms:Room[];notes:string;createdAt:string;updatedAt:string;estimateId?:string};
 
 // "70", "7 3/4", "7-3/4", "7 15/16", "70.5", "5' 3 1/2\"" → дюйми
@@ -39,8 +41,14 @@ const r1=(n:number)=>Math.round(n*10)/10;
 export function roomAreas(r:Room){
   const L=parseInches(r.length),W=parseInches(r.width),H=parseInches(r.height);
   const ok=(x:number|null):x is number=>x!==null&&x>0;
-  const floor=ok(L)&&ok(W)?L*W/144:null;
-  const perimIn=ok(L)&&ok(W)?2*(L+W):null;
+  let floor=ok(L)&&ok(W)?L*W/144:null;
+  let perimIn=ok(L)&&ok(W)?2*(L+W):null;
+  // нестандартна форма: ніша/виступ додає площу і 2×глибину до периметра; вирізаний кут віднімає площу, периметр не міняє
+  for(const p of r.parts||[]){
+    const a=parseInches(p.length),d=parseInches(p.depth);
+    if(!ok(a)||!ok(d)||floor===null||perimIn===null)continue;
+    if(p.kind==="add"){floor+=a*d/144;perimIn+=2*d}else{floor=Math.max(0,floor-a*d/144)}
+  }
   const perimeter=perimIn!==null?perimIn/12:null;
   let openings=0;
   for(const o of r.openings||[]){const w=parseInches(o.w),h=parseInches(o.h);if(ok(w)&&ok(h))openings+=w*h/144*(Number(o.count)||1)}
