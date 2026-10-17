@@ -1,0 +1,204 @@
+"use client";
+import {useEffect,useRef,useState} from "react";
+import type {User} from "@supabase/supabase-js";
+import {supabase} from "@/lib/supabase";
+import {prepareJobPhoto} from "@/lib/jobPhotos";
+import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
+import type {CalcTask} from "@/lib/calcTypes";
+import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask} from "@/lib/survey";
+
+const BUCKET="receipts";
+const UNIT:Record<string,string>={sqft:"sq ft",linear_ft:"lin ft",each:"шт",hour:"год",room:"кімн."};
+const uid=()=>crypto.randomUUID();
+
+// мініатюра фото з приватного сховища
+function Thumb({p,onRemove}:{p:SurveyPhoto;onRemove:()=>void}){
+  const [src,setSrc]=useState<string|null>(p.dataUrl||null);
+  useEffect(()=>{if(p.dataUrl){setSrc(p.dataUrl);return}if(!p.path)return;let on=true;supabase.storage.from(BUCKET).createSignedUrl(p.path,3600).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});return()=>{on=false}},[p.path,p.dataUrl]);
+  return <figure style={{position:"relative",margin:0}}>{src?<a href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{width:96,height:96,objectFit:"cover",borderRadius:12,border:"1px solid #d0d5dd"}}/></a>:<div style={{width:96,height:96,borderRadius:12,background:"#eef2f7"}}/>}<button onClick={onRemove} style={{position:"absolute",top:-6,right:-6,width:24,height:24,borderRadius:12,background:"#fff0ee",color:"#b42318",fontWeight:800}}>×</button></figure>;
+}
+
+// поле розміру в дюймах з дробами; поруч — як програма це зрозуміла
+function DimInput({label,value,onChange}:{label:string;value:string;onChange:(v:string)=>void}){
+  const v=parseInches(value);
+  return <label>{label}<input inputMode="decimal" placeholder='напр. 70 або 7 15/16' value={value} onChange={e=>onChange(e.target.value)} style={value&&v===null?{borderColor:"#f04438"}:undefined}/>
+    <small className="muted" style={{fontWeight:400}}>{value?(v!==null?`= ${fmtInches(v)} = ${Math.round(v/12*100)/100} ft`:"не зрозумів — пиши дюйми: 70, 7 3/4"):"дюйми"}</small></label>;
+}
+
+export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack,onToEstimate}:{
+  survey:Survey;user:User|null;clientId:string;tasks:CalcTask[];
+  onChange:(s:Survey)=>void;onBack:()=>void;onToEstimate:(s:Survey)=>void;
+}){
+  const [msg,setMsg]=useState("");
+  const [busyRoom,setBusyRoom]=useState("");
+  const [recRoom,setRecRoom]=useState("");
+  const fileRef=useRef<HTMLInputElement|null>(null);
+  const camRef=useRef<HTMLInputElement|null>(null);
+  const targetRoom=useRef("");
+  const recRef=useRef<MediaRecorder|null>(null);
+  const chunks=useRef<Blob[]>([]);
+  const sRef=useRef(survey);sRef.current=survey;
+
+  const save=(patch:Partial<Survey>)=>onChange({...sRef.current,...patch,updatedAt:new Date().toISOString()});
+  const setRoom=(id:string,patch:Partial<Room>)=>save({rooms:sRef.current.rooms.map(r=>r.id===id?{...r,...patch}:r)});
+
+  async function addPhotos(files:FileList|null){
+    const rid=targetRoom.current;const room=sRef.current.rooms.find(r=>r.id===rid);
+    if(!room||!files?.length)return;
+    setBusyRoom(rid);setMsg("");
+    const added:SurveyPhoto[]=[];
+    for(const f of Array.from(files).slice(0,8)){
+      try{
+        const p=await prepareJobPhoto(f);
+        const id=uid();
+        let saved=false;
+        if(user){
+          const path=`${user.id}/surveys/${sRef.current.id}/${rid}/${id}.jpg`;
+          const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(p.dataUrl),{contentType:"image/jpeg",upsert:true});
+          if(!error){added.push({id,path});saved=true}
+        }
+        if(!saved)added.push({id,dataUrl:await shrinkImage(p.dataUrl,900,.6)});
+      }catch(e){setMsg(e instanceof Error?e.message:String(e))}
+    }
+    const cur=sRef.current.rooms.find(r=>r.id===rid);
+    if(cur)setRoom(rid,{photos:[...cur.photos,...added]});
+    setBusyRoom("");
+    if(fileRef.current)fileRef.current.value="";if(camRef.current)camRef.current.value="";
+  }
+  function removePhoto(rid:string,p:SurveyPhoto){
+    if(!confirm("Видалити фото?"))return;
+    const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
+    setRoom(rid,{photos:room.photos.filter(x=>x.id!==p.id)});
+    if(p.path&&user)supabase.storage.from(BUCKET).remove([p.path]).then(()=>{});
+  }
+
+  // голосова нотатка → текст (той самий /api/transcribe, що в калькуляторі)
+  async function toggleRec(rid:string){
+    if(recRoom===rid){recRef.current?.stop();return}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=["audio/mp4","audio/webm;codecs=opus","audio/webm"].find(m=>MediaRecorder.isTypeSupported(m))||"";
+      const rec=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+      chunks.current=[];recRef.current=rec;setRecRoom(rid);
+      rec.ondataavailable=e=>{if(e.data.size)chunks.current.push(e.data)};
+      rec.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());setRecRoom("");
+        const blob=new Blob(chunks.current,{type:rec.mimeType||"audio/mp4"});
+        if(blob.size<800){setMsg("Запис надто короткий.");return}
+        setBusyRoom(rid);
+        try{
+          const ext=(rec.mimeType||"").includes("webm")?"webm":"mp4";
+          const form=new FormData();form.append("audio",blob,`voice.${ext}`);
+          const r=await fetch("/api/transcribe",{method:"POST",body:form});const d=await r.json();
+          if(!r.ok)throw new Error(d?.error||"Не вдалося розпізнати");
+          const t=String(d.text||"").trim();
+          const room=sRef.current.rooms.find(x=>x.id===rid);
+          if(t&&room)setRoom(rid,{notes:[room.notes.trim(),t].filter(Boolean).join(" ")});
+        }catch(e){setMsg(e instanceof Error?e.message:String(e))}
+        finally{setBusyRoom("")}
+      };
+      rec.start();
+    }catch{setMsg("Немає доступу до мікрофона. Дозволь у Налаштування → Safari → Мікрофон.")}
+  }
+
+  async function makePlan(rid:string,lang:"uk"|"en"="uk"){
+    const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
+    if(!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
+    setBusyRoom(rid);setMsg("");
+    try{
+      // фото для AI: з сховища → data URL (зменшені)
+      const photos:string[]=[];
+      for(const p of room.photos.slice(0,6)){
+        let d=p.dataUrl||"";
+        if(!d&&p.path){const {data}=await supabase.storage.from(BUCKET).download(p.path);if(data)d=await new Promise<string>(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result));fr.readAsDataURL(data)})}
+        if(d){try{d=await shrinkImage(d,1400,.8)}catch{}if(d.length<=750000)photos.push(d)}
+      }
+      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
+      const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
+      const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
+      if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
+      else setRoom(rid,{plan:{summary:d.summary,condition:d.condition,tasks:d.tasks,questions:d.questions||[],createdAt:new Date().toISOString()}});
+    }catch(e){setMsg("План не вийшов: "+(e instanceof Error?e.message:String(e)))}
+    finally{setBusyRoom("")}
+  }
+  const setTask=(rid:string,i:number,patch:Partial<PlanTask>|null)=>{
+    const room=sRef.current.rooms.find(r=>r.id===rid);if(!room?.plan)return;
+    const tasksN=patch===null?room.plan.tasks.filter((_,k)=>k!==i):room.plan.tasks.map((t,k)=>k===i?{...t,...patch}:t);
+    setRoom(rid,{plan:{...room.plan,tasks:tasksN}});
+  };
+
+  const ready=survey.rooms.some(r=>r.plan?.tasks.length||r.notes.trim());
+  return <>
+    <div className="screenbar noPrint"><button onClick={onBack}>← Клієнт</button><b>📋 Огляд</b><span/></div>
+    <section className="panel grid">
+      <label>Назва<input value={survey.title} onChange={e=>save({title:e.target.value})}/></label>
+      <label>Дата<input value={survey.date} onChange={e=>save({date:e.target.value})}/></label>
+      <label className="wide">Адреса об'єкта<input value={survey.address||""} onChange={e=>save({address:e.target.value})}/></label>
+    </section>
+
+    {survey.rooms.map((r,idx)=>{
+      const a=roomAreas(r);const busy=busyRoom===r.id;
+      return <section className="panel" key={r.id}>
+        <div className="head"><input value={r.name} placeholder={`Кімната ${idx+1}`} onChange={e=>setRoom(r.id,{name:e.target.value})} style={{fontWeight:800,fontSize:17,border:0,padding:"4px 0",background:"transparent"}}/>
+          <button className="remove" onClick={()=>{if(confirm(`Прибрати «${r.name||"кімнату"}»?`))save({rooms:survey.rooms.filter(x=>x.id!==r.id)})}}>×</button></div>
+
+        <div className="grid3" style={{marginTop:8}}>
+          <DimInput label="Довжина" value={r.length} onChange={v=>setRoom(r.id,{length:v})}/>
+          <DimInput label="Ширина" value={r.width} onChange={v=>setRoom(r.id,{width:v})}/>
+          <DimInput label="Висота" value={r.height} onChange={v=>setRoom(r.id,{height:v})}/>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,alignItems:"center"}}>
+          <small className="muted">Прорізи:</small>
+          {r.openings.map(o=><span key={o.id} style={{display:"inline-flex",gap:4,alignItems:"center",background:"#eef2f7",borderRadius:10,padding:"4px 8px",fontSize:13}}>{o.name} {o.w}×{o.h}{o.count>1?` ×${o.count}`:""}<button onClick={()=>setRoom(r.id,{openings:r.openings.filter(x=>x.id!==o.id)})} style={{background:"transparent",color:"#b42318",padding:"0 4px"}}>×</button></span>)}
+          <button className="secondary" style={{padding:"5px 10px",fontSize:13}} onClick={()=>setRoom(r.id,{openings:[...r.openings,{id:uid(),...DOOR,count:1}]})}>＋ Двері</button>
+          <button className="secondary" style={{padding:"5px 10px",fontSize:13}} onClick={()=>setRoom(r.id,{openings:[...r.openings,{id:uid(),...WINDOW,count:1}]})}>＋ Вікно</button>
+          <button className="secondary" style={{padding:"5px 10px",fontSize:13}} onClick={()=>{const w=prompt("Ширина прорізу, дюйми:","30");const h=w&&prompt("Висота, дюйми:","80");if(w&&h)setRoom(r.id,{openings:[...r.openings,{id:uid(),name:"Проріз",w,h,count:1}]})}}>＋ Свій</button>
+        </div>
+        {a.floorSqft!==null&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:10}}>
+          {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
+        </div>}
+        {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
+
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"12px 0"}}>
+          {r.photos.map(p=><Thumb key={p.id} p={p} onRemove={()=>removePhoto(r.id,p)}/>)}
+        </div>
+        <div className="actions" style={{flexWrap:"wrap"}}>
+          <button className="primary" disabled={busy} onClick={()=>{targetRoom.current=r.id;camRef.current?.click()}}>📷 Фото</button>
+          <button className="secondary" disabled={busy} onClick={()=>{targetRoom.current=r.id;fileRef.current?.click()}}>🖼 З галереї</button>
+          <button className="secondary" disabled={busy&&recRoom!==r.id} onClick={()=>toggleRec(r.id)} style={recRoom===r.id?{background:"#fee4e2",color:"#b42318"}:undefined}>{recRoom===r.id?"⏹ Стоп":"🎙 Наговорити"}</button>
+        </div>
+        <label style={{marginTop:8}}>Що треба зробити (українською)<textarea rows={3} value={r.notes} placeholder="зняти стару плитку, нова ванна, плитка на стіни до стелі, вентилятор, фарбування" onChange={e=>setRoom(r.id,{notes:e.target.value})}/></label>
+        <div className="actions" style={{marginTop:8}}>
+          <button className="primary" disabled={busy} onClick={()=>makePlan(r.id)}>{busy?"Думаю…":r.plan?"🔄 Скласти план заново":"🧠 Скласти план робіт"}</button>
+        </div>
+
+        {r.plan&&<div style={{marginTop:12,padding:12,borderRadius:14,background:"#f8fafc",border:"1px solid #e4e7ec"}}>
+          <p style={{margin:0,fontWeight:700}}>{r.plan.summary}</p>
+          {r.plan.condition&&<p className="muted" style={{fontSize:14,margin:"6px 0 0"}}><b>Що є зараз:</b> {r.plan.condition}</p>}
+          <div style={{marginTop:10}}>
+            {r.plan.tasks.map((t,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 72px 64px 36px",gap:6,marginTop:6,alignItems:"start"}}>
+              <div><input value={t.name} onChange={e=>setTask(r.id,i,{name:e.target.value})}/>{(t.basis||t.note)&&<small className="muted">{[t.basis,t.note].filter(Boolean).join(" · ")}</small>}</div>
+              <input type="number" step="0.5" value={t.qty} onChange={e=>setTask(r.id,i,{qty:Number(e.target.value)||0})}/>
+              <select value={t.unit} onChange={e=>setTask(r.id,i,{unit:e.target.value})}>{Object.entries(UNIT).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select>
+              <button className="remove" onClick={()=>setTask(r.id,i,null)}>×</button>
+            </div>)}
+            <button className="secondary" style={{marginTop:8,padding:"6px 10px",fontSize:13}} onClick={()=>setRoom(r.id,{plan:{...r.plan!,tasks:[...r.plan!.tasks,{name:"",qty:1,unit:"each",basis:"вручну"}]}})}>＋ Рядок</button>
+          </div>
+          {r.plan.questions?.length>0&&<div style={{marginTop:10,padding:8,background:"#fffaeb",borderRadius:10,fontSize:14}}><b>Уточнити:</b><ul style={{margin:"4px 0 0",paddingLeft:18}}>{r.plan.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></div>}
+          <div className="actions" style={{marginTop:10}}>
+            <button className="secondary" disabled={busy} onClick={()=>makePlan(r.id,"en")}>🌐 {r.plan.en?"Оновити англійську":"Англійською для клієнта"}</button>
+          </div>
+          {r.plan.en&&<details style={{marginTop:8}}><summary style={{fontSize:13}}>English version</summary><p style={{fontSize:14}}>{r.plan.en.summary}</p><ul style={{fontSize:14,paddingLeft:18}}>{r.plan.en.tasks.map((t,i)=><li key={i}>{t.name} — {t.qty} {t.unit}</li>)}</ul></details>}
+        </div>}
+      </section>;
+    })}
+
+    <div className="actions"><button className="secondary" onClick={()=>save({rooms:[...survey.rooms,newRoom(`Кімната ${survey.rooms.length+1}`)]})}>＋ Ще кімната</button></div>
+    <section className="panel"><label>Загальні нотатки по об'єкту<textarea rows={2} value={survey.notes} onChange={e=>save({notes:e.target.value})} placeholder="паркування, доступ, що купує клієнт, терміни"/></label></section>
+    {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
+    <div className="actions noPrint"><button className="primary huge" disabled={!ready} onClick={()=>onToEstimate(survey)}>🧮 В естімейт — усі кімнати</button></div>
+    <small className="muted" style={{display:"block",margin:"6px 4px 16px"}}>Кімнати з планом підуть у калькулятор з кількостями з розмірів. Без плану — піде твій текст «що треба зробити».</small>
+    <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>addPhotos(e.target.files)}/>
+    <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>addPhotos(e.target.files)}/>
+  </>;
+}

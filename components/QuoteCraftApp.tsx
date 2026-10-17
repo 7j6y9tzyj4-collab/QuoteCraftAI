@@ -11,6 +11,7 @@ import BackupPanel from "@/components/BackupPanel";
 import ClientPicker from "@/components/ClientPicker";
 import ClientsScreen from "@/components/ClientsScreen";
 import {type Client} from "@/lib/clients";
+import {surveyToPrompt,type Survey} from "@/lib/survey";
 import TiersPanel,{TierToggles} from "@/components/TiersPanel";
 import {tierSummary,type Tiers} from "@/lib/tiers";
 import UpdateButton from "@/components/UpdateButton";
@@ -454,9 +455,10 @@ export default function QuoteCraftApp(){
 
  function stopCalcVoiceRecording(){calcMediaRecorderRef.current?.stop?.()}
 
- async function generateCalc(measurementNotes?:string){
-  if(!calcPrompt.trim()){setCalcMessage("Спочатку опиши роботу.");return}
-  const text=measurementNotes?`${calcPrompt}\n\nApproved approximate dimensions from photos (use these for quantities):\n${measurementNotes}`:calcPrompt;
+ async function generateCalc(measurementNotes?:string,promptOverride?:string){
+  const base=(promptOverride??calcPrompt);
+  if(!base.trim()){setCalcMessage("Спочатку опиши роботу.");return}
+  const text=measurementNotes?`${base}\n\nApproved approximate dimensions from photos (use these for quantities):\n${measurementNotes}`:base;
   setCalcThinking(true);setCalcMessage("");
   try{
     const response=await fetch("/api/parse-calculator-estimate",{
@@ -1871,7 +1873,14 @@ export default function QuoteCraftApp(){
    </>}
 
    {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
-   {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}/>}
+   {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
+     user={user} tasks={calcTasks}
+     onSurveyToEstimate={(c:Client,s:Survey)=>{
+       if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий з огляду?"))return;
+       clearCalc();setCalcClient(c.name);setCalcProject(s.title.replace(/^Огляд\s*/,"")||s.rooms.map(r=>r.name).filter(Boolean).join(", "));
+       const text=surveyToPrompt(s);setCalcPrompt(text);setScreen("calc");
+       void generateCalc(undefined,text);
+     }}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small></button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
    {screen==="saved"&&all.length>0&&<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 

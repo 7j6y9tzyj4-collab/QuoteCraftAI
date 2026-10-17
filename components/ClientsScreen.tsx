@@ -4,25 +4,36 @@ import type {SavedCalc} from "@/lib/calcTypes";
 import type {Statement} from "@/lib/statement";
 import {statementTotals} from "@/lib/statement";
 import {clientHistory,missingClientNames,newClient,telHref,smsHref,mapHref,type Client} from "@/lib/clients";
+import {newSurvey,type Survey} from "@/lib/survey";
+import SurveyEditor from "@/components/SurveyEditor";
+import type {User} from "@supabase/supabase-js";
+import type {CalcTask} from "@/lib/calcTypes";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const d=(iso:string)=>iso?new Date(iso).toLocaleDateString("uk-UA"):"";
 
 // Клієнти: список, картка з телефоном/адресою, уся історія (естімейти, розрахунки, оплачено, винен).
-export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate}:{
-  clients:Client[];calcs:SavedCalc[];statements:Statement[];
+export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate,user,tasks,onSurveyToEstimate}:{
+  clients:Client[];calcs:SavedCalc[];statements:Statement[];user:User|null;tasks:CalcTask[];onSurveyToEstimate:(c:Client,s:Survey)=>void;
   onSave:(c:Client)=>void;onDelete:(id:string)=>void;
   onOpenCalc:(c:SavedCalc)=>void;onOpenStatement:(id:string)=>void;onNewEstimate:(c:Client)=>void;
 }){
   const [q,setQ]=useState("");
   const [openId,setOpenId]=useState<string|null>(null);
   const [draft,setDraft]=useState<Client|null>(null);
+  const [surveyId,setSurveyId]=useState<string|null>(null);
   const missing=useMemo(()=>missingClientNames(clients,calcs,statements),[clients,calcs,statements]);
   const rows=useMemo(()=>clients.map(c=>({c,h:clientHistory(c,calcs,statements)})).sort((a,b)=>{
     const mx=(...xs:string[])=>xs.reduce((m,x)=>x>m?x:m,"");const la=mx(a.h.sts[0]?.updatedAt||"",a.h.ests[0]?.updatedAt||"",a.c.updatedAt),lb=mx(b.h.sts[0]?.updatedAt||"",b.h.ests[0]?.updatedAt||"",b.c.updatedAt);return lb.localeCompare(la)}),[clients,calcs,statements]);
   const shown=rows.filter(r=>!q.trim()||[r.c.name,r.c.phone,r.c.address].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
   const cur=clients.find(c=>c.id===openId)||null;
 
+  if(cur&&surveyId){
+    const sv=(cur.surveys||[]).find(s=>s.id===surveyId);
+    if(sv)return <SurveyEditor survey={sv} user={user} clientId={cur.id} tasks={tasks} onBack={()=>setSurveyId(null)}
+      onChange={s=>onSave({...cur,surveys:(cur.surveys||[]).map(x=>x.id===s.id?s:x),updatedAt:new Date().toISOString()})}
+      onToEstimate={s=>onSurveyToEstimate(cur,s)}/>;
+  }
   if(cur){
     const h=clientHistory(cur,calcs,statements);
     const e=draft&&draft.id===cur.id?draft:cur;
@@ -44,6 +55,10 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
         {cur.address&&<a className="secondary" style={{textAlign:"center",textDecoration:"none",padding:12,borderRadius:13,fontWeight:800,flex:1}} href={mapHref(cur.address)} target="_blank" rel="noreferrer">📍 Карта</a>}
         <button className="primary" style={{flex:1}} onClick={()=>onNewEstimate(cur)}>＋ Новий естімейт</button>
       </div>
+      <section className="panel"><div className="head"><h2>📋 Огляди об'єкта</h2><button className="add" onClick={()=>{const s=newSurvey(cur.address);onSave({...cur,surveys:[s,...(cur.surveys||[])],updatedAt:new Date().toISOString()});setSurveyId(s.id)}}>＋ Огляд</button></div>
+        {!(cur.surveys||[]).length&&<p className="muted" style={{fontSize:14}}>Приїхав на об'єкт → «＋ Огляд»: кімнати, розміри в дюймах, фото, що треба зробити → AI складе план → одним натиском в естімейт.</p>}
+        {(cur.surveys||[]).map(s=><button key={s.id} className="estimate" onClick={()=>setSurveyId(s.id)}><span><b>{s.title||"Огляд"}</b><small>{s.date} · кімнат {s.rooms.length} · фото {s.rooms.reduce((a,r)=>a+r.photos.length,0)}{s.rooms.some(r=>r.plan)?" · є план":""}</small></span><span style={{alignSelf:"center"}}>›</span></button>)}
+      </section>
       <section className="total">
         <div><span>Оцінено (естімейти)</span><span>{money(h.quoted)}</span></div>
         <div><span>Отримано</span><span>{money(h.paid)}</span></div>
