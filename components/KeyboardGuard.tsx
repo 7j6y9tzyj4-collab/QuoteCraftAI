@@ -1,20 +1,24 @@
 "use client";
 import {useEffect} from "react";
 // iPhone Safari: коли відкрита клавіатура, position:fixed «відривається» і нижня панель пливе по екрану.
-// Поки клавіатура відкрита (або поле в фокусі) — ховаємо nav; закрили — панель знову внизу.
+// Поки курсор у текстовому полі — ховаємо nav; вийшов з поля — панель знову внизу.
 export default function KeyboardGuard(){
   useEffect(()=>{
-    const vv=window.visualViewport;
-    const update=()=>{
-      const kb=vv?window.innerHeight-vv.height>120:false;
-      const el=document.activeElement as HTMLElement|null;
-      const typing=!!el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)&&(el as HTMLInputElement).type!=="checkbox"&&(el as HTMLInputElement).type!=="file";
-      document.body.classList.toggle("kb-open",kb||typing);
+    const isText=(el:Element|null)=>{
+      if(!el)return false;
+      const t=el.tagName;
+      if(t==="TEXTAREA")return true;
+      if(t==="INPUT"){const ty=(el as HTMLInputElement).type;return !/^(checkbox|radio|file|button|submit|range|color)$/.test(ty)}
+      return (el as HTMLElement).isContentEditable===true;
     };
-    vv?.addEventListener("resize",update);vv?.addEventListener("scroll",update);
-    document.addEventListener("focusin",update);document.addEventListener("focusout",()=>setTimeout(update,80));
+    const update=()=>document.body.classList.toggle("kb-open",isText(document.activeElement));
+    const later=()=>setTimeout(update,100);
+    document.addEventListener("focusin",update);
+    document.addEventListener("focusout",later);
+    window.addEventListener("pageshow",later);
+    document.addEventListener("visibilitychange",later);
     update();
-    return()=>{vv?.removeEventListener("resize",update);vv?.removeEventListener("scroll",update);document.removeEventListener("focusin",update)};
+    return()=>{document.removeEventListener("focusin",update);document.removeEventListener("focusout",later);window.removeEventListener("pageshow",later);document.removeEventListener("visibilitychange",later)};
   },[]);
   return null;
 }
