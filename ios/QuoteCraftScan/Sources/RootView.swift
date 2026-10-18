@@ -12,10 +12,13 @@ struct RootView: View {
                     Text("Цей iPhone не має LiDAR — сканування недоступне.").multilineTextAlignment(.center)
                 } else if let p = s.payload {
                     Summary(p: p)
-                    if s.token != nil {
-                        Button(s.sent ? "Відправлено ✅" : (s.sending ? "Відправляю…" : "📤 Відправити в QuoteCraft")) { s.send() }
-                            .buttonStyle(.borderedProminent).disabled(s.sending || s.sent)
+                    if s.sent {
+                        Text("Відправлено ✅").font(.headline).foregroundStyle(.green)
+                    } else if s.token != nil {
+                        Button(s.sending ? "Відправляю…" : "📤 Відправити в QuoteCraft") { s.send() }
+                            .buttonStyle(.borderedProminent).disabled(s.sending)
                     } else {
+                        Text("Скан готовий. Введи код з QuoteCraft — відправиться сам.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         CodeEntry()
                     }
                     Button("🔄 Сканувати ще раз") { s.payload = nil; s.sent = false; scanning = true }

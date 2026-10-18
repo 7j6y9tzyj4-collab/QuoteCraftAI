@@ -60,9 +60,10 @@ final class ScanSession: ObservableObject {
                 self.sending = false
                 if let err { self.status = "Помилка: " + err.localizedDescription; return }
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if code == 200 { self.sent = true; self.status = "✅ Відправлено в QuoteCraft. Повернись у браузер." }
+                if code == 200 { self.sent = true; self.token = nil; self.pin = ""; self.status = "✅ Відправлено в QuoteCraft. Повернись у браузер. Для наступного скану — новий код." }
                 else {
                     let msg = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["error"] as? String
+                    if code == 404 || code == 410 { self.token = nil; self.pin = "" }
                     self.status = "Помилка \(code): " + (msg ?? "")
                 }
             }
