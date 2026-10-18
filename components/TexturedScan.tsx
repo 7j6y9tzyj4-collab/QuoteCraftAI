@@ -55,10 +55,11 @@ export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr0:Tr,ct
     let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const nl=Math.hypot(nx,ny,nz)||1;nx/=nl;ny/=nl;nz/=nl;
     const gx=(P[a]+P[b]+P[c])/3,gy=(P[a+1]+P[b+1]+P[c+1])/3,gz=(P[a+2]+P[b+2]+P[c+2])/3;
     let bs=0,bk=-1,bsign=0;
+    for(let pass=0;pass<2&&bk<0;pass++){const minCos=pass?0.12:0.35,mm=pass?2:8;
     for(let k=0;k<F.length;k++){const f=F[k].f,cp=F[k].pos;
       const dx=cp[0]-gx,dy=cp[1]-gy,dz=cp[2]-gz;const dist=Math.hypot(dx,dy,dz);if(dist>5||dist<0.1)continue;
-      const cos=(nx*dx+ny*dy+nz*dz)/dist;const ac=Math.abs(cos);if(ac<0.35)continue;
-      proj(k,gx,gy,gz,o);if(o[2]<0)continue;const m=8;if(o[0]<m||o[1]<m||o[0]>f.w-m||o[1]>f.h-m)continue;
+      const cos=(nx*dx+ny*dy+nz*dz)/dist;const ac=Math.abs(cos);if(ac<minCos)continue;
+      proj(k,gx,gy,gz,o);if(o[2]<0)continue;const m=mm;if(o[0]<m||o[1]<m||o[0]>f.w-m||o[1]>f.h-m)continue;
       proj(k,P[a],P[a+1],P[a+2],pa);proj(k,P[b],P[b+1],P[b+2],pb);proj(k,P[c],P[c+1],P[c+2],pc);
       if(pa[2]<0||pb[2]<0||pc[2]<0)continue;
       // закрито іншим предметом? перевіряємо центр і всі три вершини
@@ -71,7 +72,7 @@ export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr0:Tr,ct
       const ex=Math.abs(o[0]/f.w-0.5)*2,ey=Math.abs(o[1]/f.h-0.5)*2;
       const sc=ac*ac*ac/Math.max(0.5,dist)*(1-0.4*Math.max(ex,ey));
       if(sc>bs){bs=sc;bk=k;bsign=cos>0?1:-1}
-    }
+    }}
     best[t]=bk;if(bk>=0){if(bsign>0)pos++;else neg++}
     if(t%30000===29999){onProgress?.(0.25+0.6*t/nf);await tick()}
   }
