@@ -1,6 +1,7 @@
 import SwiftUI
 import RoomPlan
 import ARKit
+import Metal
 import CoreImage
 import UIKit
 
@@ -120,7 +121,7 @@ final class PointCloud {
     private var busy = false
     func reset() { q.sync { keys.removeAll(); data = Data(); count = 0 } }
     func encoded() -> Data? {
-        q.sync {
+        q.sync { () -> Data? in
             guard count > 500 else { return nil }
             var out = Data("QCPC".utf8)
             var n = UInt32(count).littleEndian
