@@ -2,12 +2,16 @@
 // 3D-фото кімнати: сітка з LiDAR (.qcms) + ключові кадри камери. Кожен трикутник бере текстуру з кадру, де він видно найкраще
 // (найближче й найбільш «в лоб», не закритий іншими предметами). Результат — по одному мешу на кадр з UV-проєкцією фото.
 import * as THREE from "three";
-import {useEffect,useState} from "react";
+import {useEffect,useState,useRef} from "react";
+import {useFrame} from "@react-three/fiber";
 import {supabase} from "@/lib/supabase";
-import type {Room,ScanFrame} from "@/lib/survey";
+import {parseInches,type Room,type ScanFrame} from "@/lib/survey";
 
 const IN=1/12,M=39.3701;
-type Built={groups:{frame:number;geo:THREE.BufferGeometry}[];gray:THREE.BufferGeometry|null;tex:Map<number,THREE.Texture>};
+type Grp={frame:number;side:number;geo:THREE.BufferGeometry};
+type Built={groups:Grp[];tex:Map<number,THREE.Texture>;L:number;W:number;aligned:boolean};
+type Tr={th:number;minX:number;minZ:number;floorY:number};
+type Ctx={L:number;W:number;H:number;doors:[number,number][]};
 const cache=new Map<string,Promise<Built|null>>();
 
 async function dl(path:string){const {data}=await supabase.storage.from("receipts").download(path);return data||null}
@@ -21,11 +25,13 @@ async function loadTex(path:string){
 const tick=()=>new Promise(r=>setTimeout(r,0));
 
 /** buf — .qcms; frames — кадри; tr — перетворення ARKit → кімната */
-export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr:{th:number;minX:number;minZ:number;floorY:number},onProgress?:(p:number)=>void,load=loadTex):Promise<Built|null>{
+export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr0:Tr,ctx:Ctx,onProgress?:(p:number)=>void,load=loadTex):Promise<Built|null>{
   const dv=new DataView(buf);if(buf.byteLength<12||String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3))!=="QCMS")return null;
   const nv=dv.getUint32(4,true),nf=dv.getUint32(8,true);
   if(12+nv*12+nf*13>buf.byteLength)return null;
   const P=new Float32Array(buf,12,nv*3),I=new Uint32Array(buf,12+nv*12,nf*3),C=new Uint8Array(buf,12+nv*12+nf*12,nf);
+  // сітка могла записатись в інших координатах, ніж план (AR-сесія перезапустилась) → підганяємо стіни сітки під прямокутник кімнати
+  const al=alignToRoom(P,I,C,nf,tr0,ctx);const tr=al.tr;
   const F=frames.map(f=>{const T=new THREE.Matrix4().fromArray(f.T);const inv=T.clone().invert();return {f,inv:inv.elements,pos:[f.T[12],f.T[13],f.T[14]]}});
   // 1) карта глибини кожного кадру (низька роздільність) — щоб знати, що чимось закрите
   const DW=240,DH=180;
@@ -51,7 +57,7 @@ export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr:{th:nu
     let bs=0,bk=-1,bsign=0;
     for(let k=0;k<F.length;k++){const f=F[k].f,cp=F[k].pos;
       const dx=cp[0]-gx,dy=cp[1]-gy,dz=cp[2]-gz;const dist=Math.hypot(dx,dy,dz);if(dist>5||dist<0.1)continue;
-      const cos=(nx*dx+ny*dy+nz*dz)/dist;const ac=Math.abs(cos);if(ac<0.2)continue;
+      const cos=(nx*dx+ny*dy+nz*dz)/dist;const ac=Math.abs(cos);if(ac<0.35)continue;
       proj(k,gx,gy,gz,o);if(o[2]<0)continue;const m=8;if(o[0]<m||o[1]<m||o[0]>f.w-m||o[1]>f.h-m)continue;
       proj(k,P[a],P[a+1],P[a+2],pa);proj(k,P[b],P[b+1],P[b+2],pb);proj(k,P[c],P[c+1],P[c+2],pc);
       if(pa[2]<0||pb[2]<0||pc[2]<0)continue;
@@ -63,48 +69,107 @@ export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr:{th:nu
       if(Math.min(pa[0],pb[0],pc[0])<1||Math.min(pa[1],pb[1],pc[1])<1||Math.max(pa[0],pb[0],pc[0])>f.w-1||Math.max(pa[1],pb[1],pc[1])>f.h-1)continue;
       // ближче до центру кадру — менше спотворень
       const ex=Math.abs(o[0]/f.w-0.5)*2,ey=Math.abs(o[1]/f.h-0.5)*2;
-      const sc=ac*ac/Math.max(0.5,dist)*(1-0.3*Math.max(ex,ey));
+      const sc=ac*ac*ac/Math.max(0.5,dist)*(1-0.4*Math.max(ex,ey));
       if(sc>bs){bs=sc;bk=k;bsign=cos>0?1:-1}
     }
     best[t]=bk;if(bk>=0){if(bsign>0)pos++;else neg++}
     if(t%30000===29999){onProgress?.(0.25+0.6*t/nf);await tick()}
   }
-  const flip=neg>pos; // орієнтація трикутників: «лицем» до камер (тоді стіни, що дивляться на нас ззовні, ховаються самі)
-  // 3) перетворення в координати кімнати + UV
-  const c0=Math.cos(tr.th),s0=Math.sin(tr.th);
-  const toRoom=(x:number,y:number,z:number,out:Float32Array,i:number)=>{const rx=x*c0-z*s0,rz=x*s0+z*c0;out[i]=(rx-tr.minX)*M*IN;out[i+1]=(y-tr.floorY)*M*IN;out[i+2]=(rz-tr.minZ)*M*IN};
-  const counts=new Int32Array(F.length+1);for(let t=0;t<nf;t++){const k=best[t];if(k>=0)counts[k]++;else if(k===-1)counts[F.length]++}
-  const posArr=Array.from(counts,n=>new Float32Array(n*9)),uvArr=Array.from(counts,(n,i)=>i<F.length?new Float32Array(n*6):new Float32Array(0)),fill=new Int32Array(F.length+1);
-  for(let t=0;t<nf;t++){const k=best[t];if(k===-2)continue;const g=k>=0?k:F.length;const j=fill[g]++;
-    const vs=flip?[I[t*3],I[t*3+2],I[t*3+1]]:[I[t*3],I[t*3+1],I[t*3+2]];
-    for(let q=0;q<3;q++){const v=vs[q]*3;toRoom(P[v],P[v+1],P[v+2],posArr[g],j*9+q*3);
-      if(k>=0){const f=F[k].f;proj(k,P[v],P[v+1],P[v+2],o);uvArr[g][j*6+q*2]=o[0]/f.w;uvArr[g][j*6+q*2+1]=1-o[1]/f.h}}
+  void pos;void neg;
+  // 3) координати кімнати + UV; трикутники стін — окремими групами (A/B/C/D), щоб ховати стіну, що між нами й кімнатою
+  const c0=Math.cos(tr.th),s0=Math.sin(tr.th);const Li=ctx.L,Wi=ctx.W,Hi=ctx.H;
+  const rx=(x:number,z:number)=>((x*c0-z*s0)-tr.minX)*M,rz=(x:number,z:number)=>((x*s0+z*c0)-tr.minZ)*M,ry=(y:number)=>(y-tr.floorY)*M;
+  const side=new Int8Array(nf);
+  for(let t=0;t<nf;t++){if(best[t]===-2)continue;const a=I[t*3]*3,b=I[t*3+1]*3,c=I[t*3+2]*3;
+    const X=(rx(P[a],P[a+2])+rx(P[b],P[b+2])+rx(P[c],P[c+2]))/3,Z=(rz(P[a],P[a+2])+rz(P[b],P[b+2])+rz(P[c],P[c+2]))/3,Y=(ry(P[a+1])+ry(P[b+1])+ry(P[c+1]))/3;
+    const ux=P[b]-P[a],uy=P[b+1]-P[a+1],uz=P[b+2]-P[a+2],vx=P[c]-P[a],vy=P[c+1]-P[a+1],vz=P[c+2]-P[a+2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const nl=Math.hypot(nx,ny,nz)||1;nx/=nl;ny/=nl;nz/=nl;
+    const nX=Math.abs(nx*c0-nz*s0),nZ=Math.abs(nx*s0+nz*c0);
+    const m=8;
+    if(Li&&Wi&&(X<-m||Z<-m||X>Li+m||Z>Wi+m)){best[t]=-2;continue} // за стінами — шум
+    if(Hi&&Math.abs(ny)>0.8&&Y>Hi-6){best[t]=-2;continue}         // стеля
+    side[t]=4;
+    if(Li&&Wi){if(nZ>0.75&&Z<6)side[t]=0;else if(nX>0.75&&X>Li-6)side[t]=1;else if(nZ>0.75&&Z>Wi-6)side[t]=2;else if(nX>0.75&&X<6)side[t]=3}
+  }
+  const key=(t:number)=>{const k=best[t];return (k>=0?k:F.length)*5+side[t]};
+  const counts=new Map<number,number>();for(let t=0;t<nf;t++){if(best[t]===-2)continue;const g=key(t);counts.set(g,(counts.get(g)||0)+1)}
+  const posArr=new Map<number,Float32Array>(),uvArr=new Map<number,Float32Array>(),fill=new Map<number,number>();
+  for(const [g,n] of counts){posArr.set(g,new Float32Array(n*9));uvArr.set(g,new Float32Array(n*6));fill.set(g,0)}
+  for(let t=0;t<nf;t++){const k=best[t];if(k===-2)continue;const g=key(t);const j=fill.get(g)!;fill.set(g,j+1);const pa2=posArr.get(g)!,ua=uvArr.get(g)!;
+    for(let q=0;q<3;q++){const v=I[t*3+q]*3;pa2[j*9+q*3]=rx(P[v],P[v+2])*IN;pa2[j*9+q*3+1]=ry(P[v+1])*IN;pa2[j*9+q*3+2]=rz(P[v],P[v+2])*IN;
+      if(k>=0){const f=F[k].f;proj(k,P[v],P[v+1],P[v+2],o);ua[j*6+q*2]=o[0]/f.w;ua[j*6+q*2+1]=1-o[1]/f.h}}
   }
   onProgress?.(0.9);
   const tex=new Map<number,THREE.Texture>();
-  const used=[...counts.keys()].filter(k=>k<F.length&&counts[k]>0);
-  await Promise.all(used.map(async k=>{const t=await load(F[k].f.path).catch(()=>null);if(t)tex.set(k,t)}));
-  const groups:{frame:number;geo:THREE.BufferGeometry}[]=[];let grayN=0;const grayParts:Float32Array[]=[];
-  for(const k of used){if(!tex.has(k)){grayParts.push(posArr[k]);grayN+=posArr[k].length;continue}
-    const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(posArr[k],3));g.setAttribute("uv",new THREE.BufferAttribute(uvArr[k],2));groups.push({frame:k,geo:g})}
-  grayParts.push(posArr[F.length]);grayN+=posArr[F.length].length;
-  let gray:THREE.BufferGeometry|null=null;
-  if(grayN){const all=new Float32Array(grayN);let off=0;for(const p of grayParts){all.set(p,off);off+=p.length}gray=new THREE.BufferGeometry();gray.setAttribute("position",new THREE.BufferAttribute(all,3));gray.computeVertexNormals()}
+  const usedFrames=[...new Set([...counts.keys()].map(g=>Math.floor(g/5)).filter(k=>k<F.length))];
+  await Promise.all(usedFrames.map(async k=>{const t=await load(F[k].f.path).catch(()=>null);if(t)tex.set(k,t)}));
+  const groups:Grp[]=[];
+  for(const [g] of counts){const fr=Math.floor(g/5),sd=g%5;const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.BufferAttribute(posArr.get(g)!,3));
+    if(fr<F.length&&tex.has(fr))geo.setAttribute("uv",new THREE.BufferAttribute(uvArr.get(g)!,2));else geo.computeVertexNormals();
+    groups.push({frame:fr<F.length&&tex.has(fr)?fr:-1,side:sd,geo})}
   onProgress?.(1);
-  return {groups,gray,tex};
+  return {groups,tex,L:Li,W:Wi,aligned:al.moved};
+}
+
+/** Підгонка сітки під кімнату: напрямок стін (гістограма нормалей), протилежні стіни (піки), підлога; 180° — по дверях */
+function alignToRoom(P:Float32Array,I:Uint32Array,C:Uint8Array,nf:number,tr0:Tr,ctx:Ctx):{tr:Tr;moved:boolean}{
+  const Lm=ctx.L/M,Wm=ctx.W/M;if(!Lm||!Wm)return {tr:tr0,moved:false};
+  // вертикальні трикутники: центр, нормаль, площа
+  const vx:number[]=[],vz:number[]=[],vnx:number[]=[],vnz:number[]=[],vw:number[]=[];const hy:number[]=[],hw:number[]=[];const dx:number[]=[],dz:number[]=[];
+  for(let t=0;t<nf;t++){const a=I[t*3]*3,b=I[t*3+1]*3,c=I[t*3+2]*3;
+    const ux=P[b]-P[a],uy=P[b+1]-P[a+1],uz=P[b+2]-P[a+2],wx=P[c]-P[a],wy=P[c+1]-P[a+1],wz=P[c+2]-P[a+2];
+    let nx=uy*wz-uz*wy,ny=uz*wx-ux*wz,nz=ux*wy-uy*wx;const ar=Math.hypot(nx,ny,nz);if(ar<1e-6)continue;nx/=ar;ny/=ar;nz/=ar;
+    const gx=(P[a]+P[b]+P[c])/3,gy=(P[a+1]+P[b+1]+P[c+1])/3,gz=(P[a+2]+P[b+2]+P[c+2])/3;
+    if(Math.abs(ny)<0.25){vx.push(gx);vz.push(gz);vnx.push(nx);vnz.push(nz);vw.push(ar)}
+    else if(Math.abs(ny)>0.9){hy.push(gy);hw.push(ar)}
+    if(C[t]===7){dx.push(gx);dz.push(gz)}
+  }
+  if(vx.length<50)return {tr:tr0,moved:false};
+  const fit=(tr:Tr)=>{const c=Math.cos(tr.th),s=Math.sin(tr.th);let ok=0,all=0;for(let i=0;i<vx.length;i++){const X=vx[i]*c-vz[i]*s-tr.minX,Z=vx[i]*s+vz[i]*c-tr.minZ;const d=Math.min(Math.abs(X),Math.abs(Z),Math.abs(X-Lm),Math.abs(Z-Wm));all+=vw[i];if(d<0.12&&X>-0.2&&Z>-0.2&&X<Lm+0.2&&Z<Wm+0.2)ok+=vw[i]}return ok/(all||1)};
+  const f0=fit(tr0);
+  // напрямок стін
+  const NB=90,hist=new Float64Array(NB);for(let i=0;i<vx.length;i++){let a=Math.atan2(vnz[i],vnx[i]);a=((a%(Math.PI/2))+Math.PI/2)%(Math.PI/2);hist[Math.floor(a/(Math.PI/2)*NB)%NB]+=vw[i]}
+  let pk=0,pv=-1;for(let i=0;i<NB;i++){const v=hist[(i+NB-1)%NB]+hist[i]*2+hist[(i+1)%NB];if(v>pv){pv=v;pk=i}}
+  const th0=(pk+0.5)/NB*(Math.PI/2);
+  // підлога: найнижчий сильний рівень горизонтальних трикутників
+  const ys=hy.map((y,i)=>[y,hw[i]]).sort((p,q)=>p[0]-q[0]);let floorY=tr0.floorY;
+  if(ys.length){const tot=ys.reduce((a,p)=>a+p[1],0);let acc=0;for(const [y,w] of ys){acc+=w;if(acc>tot*0.08){floorY=y;break}}}
+  const peaks=(vals:number[],ws:number[])=>{if(!vals.length)return null;const mn=Math.min(...vals),mx=Math.max(...vals);const B=Math.max(1,Math.ceil((mx-mn)/0.03));const h=new Float64Array(B+1);vals.forEach((v,i)=>{h[Math.floor((v-mn)/0.03)]+=ws[i]});
+    const sm=h.map((_,i)=>(h[i-1]||0)+h[i]*2+(h[i+1]||0));const top=Math.max(...sm);const idx:number[]=[];for(let i=0;i<sm.length;i++)if(sm[i]>=top*0.25&&sm[i]>=(sm[i-1]||0)&&sm[i]>=(sm[i+1]||0))idx.push(i);
+    if(idx.length<2)return null;return [mn+(idx[0]+0.5)*0.03,mn+(idx[idx.length-1]+0.5)*0.03]};
+  const cands:{tr:Tr;err:number;door:number}[]=[];
+  for(let k=0;k<4;k++){const th=-th0+k*Math.PI/2;const c=Math.cos(th),s=Math.sin(th);
+    const xs:number[]=[],xw:number[]=[],zs:number[]=[],zw:number[]=[];
+    for(let i=0;i<vx.length;i++){const X=vx[i]*c-vz[i]*s,Z=vx[i]*s+vz[i]*c;const nX=Math.abs(vnx[i]*c-vnz[i]*s),nZ=Math.abs(vnx[i]*s+vnz[i]*c);if(nX>0.9){xs.push(X);xw.push(vw[i])}else if(nZ>0.9){zs.push(Z);zw.push(vw[i])}}
+    const px=peaks(xs,xw),pz=peaks(zs,zw);if(!px||!pz)continue;
+    const err=Math.abs((px[1]-px[0])-Lm)+Math.abs((pz[1]-pz[0])-Wm);
+    const tr={th,minX:px[0],minZ:pz[0],floorY};
+    // двері сітки ↔ двері плану
+    let door=0;if(dx.length&&ctx.doors.length){const mx=dx.reduce((a,v,i)=>a+(dx[i]*c-dz[i]*s),0)/dx.length-px[0],mz=dx.reduce((a,v,i)=>a+(dx[i]*s+dz[i]*c),0)/dx.length-pz[0];door=Math.min(...ctx.doors.map(([X,Z])=>Math.hypot(X/M-mx,Z/M-mz)))}
+    cands.push({tr,err,door});
+  }
+  if(!cands.length)return {tr:tr0,moved:false};
+  cands.sort((a,b)=>a.err-b.err);const goodErr=cands[0].err+0.15;const ok=cands.filter(c=>c.err<=goodErr).sort((a,b)=>a.door-b.door||fit(b.tr)-fit(a.tr));
+  const best=ok[0];const f1=fit(best.tr);
+  return f1>f0+0.1?{tr:best.tr,moved:true}:{tr:tr0,moved:false};
 }
 
 export default function TexturedScan({room}:{room:Room}){
   const sm=room.scanMesh!;
   const [b,setB]=useState<Built|null>(null);const [p,setP]=useState(0);const [err,setErr]=useState("");
-  useEffect(()=>{let dead=false;
-    if(!cache.has(sm.path))cache.set(sm.path,(async()=>{const blob=await dl(sm.path);if(!blob)return null;return buildTextured(await blob.arrayBuffer(),sm.frames,sm,x=>{if(!dead)setP(x)})})());
-    cache.get(sm.path)!.then(r=>{if(dead)return;if(r)setB(r);else setErr("3D-фото не завантажилось")}).catch(e=>{cache.delete(sm.path);if(!dead)setErr(String(e?.message||e))});
-    return()=>{dead=true}},[sm.path,sm]);
+  const ctx=():Ctx=>{const L=parseInches(room.length)||0,W=parseInches(room.width)||0,H=parseInches(room.height)||96;
+    const doors=(room.openings||[]).filter(o=>!/вікно|window/i.test(o.name)).map(o=>{const w=parseInches(o.w)||30;const k="ABCD".indexOf(o.wall||"A");const len=k%2?W:L;const at=(o.t||0)*Math.max(0,len-w)+w/2;
+      return (k===0?[at,0]:k===1?[L,at]:k===2?[L-at,W]:[0,W-at]) as [number,number]});return {L,W,H,doors}};
+  useEffect(()=>{let dead=false;const id=sm.path+"|"+room.length+"x"+room.width;
+    if(!cache.has(id))cache.set(id,(async()=>{const blob=await dl(sm.path);if(!blob)return null;return buildTextured(await blob.arrayBuffer(),sm.frames,sm,ctx(),x=>{if(!dead)setP(x)})})());
+    cache.get(id)!.then(r=>{if(dead)return;if(r)setB(r);else setErr("3D-фото не завантажилось")}).catch(e=>{cache.delete(id);if(!dead)setErr(String(e?.message||e))});
+    return()=>{dead=true}},[sm.path,sm,room.length,room.width]);// eslint-disable-line react-hooks/exhaustive-deps
+  const refs=useRef<(THREE.Object3D|null)[]>([]);
+  useFrame(({camera})=>{if(!b)return;const x=camera.position.x/IN,z=camera.position.z/IN;const hide=[z<0,x>b.L,z>b.W,x<0,false];
+    b.groups.forEach((g,i)=>{const o=refs.current[i];if(o)o.visible=!hide[g.side]})});
   if(!b)return <ProgressNote p={p} err={err}/>;
   return <group>
-    {b.groups.map(g=><mesh key={g.frame} geometry={g.geo}><meshBasicMaterial map={b.tex.get(g.frame)} side={THREE.FrontSide} toneMapped={false}/></mesh>)}
-    {b.gray&&<mesh geometry={b.gray}><meshLambertMaterial color="#c9c4bb" side={THREE.FrontSide}/></mesh>}
+    {b.groups.map((g,i)=><mesh key={g.frame+"-"+g.side+"-"+i} ref={el=>{refs.current[i]=el}} geometry={g.geo}>{g.frame>=0?<meshBasicMaterial map={b.tex.get(g.frame)} side={THREE.DoubleSide} toneMapped={false}/>:<meshLambertMaterial color="#c9c4bb" side={THREE.DoubleSide}/>}</mesh>)}
   </group>;
 }
 import {Html} from "@react-three/drei";

@@ -28,6 +28,7 @@ struct ScanScreen: View {
                 if ctl.phase == 2 {
                     Text("Крок 2/2 — 3D-фото. Повільно обійди кімнату ще раз, наводь на меблі й стіни з різних боків. Не поспішай — кадри мають бути чіткі.")
                         .font(.footnote).multilineTextAlignment(.center).padding(10).background(.ultraThinMaterial).cornerRadius(10).padding(.horizontal)
+                    if !ctl.hint.isEmpty { Text(ctl.hint).font(.footnote.bold()).foregroundStyle(.orange).padding(8).background(.ultraThinMaterial).cornerRadius(8) }
                     Text("📷 Кадрів: \(ctl.frameCount)/\(CaptureController.maxFrames) · 🔺 сітка: \(ctl.meshFaces / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
                 } else {
                     Text("Крок 1/2 — план · 📸 \(ctl.shotCount)/\(CaptureController.maxShots) · 🧊 \(ctl.pointCount / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
@@ -63,13 +64,14 @@ struct KeyFrame {
 
 final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate, ARSessionDelegate {
     static let maxShots = 30
-    static let maxFrames = 40
+    static let maxFrames = 50
     @Published var processing = false
     @Published var phase = 1
     @Published var shotCount = 0
     @Published var pointCount = 0
     @Published var frameCount = 0
     @Published var meshFaces = 0
+    @Published var hint = ""
     let cloud = PointCloud()
     private var tick = 0
     var result: CapturedRoom? = nil
@@ -98,11 +100,16 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
     func finish() { timer?.invalidate(); finishing = true; processing = true; view.captureSession.stop(pauseARSession: false) }
 
     private func startPhoto() {
+        // карта світу з кроку 1 → крок 2 «впізнає» кімнату і пише сітку й кадри в ТИХ САМИХ координатах, що й план
+        arSession.getCurrentWorldMap { map, _ in DispatchQueue.main.async { self.runPhoto(map: map) } }
+    }
+    private func runPhoto(map: ARWorldMap?) {
         let cfg = ARWorldTrackingConfiguration()
+        cfg.initialWorldMap = map
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) { cfg.sceneReconstruction = .meshWithClassification }
         else if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) { cfg.sceneReconstruction = .mesh }
         if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) { cfg.frameSemantics.insert(.sceneDepth) }
-        arSession.run(cfg) // без reset — світові координати лишаються ті самі, що в RoomPlan
+        if map != nil { arSession.run(cfg, options: [.resetTracking, .removeExistingAnchors]) } else { arSession.run(cfg) }
         phase = 2
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.maybeKeyFrame() }
     }
@@ -135,9 +142,15 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
 
     // Крок 2: чіткий ключовий кадр, якщо новий ракурс (≥ 12° або ≥ 0.4 м) і телефон майже нерухомий (без змазу)
     private func maybeKeyFrame() {
-        guard let frame = arSession.currentFrame, case .normal = frame.camera.trackingState else { return }
+        guard let frame = arSession.currentFrame else { return }
+        guard case .normal = frame.camera.trackingState else {
+            let h: String
+            if case .limited(.relocalizing) = frame.camera.trackingState { h = "Наведи телефон на місце, звідки почав скан, — шукаю кімнату…" } else { h = "Тримай телефон рівно, повільно веди…" }
+            DispatchQueue.main.async { self.hint = h }
+            return
+        }
+        if !hint.isEmpty { DispatchQueue.main.async { self.hint = "" } }
         tick += 1
-        if tick % 2 == 0 { cloud.add(frame: frame, meshToo: false) { n in DispatchQueue.main.async { self.pointCount = n } } }
         if tick % 4 == 0 { let n = frame.anchors.compactMap { ($0 as? ARMeshAnchor)?.geometry.faces.count }.reduce(0, +); DispatchQueue.main.async { self.meshFaces = n } }
         let T = frame.camera.transform
         defer { prevPose = T }
