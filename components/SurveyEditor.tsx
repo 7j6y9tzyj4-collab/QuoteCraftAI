@@ -294,12 +294,12 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
               onClick={()=>setRoom(r.id,{length:ft(r.length),width:ft(r.width),height:ft(r.height),parts:(r.parts||[]).map(p=>({...p,length:ft(p.length),depth:ft(p.depth)}))})}>Перевести фути → дюйми</button>
           </div>})()}
         <details style={{marginTop:8}} open={!!r.parts?.length}>
-          <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, виступ, вирізаний кут)</summary>
+          <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, короб чи шафа в кутку)</summary>
           <small className="muted">Головний прямокутник — вище. Тут додай ділянки: <b>ніша/виступ</b> — додається до підлоги й стін; <b>вирізаний кут</b> (Г-подібна кімната) — віднімається від підлоги.</small>
           {(r.parts||[]).map(p=>{const setP=(patch:Partial<Part>)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===p.id?{...x,...patch}:x)});
             return <div key={p.id} style={{marginTop:8,padding:8,background:"#f8fafc",borderRadius:10}}>
             <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 84px 84px 36px",gap:6,alignItems:"end"}}>
-              <label>Що<select value={p.kind} onChange={e=>setP({kind:e.target.value as "add"|"cut",wall:undefined})}><option value="add">Ніша / виступ (+)</option><option value="cut">Вирізаний кут (−)</option></select></label>
+              <label>Що<select value={p.kind} onChange={e=>setP({kind:e.target.value as "add"|"cut",wall:undefined})}><option value="add">Ніша назовні — кімната більша (+)</option><option value="cut">Короб / шафа в кутку — кімната менша (−)</option></select></label>
               <label>Довжина<BInput inputMode="decimal" placeholder="дюйми" value={p.length} onCommit={v=>setP({length:v})}/></label>
               <label>Глибина<BInput inputMode="decimal" placeholder="дюйми" value={p.depth} onCommit={v=>setP({depth:v})}/></label>
               <button className="remove" onClick={()=>setRoom(r.id,{parts:(r.parts||[]).filter(x=>x.id!==p.id)})}>×</button>
