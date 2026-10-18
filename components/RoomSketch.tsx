@@ -1,8 +1,9 @@
 "use client";
-import {useRef,useState} from "react";
+import {useRef,useState,useEffect} from "react";
 import dynamic from "next/dynamic";
 const Room3D=dynamic(()=>import("@/components/Room3D"),{ssr:false,loading:()=>null});
 import type {ExportFn,ExportFmt,CaptureFn} from "@/components/Room3D";
+import {cloudTopView} from "@/lib/scanCloudLoad";
 import {placeFixture,rotateFixture,nudgeFixture,fixtureCenter} from "@/lib/fixtureEdit";
 import {parseInches,fmtInches,roomAreas,FIXTURES,FIXTURE_MODELS,type Room,type Opening,type Part,type Fixture} from "@/lib/survey";
 
@@ -93,6 +94,9 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   const [sel,setSel]=useState<string|null>(null);
   const [edit,setEdit]=useState(false);
   const [scanView,setScanView]=useState(!!(room.scanCloud||room.scanMesh));
+  // «привид» скану під моделями і на плані — щоб ставити моделі точно на реальні предмети
+  const [ghost,setGhost]=useState(true);const [top,setTop]=useState<string|null>(null);
+  useEffect(()=>{let dead=false;setTop(null);if(room.scanCloud)cloudTopView(room).then(u=>{if(!dead)setTop(u)});return()=>{dead=true}},[room.scanCloud?.path,room.length,room.width,room.height]);// eslint-disable-line react-hooks/exhaustive-deps
   const ed=edit?onFixture:undefined; // тапи по предметах працюють лише в режимі «Редагувати»
   const drag=useRef<{id:string;sx:number;sy:number;cx:number;cy:number;moved:boolean}|null>(null);
   const svgRef=useRef<SVGSVGElement|null>(null);
@@ -169,6 +173,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   return <div style={{marginTop:10}}>
     <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
       <button type="button" onClick={()=>setDims(d=>(d+1)%3)} title="вимкнено → основні → усі" style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"Розміри: вимк":dims===1?"Основні":"Усі"}</button>
+      {room.scanCloud&&(view==="2d"||!scanView||edit)&&<button type="button" onClick={()=>setGhost(g=>!g)} title="Показати скан під моделями" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:ghost?"#6941c6":"#eef2f7",color:ghost?"#fff":"#344054"}}>👻 Скан</button>}
       {view==="3d"&&(room.scanCloud||room.scanMesh)&&<button type="button" onClick={()=>setScanView(v=>!v)} title="Справжній 3D-скан або моделі" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:scanView?"#0e9384":"#eef2f7",color:scanView?"#fff":"#344054"}}>{scanView?(room.scanMesh?"📷 3D-фото":"🧊 Скан"):"🪑 Моделі"}</button>}
       {onFixture&&<button type="button" onClick={()=>{setEdit(e=>!e);setSel(null)}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:edit?"#2f6df6":"#eef2f7",color:edit?"#fff":"#344054"}}>{edit?"✓ Готово":"✏️ Редагувати"}</button>}
       {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
@@ -177,9 +182,10 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
     {exportRow}
     {!full&&editBar}
     {!full&&ed&&!sel&&editHint}
-    {(()=>{const body=view==="3d"?<Room3D room={room} scan={scanView&&!!(room.scanCloud||room.scanMesh)&&!edit} dims={dims} height={full?"100%":340} captureRef={captureRef} exportRef={exportRef} selected={edit?sel:null} onSelect={edit?setSel:undefined} onMove={ed?((id:string,px:number,py:number)=>{const f=(room.fixtures||[]).find(x=>x.id===id);if(f)ed?.(id,placeFixture(room,f,px,py))}):undefined}/>:<svg ref={svgRef} onPointerDown={()=>setSel(null)} viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{touchAction:sel?"none":undefined,maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+    {(()=>{const body=view==="3d"?<Room3D room={room} ghost={ghost&&!!room.scanCloud} scan={scanView&&!!(room.scanCloud||room.scanMesh)&&!edit} dims={dims} height={full?"100%":340} captureRef={captureRef} exportRef={exportRef} selected={edit?sel:null} onSelect={edit?setSel:undefined} onMove={ed?((id:string,px:number,py:number)=>{const f=(room.fixtures||[]).find(x=>x.id===id);if(f)ed?.(id,placeFixture(room,f,px,py))}):undefined}/>:<svg ref={svgRef} onPointerDown={()=>setSel(null)} viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{touchAction:sel?"none":undefined,maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       {room.floorTile&&room.floorTile.w>0&&room.floorTile.h>0&&<defs><pattern id={"tile"+room.id} x={X(0)} y={Y(0)} width={room.floorTile.w*k} height={room.floorTile.h*k} patternUnits="userSpaceOnUse"><rect width={room.floorTile.w*k} height={room.floorTile.h*k} fill="#f8fafc" stroke="#d0d5dd" strokeWidth={0.6}/></pattern></defs>}
       <polygon points={poly} fill={room.floorTile?`url(#tile${room.id})`:"#f8fafc"} stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
+      {ghost&&top&&<image href={top} x={X(0)} y={Y(0)} width={L*k} height={W*k} preserveAspectRatio="none" opacity={0.7} style={{pointerEvents:"none"}}/>}
       {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(add(corner[kk],dir[kk],start),nrm[kk],-(fx.off||0));
         // локальні координати: x — вздовж стіни, y — від стіни в кімнату; одиниці — дюйми
         const m=`matrix(${k*dir[kk][0]} ${k*dir[kk][1]} ${-k*nrm[kk][0]} ${-k*nrm[kk][1]} ${X(p0[0])} ${Y(p0[1])})`;
@@ -211,7 +217,8 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         <b style={{fontSize:15}}>{room.name||"Кімната"}</b>
         {(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
         <button type="button" onClick={()=>setDims(d=>(d+1)%3)} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"вимк":dims===1?"основні":"усі"}</button>
-        {view==="3d"&&(room.scanCloud||room.scanMesh)&&<button type="button" onClick={()=>setScanView(v=>!v)} title="Справжній 3D-скан або моделі" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:scanView?"#0e9384":"#eef2f7",color:scanView?"#fff":"#344054"}}>{scanView?(room.scanMesh?"📷 3D-фото":"🧊 Скан"):"🪑 Моделі"}</button>}
+        {room.scanCloud&&(view==="2d"||!scanView||edit)&&<button type="button" onClick={()=>setGhost(g=>!g)} title="Показати скан під моделями" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:ghost?"#6941c6":"#eef2f7",color:ghost?"#fff":"#344054"}}>👻 Скан</button>}
+      {view==="3d"&&(room.scanCloud||room.scanMesh)&&<button type="button" onClick={()=>setScanView(v=>!v)} title="Справжній 3D-скан або моделі" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:scanView?"#0e9384":"#eef2f7",color:scanView?"#fff":"#344054"}}>{scanView?(room.scanMesh?"📷 3D-фото":"🧊 Скан"):"🪑 Моделі"}</button>}
       {onFixture&&<button type="button" onClick={()=>{setEdit(e=>!e);setSel(null)}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:edit?"#2f6df6":"#eef2f7",color:edit?"#fff":"#344054"}}>{edit?"✓ Готово":"✏️ Редагувати"}</button>}
       {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
         <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕</button>
