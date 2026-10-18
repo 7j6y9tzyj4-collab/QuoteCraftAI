@@ -218,7 +218,7 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
-  useEffect(()=>{if(captureRef)captureRef.current=()=>{try{gl.render(scene,camera);return gl.domElement.toDataURL("image/png")}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
+  useEffect(()=>{if(captureRef)captureRef.current=()=>{try{const d=scene.getObjectByName("dims");if(d)d.visible=false;gl.render(scene,camera);const url=gl.domElement.toDataURL("image/png");if(d)d.visible=true;gl.render(scene,camera);return url}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
   // Експорт сцени: OBJ (SketchUp Pro → File → Import, одиниці: feet), GLB (будь-який 3D-в'юер), USDZ (iPhone AR Quick Look)
   useEffect(()=>{if(!exportRef)return;exportRef.current=async(fmt)=>{
     // без підписів і світла — тільки геометрія кімнати
@@ -268,7 +268,7 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
     {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
-    {dims>0&&<Dims g={g} level={dims}/>}
+    {dims>0&&<group name="dims"><Dims g={g} level={dims}/></group>}
     <OrbitControls target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;
 }
