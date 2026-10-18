@@ -20,6 +20,7 @@ final class ScanSession: ObservableObject {
     @Published var status: String = ""
     @Published var payload: [String: Any]? = nil
     var shots: [ScanShot] = []
+    var cloud: Data? = nil
     @Published var sending = false
     @Published var sent = false
     @Published var pin: String = ""
@@ -81,7 +82,9 @@ final class ScanSession: ObservableObject {
         guard let token, let payload, !sending else { return }
         sending = true
         uploadShots(token: token, i: 0, metas: []) { metas in
+          self.uploadCloud(token: token) { cloudInfo in
             var body = payload; body["photos"] = metas
+            if let cloudInfo { body["cloud"] = cloudInfo }
             self.status = "Відправляю план…"
             self.post("/api/scan-import", ["token": token, "scan": body]) { code, json, err in
                 self.sending = false
@@ -92,7 +95,24 @@ final class ScanSession: ObservableObject {
                     self.status = "Помилка \(code): " + ((json?["error"] as? String) ?? "")
                 }
             }
+          }
         }
+    }
+
+    // 3D-скан (хмара точок) одним файлом → шлях у сховищі
+    private func uploadCloud(token: String, done: @escaping ([String: Any]?) -> Void) {
+        guard let cloud, cloud.count > 8 else { done(nil); return }
+        status = "Відправляю 3D-скан (\(cloud.count / 1_000_000) МБ)…"
+        var req = URLRequest(url: URL(string: api + "/api/scan-cloud")!)
+        req.httpMethod = "POST"; req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type"); req.setValue(token, forHTTPHeaderField: "X-Token")
+        req.httpBody = cloud; req.timeoutInterval = 120
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            DispatchQueue.main.async {
+                if code == 200, let path = json?["path"] as? String { done(["path": path, "n": (cloud.count - 8) / 9]) } else { done(nil) }
+            }
+        }.resume()
     }
 
     // Кадри по одному (кожен ~100 КБ) → шлях у сховищі + напрямок камери

@@ -4,7 +4,7 @@ import {DOOR,WINDOW,FIXTURES,type Room,type Opening,type Fixture,type SurveyPhot
 
 export type ScanItem={id?:string;cx:number;cy:number;cz:number;yaw:number;w:number;h:number;d?:number;parent?:string;category?:string;confidence?:string};
 export type ScanPhoto={path:string;cx:number;cz:number;yaw:number;pitch?:number};
-export type ScanPayload={photos?:ScanPhoto[];walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
+export type ScanPayload={cloud?:{path:string;n:number};photos?:ScanPhoto[];walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
 
 const M2IN=39.3701;
 const CAT:Record<string,{type:string;label?:string}>={
@@ -82,7 +82,8 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
   }
   const note=`Скан: ${Math.round(L)}"×${Math.round(W)}", стеля ${Math.round(Hin)}", стін ${walls.length}, прорізів ${openings.length}, об'єктів ${fixtures.length}`;
   const oldPhotos=(prev.photos||[]).filter(x=>!x.view);
-  return {length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],photos:[...photos,...oldPhotos],note:note+(photos.length?`, кадрів ${photos.length}`:"")};
+  const scanCloud=p.cloud&&typeof p.cloud.path==="string"&&p.cloud.path?{path:p.cloud.path,n:Number(p.cloud.n)||0,th,minX,minZ,floorY}:undefined;
+  return {...(scanCloud?{scanCloud}:{}),length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],photos:[...photos,...oldPhotos],note:note+(photos.length?`, кадрів ${photos.length}`:"")+(scanCloud?`, 3D-точок ${Math.round(scanCloud.n/1000)}k`:"")};
 }
 // FIXTURES використовується для перевірки типів у майбутньому
 void FIXTURES;

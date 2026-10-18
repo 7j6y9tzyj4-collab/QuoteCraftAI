@@ -7,6 +7,7 @@ import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
 import {MSofa,MTvStand,MTv,MPlant,MRug,MFloorLamp,MAc,MBed,MChair,MTable,MShelf,MWardrobe,MAppliance,MBox,MToilet,MVanity,MWallSink,MTub,MShower,MWasher,MCabinet,MMirror,MVanityLight,MTowelBar,MCeilingLight,MHeater} from "@/components/Modern3D";
+import {supabase} from "@/lib/supabase";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
 export type ExportFmt="obj"|"glb"|"usdz";
 export type ExportFn=(fmt:ExportFmt)=>Promise<Blob>;
@@ -235,9 +236,31 @@ function Fixture({f,H,geom,look,selected,onDown}:{f:FixBox;H:number;geom:NonNull
   </group>;
 }
 
+
+// 3D-скан як у Roborock: хмара кольорових точок LiDAR. Стіни/підлогу/стелю зі скану прибираємо (їх малює кімната) — лишаються предмети.
+const cloudCache=new Map<string,Promise<ArrayBuffer|null>>();
+function ScanCloud({room,H}:{room:Room;H:number}){
+  const sc=room.scanCloud!;const L=parseInchesSafe(room.length),W=parseInchesSafe(room.width);
+  const [geo,setGeo]=useState<THREE.BufferGeometry|null>(null);
+  useEffect(()=>{let dead=false;
+    if(!cloudCache.has(sc.path))cloudCache.set(sc.path,supabase.storage.from("receipts").download(sc.path).then(r=>r.data?r.data.arrayBuffer():null).catch(()=>null));
+    cloudCache.get(sc.path)!.then(buf=>{if(dead||!buf||buf.byteLength<8)return;const dv=new DataView(buf);const n=Math.min(dv.getUint32(4,true),Math.floor((buf.byteLength-8)/9));
+      const c=Math.cos(sc.th),s=Math.sin(sc.th),M=39.3701,m=1.5;
+      const pos=new Float32Array(n*3),col=new Float32Array(n*3);let k=0;
+      for(let i=0;i<n;i++){const o=8+i*9;const x=dv.getInt16(o,true)/1000,y=dv.getInt16(o+2,true)/1000,z=dv.getInt16(o+4,true)/1000;
+        const rx=x*c-z*s,rz=x*s+z*c;const px=(rx-sc.minX)*M,py=(rz-sc.minZ)*M,yi=(y-sc.floorY)*M;
+        if(yi<0.8||yi>H-2||px<m||py<m||(L&&px>L-m)||(W&&py>W-m))continue;
+        pos[k*3]=px*IN;pos[k*3+1]=yi*IN;pos[k*3+2]=py*IN;col[k*3]=dv.getUint8(o+6)/255;col[k*3+1]=dv.getUint8(o+7)/255;col[k*3+2]=dv.getUint8(o+8)/255;k++}
+      const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(pos.slice(0,k*3),3));const cc=new THREE.BufferAttribute(col.slice(0,k*3),3);g.setAttribute("color",cc);setGeo(g)});
+    return()=>{dead=true}},[sc.path,sc.th,sc.minX,sc.minZ,sc.floorY,H,L,W]);
+  if(!geo)return null;
+  return <points geometry={geo}><pointsMaterial size={0.9*IN} vertexColors sizeAttenuation toneMapped={false}/></points>;
+}
+function parseInchesSafe(s:string){const n=parseFloat(String(s||"").replace(",","."));return Number.isFinite(n)?n:0}
+
 export type CaptureFn=()=>{url:string;view:string;w:number;h:number}|null;
-type Edit={selected?:string|null;onSelect?:(id:string|null)=>void;onMove?:(id:string,px:number,py:number)=>void};
-function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims:number;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
+type Edit={scan?:boolean;selected?:string|null;onSelect?:(id:string|null)=>void;onMove?:(id:string,px:number,py:number)=>void};
+function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove,scan}:{room:Room;dims:number;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
@@ -316,7 +339,8 @@ function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:R
     {/* плінтус по периметру */}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
-    {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
+    {scan&&room.scanCloud&&<ScanCloud room={room} H={H}/>}
+    {!(scan&&room.scanCloud)&&g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
     {dims>0&&<group name="dims"><Dims g={g} level={dims}/></group>}
     <OrbitControls ref={ctl} target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;
@@ -361,13 +385,13 @@ function Dims({g,level}:{g:NonNullable<ReturnType<typeof roomGeom>>;level:number
 const FIX_NAME:Record<string,string>={toilet:"Унітаз",vanity:"Тумба",sink:"Раковина",tub:"Ванна",shower:"Душ",washer:"Пральна",dryer:"Сушка",fan:"Вентилятор",light:"Світло",heater:"Радіатор",cabinet:"Шафа",mirror:"Дзеркало",vanityLight:"Світло",towelBar:"Рушники",other:""};
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return (f.y||0)+(f.h||FIX_H3[f.type]||30);return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=1,height=340,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
+export default function Room3D({room,dims=1,height=340,captureRef,exportRef,selected,onSelect,onMove,scan}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
     <Canvas shadows style={{background:"linear-gradient(#f8fafc,#e9edf3)"}} camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}} onPointerMissed={()=>onSelect?.(null)}>
-      <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef} selected={selected} onSelect={onSelect} onMove={onMove}/>
+      <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef} selected={selected} onSelect={onSelect} onMove={onMove} scan={scan}/>
     </Canvas>
     <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>{onSelect?"тап по предмету — виділити й тягнути · один палець — крутити · два — наблизити":"один палець — крутити · два — наблизити/посунути"}</div>
   </div>;
