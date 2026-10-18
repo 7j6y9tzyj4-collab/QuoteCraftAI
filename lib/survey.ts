@@ -1,5 +1,5 @@
 // Огляд об'єкта: кімнати з розмірами в дюймах (з дробами), фото, нотатки, AI-план робіт.
-export type Opening={id:string;name:string;w:string;h:string;count:number;/** стіна A/B/C/D на ескізі */wall?:string;/** двері: всередину/назовні */swing?:"in"|"out";/** петлі: ліворуч/праворуч (дивлячись з кімнати) */hinge?:"left"|"right";/** положення на стіні 0..1 */t?:number};
+export type Opening={id:string;name:string;w:string;h:string;count:number;/** стіна A/B/C/D на ескізі */wall?:string;/** двері: всередину/назовні */swing?:"in"|"out";/** петлі: ліворуч/праворуч (дивлячись з кімнати) */hinge?:"left"|"right";/** положення на стіні 0..1 */t?:number;/** вікно: низ над підлогою, дюйми (зі скану) */sill?:number};
 /** сантехніка й обладнання на плані */
 export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean;/** зі LiDAR-скану (точне положення) */fromScan?:boolean;/** варіант 3D-моделі (див. FIXTURE_MODELS) */model?:string;/** висота предмета, дюйми (зі скану) */h?:number;/** низ над підлогою, дюйми (навісні: ТВ, шафки) */y?:number;/** відступ від стіни в кімнату, дюйми (окремостоячі: диван посеред кімнати, килим) */off?:number};
 export const FIXTURES:Record<string,{name:string;w:number;d:number}>={

@@ -132,13 +132,17 @@ function TowelBar({w,y,ring}:{w:number;y:number;ring:boolean}){
 function M({p,s,c,r=0.7,e=true}:{p:[number,number,number];s:[number,number,number];c:string;r?:number;e?:boolean}){
   return <mesh position={[p[0]*IN,p[1]*IN,p[2]*IN]} castShadow receiveShadow><boxGeometry args={[s[0]*IN,s[1]*IN,s[2]*IN]}/><meshStandardMaterial color={c} roughness={r}/>{e&&<Edges color="#6b7280" lineWidth={1}/>}</mesh>;
 }
-function Furniture({f}:{f:FixBox}){
+function Furniture({f,all=[]}:{f:FixBox;all?:FixBox[]}){
   const lab=(f.label||"").toLowerCase();const w=f.w,d=f.d,y=f.y||0;
+  // секції кутового дивана: якщо кінець торкається іншого дивана — без підлокітника з того боку (виглядає цілим)
+  const touches=(pt:V)=>all.some(o=>o.id!==f.id&&/диван|sofa|couch|секц/i.test(o.label||"")&&(()=>{const xs=[o.p0[0],o.p1[0],o.p2[0],o.p3[0]],ys=[o.p0[1],o.p1[1],o.p2[1],o.p3[1]];const m=10;return pt[0]>=Math.min(...xs)-m&&pt[0]<=Math.max(...xs)+m&&pt[1]>=Math.min(...ys)-m&&pt[1]<=Math.max(...ys)+m})());
+  const midL:V=[(f.p0[0]+f.p3[0])/2,(f.p0[1]+f.p3[1])/2],midR:V=[(f.p1[0]+f.p2[0])/2,(f.p1[1]+f.p2[1])/2];
+  const joinL=touches(midL),joinR=touches(midR);
   let body:React.ReactNode;
   if(/диван|sofa|couch|секц/.test(lab)){const h=f.h||32,seat=17,arm=Math.min(6,w/8),back=Math.min(9,d/3);const c="#f3efe6";
-    body=<group><M p={[w/2,seat/2,d/2]} s={[w,seat,d]} c={c} r={0.9}/><M p={[w/2,(seat+h)/2,back/2]} s={[w,h-seat,back]} c={c} r={0.9}/>
-      <M p={[arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/><M p={[w-arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>
-      {(()=>{const n=Math.max(1,Math.round((w-2*arm)/30));return Array.from({length:n},(_,i)=>{const cw=(w-2*arm)/n;return <M key={i} p={[arm+cw*(i+0.5),seat+2,(back+d)/2]} s={[cw-1,4,d-back-1]} c="#faf7f0" r={0.95}/>})})()}</group>;}
+    body=<group><M p={[w/2,seat/2,d/2]} s={[w,seat,d]} c={c} r={0.9} e={false}/><M p={[w/2,(seat+h)/2,back/2]} s={[w,h-seat,back]} c={c} r={0.9} e={false}/>
+      {!joinL&&<M p={[arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>}{!joinR&&<M p={[w-arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>}
+      {(()=>{const a0=joinL?0:arm,a1=joinR?0:arm;const n=Math.max(1,Math.round((w-a0-a1)/30));return Array.from({length:n},(_,i)=>{const cw=(w-a0-a1)/n;return <M key={i} p={[a0+cw*(i+0.5),seat+2,(back+d)/2]} s={[cw-1,4,d-back-1]} c="#faf7f0" r={0.95}/>})})()}</group>;}
   else if(/тумба під тв|tv stand|тв-тумба|комод|dresser/.test(lab)){const h=f.h||20;body=<group><M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#f5f5f4" r={0.4}/><M p={[w/2,h*0.45,d+0.1]} s={[w*0.9,0.4,0.2]} c="#9ca3af" e={false}/></group>;}
   else if(/тв|tv|телев/.test(lab)){const h=f.h||Math.round(w*0.58);const sy=y||(20);body=<group position={[0,sy*IN,0]}><M p={[w/2,h/2,1.5]} s={[w,h,2]} c="#111827" r={0.3}/><mesh position={[w/2*IN,h/2*IN,2.6*IN]}><planeGeometry args={[(w-1)*IN,(h-1)*IN]}/><meshStandardMaterial color="#0b1020" metalness={0.5} roughness={0.15}/></mesh>{!f.y&&<M p={[w/2,-1,3]} s={[w*0.3,2,8]} c="#1f2937"/>}</group>;}
   else if(/рослин|plant|вазон|квіт/.test(lab)){const h=f.h||60;const r=Math.min(w,d)/2;body=<group><mesh position={[w/2*IN,6*IN,d/2*IN]} castShadow><cylinderGeometry args={[r*0.45*IN,r*0.35*IN,12*IN,20]}/><meshStandardMaterial color="#f5f5f4"/></mesh>
@@ -168,7 +172,7 @@ function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
     const o=scene.clone(true);
     o.updateMatrixWorld(true);
     const box=new THREE.Box3().setFromObject(o);const sz=new THREE.Vector3();box.getSize(sz);
-    const h=Math.min(m.h,H-2);
+    const h=Math.min(f.h||m.h,H-2);
     const sx=f.w*IN/Math.max(sz.x,1e-6),sy=h*IN/Math.max(sz.y,1e-6),sz2=f.d*IN/Math.max(sz.z,1e-6);
     // ширина і глибина — точно за введеними розмірами (модель трохи розтягується); унітаз і п'єдестал — пропорційно
     const keepRatio=f.type==="toilet"||(f.type==="sink"&&(f.model||"pedestal")==="pedestal")||(f.type==="vanity"&&f.model==="pedestal");
@@ -182,7 +186,7 @@ function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
     o.traverse(n=>{const mm=n as THREE.Mesh;if(mm.isMesh){mm.castShadow=true;mm.receiveShadow=true;
       if(tint){const mat=mm.material as THREE.MeshStandardMaterial;if(mat&&/wood/i.test(mat.name||"")){const c=mat.clone();c.color.set(tint);mm.material=c}}}});
     setObj(g);
-  },[scene,f.w,f.d,H,m,tint]);
+  },[scene,f.w,f.d,f.h,H,m,tint]);
   return obj?<primitive object={obj}/>:null;
 }
 function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>;look?:Room["look"]}){
@@ -205,7 +209,7 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
     case "light":return <Flat w={f.w} d={f.d} H={H} light/>;
     case "heater":return <Box w={f.w} d={f.d} h={24} color="#e5e7eb"/>;
     case "cabinet":return <Box w={f.w} d={f.d} h={Math.min(84,H-2)} color={WOOD}/>;
-    default:return <Furniture f={f}/>;
+    default:return <Furniture f={f} all={geom.fixtures}/>;
   }})();
   // локальне z у кімнату = −nrm; у three локальна вісь z після повороту на -ang вказує... будуємо явно: x→dir, z→(−nrm)
   const nx=-geom.nrm[f.k][0],ny=-geom.nrm[f.k][1];

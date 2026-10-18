@@ -27,6 +27,8 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
   for(const w of walls){const [cx,cz]=rot(w.cx,w.cz);const a=w.yaw+th;const dx=Math.cos(a)*w.w/2,dz=Math.sin(a)*w.w/2;ends.push([cx-dx,cz-dz],[cx+dx,cz+dz]);H=Math.max(H,w.h)}
   for(const [x,z] of ends){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z)}
   const L=(maxX-minX)*M2IN,W=(maxZ-minZ)*M2IN;const Hin=H*M2IN;
+  // рівень підлоги: ARKit рахує висоту від точки старту сканування (≈ рівень телефону), а не від підлоги → беремо низ стін
+  const bottoms=walls.map(w=>w.cy-w.h/2).sort((a,b)=>a-b);const floorY=bottoms[Math.floor(bottoms.length/2)];
   if(L<24||W<24)throw new Error("Скан занадто малий — пройди кімнату ще раз.");
   const toRoom=(x:number,z:number):[number,number]=>[(x-minX)*M2IN,(z-minZ)*M2IN];
   const len=[L,W,L,W];
@@ -42,7 +44,8 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
     const ow=r1(it.w*M2IN),oh=r1(it.h*M2IN);if(ow<8||oh<8)return;
     const start=along(k,px,py)-ow/2;const t=Math.max(0,Math.min(1,start/Math.max(1,len[k]-ow)));
     const base=kind==="door"?DOOR:WINDOW;
-    openings.push({id:crypto.randomUUID(),name:kind==="opening"?"Проріз":base.name,w:String(ow),h:String(oh),count:1,wall:"ABCD"[k],t,...(kind==="door"?{swing:"in" as const,hinge:"left" as const}:{})});
+    const sill=r1((it.cy-it.h/2-floorY)*M2IN);
+    openings.push({id:crypto.randomUUID(),name:kind==="opening"?"Проріз":base.name,w:String(ow),h:String(oh),count:1,wall:"ABCD"[k],t,...(kind==="door"?{swing:"in" as const,hinge:"left" as const}:{}),...(kind==="window"&&sill>=0&&sill<Hin?{sill}:{})});
   };
   for(const d of p.doors||[])mkOpening(d,"door");
   for(const w of p.windows||[])mkOpening(w,"window");
@@ -51,12 +54,18 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
   const fixtures:Fixture[]=[];
   for(const o of p.objects||[]){
     const m=CAT[o.category||""];if(!m)continue;
-    const [rx,rz]=rot(o.cx,o.cz);const [px,py]=toRoom(rx,rz);const k=nearest(px,py);const {ex,ez}=extents(o);
-    const w=r1(k===0||k===2?ex:ez),d=r1(k===0||k===2?ez:ex);
+    const [rx,rz]=rot(o.cx,o.cz);const [px,py]=toRoom(rx,rz);const {ex,ez}=extents(o);
+    // найближча стіна по КРАЮ предмета, не по центру; відступ від стіни — щоб диван посеред кімнати не прилипав до стіни
+    const gaps=[py-ez/2,(L-px)-ex/2,(W-py)-ez/2,px-ex/2];let k=0;for(let i=1;i<4;i++)if(gaps[i]<gaps[k])k=i;
+    let w=r1(k===0||k===2?ex:ez);const d=r1(k===0||k===2?ez:ex);
+    const off=r1(Math.max(0,gaps[k]));
+    // висота предмета і його низ над підлогою
+    const hIn=r1(o.h*M2IN);const bottom=r1((o.cy-o.h/2-floorY)*M2IN);
+    // чорний глянцевий екран LiDAR «недобачає» → ширину ТВ підтягуємо до стандартного розміру вгору (43/50/55/65/75/85/98")
+    let hh=hIn;
+    if(o.category==="television"){const std=[[43,37.5,21.1],[50,43.6,24.5],[55,47.9,27],[65,56.7,31.9],[75,65.4,36.8],[85,74.1,41.7],[98,85.4,48]];const s0=std.find(x=>x[1]>=w-1.5)||std[std.length-1];if(s0[1]>w){const cx0=along(k,px,py);w=s0[1];void cx0}hh=Math.max(hIn,s0[2])}
     const start=along(k,px,py)-w/2;const t=Math.max(0,Math.min(1,start/Math.max(1,len[k]-w)));
-    // висота предмета і його низ над підлогою (cy — центр по вертикалі, підлога ≈ 0)
-    const hIn=r1(o.h*M2IN);const bottom=r1((o.cy-o.h/2)*M2IN);
-    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(4,d),fromScan:true,...(m.label?{label:m.label}:{}),...(hIn>2?{h:hIn}:{}),...(bottom>4?{y:bottom}:{})});
+    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(o.category==="television"?2:4,d),fromScan:true,...(m.label?{label:m.label}:{}),...(hh>2?{h:hh}:{}),...(bottom>4?{y:bottom}:{}),...(off>4?{off}:{})});
   }
   const keep=(prev.fixtures||[]).filter(f=>!f.fromPhoto&&!f.fromScan);
   // кадри зі сканера: позиція камери і напрямок погляду → на яку стіну дивиться кадр
