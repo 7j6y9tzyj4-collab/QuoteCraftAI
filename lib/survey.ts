@@ -61,7 +61,14 @@ export function roomAreas(r:Room){
   for(const o of r.openings||[]){const w=parseInches(o.w),h=parseInches(o.h);if(ok(w)&&ok(h))openings+=w*h/144*(Number(o.count)||1)}
   const wallsGross=perimIn!==null&&ok(H)?perimIn*H/144:null;
   const walls=wallsGross!==null?Math.max(0,wallsGross-openings):null;
+  // площа кожної стіни окремо (A/B/C/D) за вирахуванням її прорізів + що на ній стоїть — щоб AI правильно рахував «плитка на 2 стінах, шпалери на 2 інших»
+  const wallsByWall:Record<string,{lengthIn:number;grossSqft:number;openingsSqft:number;netSqft:number;openings:string[];fixtures:string[]}>={};
+  if(ok(L)&&ok(W)&&ok(H)){for(const k of ["A","B","C","D"]){const len=k==="A"||k==="C"?L:W;let op=0;const names:string[]=[];
+    for(const o of r.openings||[]){if((o.wall||"A")!==k)continue;const w=parseInches(o.w),h=parseInches(o.h);if(ok(w)&&ok(h)){op+=w*h/144*(Number(o.count)||1);names.push(`${o.name} ${o.w}×${o.h}`)}}
+    const fx=(r.fixtures||[]).filter(f=>f.wall===k&&!f.off).map(f=>f.label||f.type);
+    wallsByWall[k]={lengthIn:len,grossSqft:r1(len*H/144),openingsSqft:r1(op),netSqft:r1(Math.max(0,len*H/144-op)),openings:names,fixtures:fx}}}
   return {
+    wallsByWall,
     floorSqft:floor!==null?r1(floor):null,ceilingSqft:floor!==null?r1(floor):null,
     wallsSqft:walls!==null?r1(walls):null,wallsGrossSqft:wallsGross!==null?r1(wallsGross):null,
     openingsSqft:r1(openings),perimeterFt:perimeter!==null?r1(perimeter):null,
