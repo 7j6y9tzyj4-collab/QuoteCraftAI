@@ -8,14 +8,14 @@ export async function POST(req:NextRequest){
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();
-    const photos:string[]=Array.isArray(b.photos)?b.photos.slice(0,10):[];
+    const photos:string[]=Array.isArray(b.photos)?b.photos.slice(0,24):[];
     if(photos.some(p=>typeof p!=="string"||p.length>750000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(p)))return NextResponse.json({error:"Фото мають бути JPEG/PNG/WebP до 750 КБ."},{status:400});
     const room=String(b.room||"").slice(0,200),notes=String(b.notes||"").slice(0,4000);
     const areas=b.areas&&typeof b.areas==="object"?b.areas:{};
     const tasks:{id:string;name:string;unit:string;category:string}[]=Array.isArray(b.tasks)?b.tasks.slice(0,400):[];
     const lang=b.lang==="en"?"en":"uk";
     const sceneOnly=b.mode==="scene";
-    const layout=String(b.layout||"").slice(0,1500);
+    const layout=String(b.layout||"").slice(0,5000);
     const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:110000,maxRetries:0});
     const r=await client.chat.completions.create({
       model:sceneOnly?(process.env.OPENAI_SCENE_MODEL||"gpt-4.1"):(process.env.OPENAI_MODEL||"gpt-4.1-mini"),temperature:0.2,

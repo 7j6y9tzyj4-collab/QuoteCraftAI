@@ -5,7 +5,7 @@ import CoreImage
 import UIKit
 
 // Екран сканування: RoomCaptureView + кнопки «Готово / Скасувати».
-// Під час сканування сам робить до 10 кадрів з різних напрямків і запам'ятовує, куди дивився телефон.
+// Під час сканування сам робить до 30 кадрів з різних напрямків і запам'ятовує, куди дивився телефон.
 struct ScanScreen: View {
     let onFinish: (CapturedRoom?, [ScanShot]) -> Void
     @StateObject private var ctl = CaptureController()
@@ -36,7 +36,7 @@ struct ScanShot {
 }
 
 final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
-    static let maxShots = 10
+    static let maxShots = 30
     @Published var processing = false
     @Published var resultTick = 0
     @Published var shotCount = 0
@@ -57,9 +57,9 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
     func stop() { timer?.invalidate(); view.captureSession.stop() }
     func finish() { timer?.invalidate(); finishing = true; processing = true; view.captureSession.stop() }
 
-    // Знімаємо кадр, якщо телефон дивиться в новий бік (≥ 30° від усіх попередніх) і тримається рівно
+    // Знімаємо кадр, якщо це новий ракурс: інший напрямок (≥ 20°) або та сама сторона, але з іншого місця (≥ 0.9 м) — і телефон тримається рівно
     private func maybeShoot() {
-        guard shots.count < Self.maxShots, Date().timeIntervalSince(lastShotAt) > 1.2,
+        guard shots.count < Self.maxShots, Date().timeIntervalSince(lastShotAt) > 0.9,
               let frame = view.captureSession.arSession.currentFrame,
               case .normal = frame.camera.trackingState else { return }
         let t = frame.camera.transform
@@ -67,9 +67,11 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
         let yaw = Double(atan2(fwd.z, fwd.x))
         let pitch = Double(asin(max(-1, min(1, fwd.y))))
         guard abs(pitch) < 0.5 else { return } // не стеля і не підлога
+        let px = Double(t.columns.3.x), pz = Double(t.columns.3.z)
         for s in shots {
             var d = abs(s.yaw - yaw); if d > .pi { d = 2 * .pi - d }
-            if d < 30 * .pi / 180 { return }
+            let dist = ((s.cx - px) * (s.cx - px) + (s.cz - pz) * (s.cz - pz)).squareRoot()
+            if d < 20 * .pi / 180 && dist < 0.9 { return }
         }
         guard let jpeg = jpegFrom(frame.capturedImage) else { return }
         shots.append(ScanShot(jpeg: jpeg, cx: Double(t.columns.3.x), cz: Double(t.columns.3.z), yaw: yaw, pitch: pitch))

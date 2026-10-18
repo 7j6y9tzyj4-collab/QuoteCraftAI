@@ -125,7 +125,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     const lens:Record<string,number>={A:L,B:W,C:L,D:W};const from:Record<string,string>={A:"from corner A/D (left) to corner A/B (right)",B:"from corner A/B (top) to corner B/C (bottom)",C:"from corner B/C (right) to corner C/D (left)",D:"from corner C/D (bottom) to corner A/D (top)"};
     const lines=["A","B","C","D"].map(wl=>{const ops=(room.openings||[]).filter(o=>(o.wall||"A")===wl).map(o=>{const ow=parseInches(o.w)||0;const at=typeof o.t==="number"?Math.round(o.t*Math.max(0,lens[wl]-ow)):null;return `${/двер|door/i.test(o.name)?"door":/проріз|opening/i.test(o.name)?"open passage (no door)":"window"} ${o.w}"×${o.h}"${at!==null?` starting ${at}" along the wall`:""}`});
       return `Wall ${wl}: ${Math.round(lens[wl])}" long, measured ${from[wl]}; ${ops.length?ops.join(", "):"no openings"}.`});
-    const views=[...room.photos.filter(x=>x.view),...room.photos.filter(x=>!x.view)].slice(0,10).map((p,i)=>p.view?`Photo ${i+1} faces wall ${p.view.facing} (EXACT, measured by LiDAR; camera at ${p.view.x}" from wall D, ${p.view.y}" from wall A).`:"").filter(Boolean);
+    const views=[...room.photos.filter(x=>x.view),...room.photos.filter(x=>!x.view)].slice(0,24).map((p,i)=>p.view?`Photo ${i+1} faces wall ${p.view.facing} (EXACT, measured by LiDAR; camera at ${p.view.x}" from wall D, ${p.view.y}" from wall A).`:"").filter(Boolean);
     const known=(room.fixtures||[]).filter(f=>f.fromScan).map(f=>`${f.label||f.type} on wall ${f.wall}`);
     return `Room ${Math.round(L)}"×${Math.round(W)}", ceiling ${Math.round(H)}". `+lines.join(" ")+(views.length?" "+views.join(" ")+" For these photos do NOT guess the wall — use the given one.":"")+(known.length?` Already placed precisely by the LiDAR scan (do NOT return these again): ${known.join("; ")}. Return only items that are NOT in this list (e.g. plants, rugs, lamps, wall AC, curtains, radiators, lights, mirrors, towel bars).`:"");
   }
@@ -235,9 +235,9 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     if(!sceneOnly&&!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
     setBusyRoom(rid);setMsg("");
     try{
-      const ordered={...room,photos:[...room.photos.filter(x=>x.view),...room.photos.filter(x=>!x.view)]};
-      const photos=sceneOnly?await roomPhotosData(ordered,10,1000):await roomPhotosData(room,6);
-      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",layout:roomLayout(room),tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(130000)});
+      const all=[...room.photos.filter(x=>x.view),...room.photos.filter(x=>!x.view)];const pick=all.length>24?Array.from({length:24},(_,i)=>all[Math.floor(i*all.length/24)]):all;const ordered={...room,photos:pick};
+      const photos=sceneOnly?await roomPhotosData(ordered,24,ordered.photos.length>12?768:1000):await roomPhotosData(room,6);
+      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",layout:roomLayout(sceneOnly?ordered:room),tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(130000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
