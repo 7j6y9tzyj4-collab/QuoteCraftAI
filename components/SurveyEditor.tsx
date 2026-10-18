@@ -176,12 +176,12 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
   useEffect(()=>()=>{if(scanTimer.current)clearInterval(scanTimer.current)},[]);
-  async function roomPhotosData(room:Room,max:number){
+  async function roomPhotosData(room:Room,max:number,side=1400){
     const photos:string[]=[];
     for(const p of room.photos.slice(0,max)){
       let d=p.dataUrl||"";
       if(!d&&p.path){const {data}=await supabase.storage.from(BUCKET).download(p.path);if(data)d=await new Promise<string>(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result));fr.readAsDataURL(data)})}
-      if(d){try{d=await shrinkImage(d,1400,.8)}catch{}if(d.length<=750000)photos.push(d)}
+      if(d){try{d=await shrinkImage(d,side,side<1400?.72:.8)}catch{}if(d.length<=750000)photos.push(d)}
     }
     return photos;
   }
@@ -230,8 +230,8 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     if(!sceneOnly&&!room.notes.trim()&&!room.photos.length){setMsg("Додай фото або напиши/наговори, що треба зробити.");return}
     setBusyRoom(rid);setMsg("");
     try{
-      const photos=await roomPhotosData(room,6);
-      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",layout:roomLayout(room),tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
+      const photos=sceneOnly?await roomPhotosData(room,10,1000):await roomPhotosData(room,6);
+      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",layout:roomLayout(room),tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(130000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});

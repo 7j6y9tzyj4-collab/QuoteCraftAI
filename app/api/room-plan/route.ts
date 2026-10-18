@@ -1,14 +1,14 @@
 import OpenAI from "openai";
 import {NextRequest,NextResponse} from "next/server";
 export const runtime="nodejs";
-export const maxDuration=60;
+export const maxDuration=120;
 
 // Кімната з огляду: фото + розміри + нотатки → план робіт українською (що є, що зробити, список з кількостями).
 export async function POST(req:NextRequest){
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();
-    const photos:string[]=Array.isArray(b.photos)?b.photos.slice(0,6):[];
+    const photos:string[]=Array.isArray(b.photos)?b.photos.slice(0,10):[];
     if(photos.some(p=>typeof p!=="string"||p.length>750000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(p)))return NextResponse.json({error:"Фото мають бути JPEG/PNG/WebP до 750 КБ."},{status:400});
     const room=String(b.room||"").slice(0,200),notes=String(b.notes||"").slice(0,4000);
     const areas=b.areas&&typeof b.areas==="object"?b.areas:{};
@@ -16,9 +16,9 @@ export async function POST(req:NextRequest){
     const lang=b.lang==="en"?"en":"uk";
     const sceneOnly=b.mode==="scene";
     const layout=String(b.layout||"").slice(0,1500);
-    const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:55000,maxRetries:0});
+    const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:110000,maxRetries:0});
     const r=await client.chat.completions.create({
-      model:process.env.OPENAI_MODEL||"gpt-4.1-mini",temperature:0.2,
+      model:sceneOnly?(process.env.OPENAI_SCENE_MODEL||"gpt-4.1"):(process.env.OPENAI_MODEL||"gpt-4.1-mini"),temperature:0.2,
       messages:[
         {role:"system",content:[
           `You help a Chicago tile/bathroom/kitchen renovation contractor plan work for ONE room after a site visit. Write in ${lang==="en"?"English":"Ukrainian"}.`,
@@ -27,6 +27,9 @@ export async function POST(req:NextRequest){
           "Each task: name — prefer an exact name from the price list when it fits (copy it verbatim), otherwise a short clear name; qty — derived from the given areas when the unit is sq ft / lin ft (floor tile = floor area, wall tile = the wall area the notes imply, e.g. shower walls only, full height, or wainscot 48\" — state the assumption in note); for 'each' count fixtures; unit — one of: sqft, linear_ft, each, hour, room; basis — which area or count you used (e.g. 'floor', 'walls', 'shower walls 3 × 32\"×96\"', 'count'); note — assumption or detail, optional.",
           "Do not invent work the notes and photos don't support; if something is unclear (e.g. tile height, whether tub stays), put a short question into questions instead of guessing — but still include the task with your best reasonable qty.",
           "Also return fixtures: EVERYTHING physically in the room now — plumbing (toilet, vanity, sink, tub, shower), appliances (washer, dryer, refrigerator, stove…), lighting (light, fan, floor lamp), and FURNITURE and decor (sofa, sectional sofa leg, armchair, bed, table, chair, TV, TV stand, dresser, bookshelf, plant, rug, wall AC unit, radiator/baseboard heater, curtains…). Use type from the enum; for anything not in it use type \"other\". ALWAYS fill label: short Ukrainian name of the item (e.g. \"Диван\", \"ТВ\", \"Тумба під ТВ\", \"Рослина\", \"Килим\", \"Кондиціонер\", \"Торшер\").",
+          "STEP 1 — photoWalls: for EVERY photo (in order, 1-based) decide which wall the camera faces, using the door/windows/passage from layout as landmarks. Orientation rule (plan seen from above, A top, B right, C bottom, D left): facing A → wall D is on your left and B on your right; facing B → A left, C right; facing C → B left, D right; facing D → C left, A right. Write a short reason for each photo (e.g. \"windows ahead = D, door on the left = C\").",
+          "STEP 2 — fixtures: place items using STEP 1. An item seen on the left side of a photo facing wall X is on the left wall per the rule above, or near the left end of X. Cross-check every item in at least two photos when possible.",
+          "Ignore small loose objects (laptops, speakers, remotes, toys, bottles, books, decor smaller than ~15 inches). A TV on a stand = two items: \"Тумба під ТВ\" and \"ТВ\" (y = stand height). A wall air-conditioner is type other, label \"Кондиціонер\" (never fan). A large potted plant is type other, label \"Рослина\". Ceiling fixtures: one entry per fixture.",
           "Placement: the room is a rectangle with walls A (top), B (right), C (bottom), D (left) going clockwise; each wall's length and its openings are given in layout (from a LiDAR scan or the contractor — trust it). Use the openings visible in the photos (door, windows, passage) to figure out which wall each photo looks at, then put every item on the correct wall. wall = the wall the item stands against or is closest to; t = position along that wall 0..1 (0 = the wall's start corner as listed in layout); off = distance in inches from that wall into the room (0 if against the wall; e.g. a sofa floating in the middle, a rug in the center).",
           "Sizes in inches, estimated from standard sizes and the room dimensions for scale: w = width along the wall, d = depth from the wall, h = height of the item, y = height of the item's bottom above the floor (0 for things standing on the floor; e.g. a wall TV ~42, a wall AC unit ~60). Two separate pieces (an L-shaped sectional = two sofa pieces on two walls; a TV on a TV stand = two items) are separate entries.",
           "For plumbing items also style — the visible kind: vanityDrawer (cabinet vanity with sink on top), sinkSquare (wall-hung sink), pedestal (pedestal sink), showerSquare, showerRound, washer, stacked (stacked washer+dryer), base, upper, tall; for mirror: round, rect, framed; for vanityLight: bar2, bar3, bar4; for towelBar: bar, ring; empty string otherwise.",
@@ -43,10 +46,11 @@ export async function POST(req:NextRequest){
         summary:{type:"string"},condition:{type:"string"},
         tasks:{type:"array",items:{type:"object",additionalProperties:false,properties:{name:{type:"string"},qty:{type:"number"},unit:{type:"string",enum:["sqft","linear_ft","each","hour","room"]},basis:{type:"string"},note:{type:"string"}},required:["name","qty","unit","basis","note"]}},
         questions:{type:"array",items:{type:"string"}},
+        photoWalls:{type:"array",items:{type:"object",additionalProperties:false,properties:{photo:{type:"number"},facing:{type:"string",enum:["A","B","C","D"]},reason:{type:"string"}},required:["photo","facing","reason"]}},
         fixtures:{type:"array",items:{type:"object",additionalProperties:false,properties:{type:{type:"string",enum:["toilet","vanity","sink","tub","shower","washer","dryer","fan","light","heater","cabinet","mirror","vanityLight","towelBar","other"]},label:{type:"string"},wall:{type:"string",enum:["A","B","C","D"]},t:{type:"number"},off:{type:"number"},w:{type:"number"},d:{type:"number"},h:{type:"number"},y:{type:"number"},style:{type:"string"},note:{type:"string"}},required:["type","label","wall","t","off","w","d","h","y","style","note"]}},
         look:{type:"object",additionalProperties:false,properties:{wall:{type:"string"},floor:{type:"string"},vanity:{type:"string"}},required:["wall","floor","vanity"]},
         floorTile:{anyOf:[{type:"object",additionalProperties:false,properties:{w:{type:"number"},h:{type:"number"}},required:["w","h"]},{type:"null"}]}
-      },required:["summary","condition","tasks","questions","fixtures","floorTile","look"]}}}
+      },required:["summary","condition","tasks","questions","photoWalls","fixtures","floorTile","look"]}}}
     });
     const raw=r.choices[0]?.message?.content;
     if(!raw)return NextResponse.json({error:"AI не відповів. Спробуй ще раз."},{status:502});
