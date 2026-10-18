@@ -6,6 +6,7 @@ import {OrbitControls,Html,useGLTF,Line,Edges,ContactShadows} from "@react-three
 import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
+import {MSofa,MTvStand,MTv,MPlant,MRug,MFloorLamp,MAc,MBed,MChair,MTable,MShelf,MWardrobe,MAppliance,MBox,MToilet,MVanity,MWallSink,MTub,MShower,MWasher,MCabinet,MMirror,MVanityLight,MTowelBar,MCeilingLight,MHeater} from "@/components/Modern3D";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
 export type ExportFmt="obj"|"glb"|"usdz";
 export type ExportFn=(fmt:ExportFmt)=>Promise<Blob>;
@@ -139,25 +140,22 @@ function Furniture({f,all=[]}:{f:FixBox;all?:FixBox[]}){
   const midL:V=[(f.p0[0]+f.p3[0])/2,(f.p0[1]+f.p3[1])/2],midR:V=[(f.p1[0]+f.p2[0])/2,(f.p1[1]+f.p2[1])/2];
   const joinL=touches(midL),joinR=touches(midR);
   let body:React.ReactNode;
-  if(/диван|sofa|couch|секц/.test(lab)){const h=f.h||32,seat=17,arm=Math.min(6,w/8),back=Math.min(9,d/3);const c="#f3efe6";
-    body=<group><M p={[w/2,seat/2,d/2]} s={[w,seat,d]} c={c} r={0.9} e={false}/><M p={[w/2,(seat+h)/2,back/2]} s={[w,h-seat,back]} c={c} r={0.9} e={false}/>
-      {!joinL&&<M p={[arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>}{!joinR&&<M p={[w-arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>}
-      {(()=>{const a0=joinL?0:arm,a1=joinR?0:arm;const n=Math.max(1,Math.round((w-a0-a1)/30));return Array.from({length:n},(_,i)=>{const cw=(w-a0-a1)/n;return <M key={i} p={[a0+cw*(i+0.5),seat+2,(back+d)/2]} s={[cw-1,4,d-back-1]} c="#faf7f0" r={0.95}/>})})()}</group>;}
-  else if(/тумба під тв|tv stand|тв-тумба|комод|dresser/.test(lab)){const h=f.h||20;body=<group><M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#f5f5f4" r={0.4}/><M p={[w/2,h*0.45,d+0.1]} s={[w*0.9,0.4,0.2]} c="#9ca3af" e={false}/></group>;}
-  else if(/тв|tv|телев/.test(lab)){const h=f.h||Math.round(w*0.58);const sy=y||(20);body=<group position={[0,sy*IN,0]}><M p={[w/2,h/2,1.5]} s={[w,h,2]} c="#111827" r={0.3}/><mesh position={[w/2*IN,h/2*IN,2.6*IN]}><planeGeometry args={[(w-1)*IN,(h-1)*IN]}/><meshStandardMaterial color="#0b1020" metalness={0.5} roughness={0.15}/></mesh>{!f.y&&<M p={[w/2,-1,3]} s={[w*0.3,2,8]} c="#1f2937"/>}</group>;}
-  else if(/рослин|plant|вазон|квіт/.test(lab)){const h=f.h||60;const r=Math.min(w,d)/2;body=<group><mesh position={[w/2*IN,6*IN,d/2*IN]} castShadow><cylinderGeometry args={[r*0.45*IN,r*0.35*IN,12*IN,20]}/><meshStandardMaterial color="#f5f5f4"/></mesh>
-      {[0.55,0.75,0.92].map((k,i)=><mesh key={i} position={[(w/2+(i-1)*r*0.25)*IN,h*k*IN,(d/2+(i%2?1:-1)*r*0.2)*IN]} castShadow><sphereGeometry args={[r*(0.75-i*0.12)*IN,16,12]}/><meshStandardMaterial color={["#2f6b3a","#3b7d47","#4a8f55"][i]} roughness={0.9}/></mesh>)}
-      <mesh position={[w/2*IN,h*0.4*IN,d/2*IN]}><cylinderGeometry args={[0.8*IN,1*IN,h*0.6*IN,8]}/><meshStandardMaterial color="#6b4f33"/></mesh></group>;}
-  else if(/килим|rug|carpet/.test(lab)){body=<mesh position={[w/2*IN,0.25*IN,d/2*IN]} receiveShadow><boxGeometry args={[w*IN,0.5*IN,d*IN]}/><meshStandardMaterial color="#e7e2d8" roughness={1}/></mesh>;}
-  else if(/торшер|floor lamp|лампа/.test(lab)){const h=f.h||64;body=<group><mesh position={[w/2*IN,0.5*IN,d/2*IN]}><cylinderGeometry args={[5*IN,5*IN,1*IN,20]}/><meshStandardMaterial color="#374151"/></mesh><mesh position={[w/2*IN,h/2*IN,d/2*IN]}><cylinderGeometry args={[0.4*IN,0.4*IN,h*IN,8]}/><meshStandardMaterial color="#374151"/></mesh><mesh position={[w/2*IN,h*IN,d/2*IN]}><coneGeometry args={[7*IN,8*IN,20,1,true]}/><meshStandardMaterial color="#f5f0e1" emissive="#ffe9a8" emissiveIntensity={0.5} side={THREE.DoubleSide}/></mesh></group>;}
-  else if(/кондиц|\bac\b|air cond/.test(lab)){const h=f.h||14;const sy=y||60;body=<group position={[0,sy*IN,0]}><M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#f8fafc" r={0.4}/><M p={[w/2,h*0.35,d+0.1]} s={[w*0.85,h*0.4,0.2]} c="#cbd5e1" e={false}/></group>;}
-  else if(/ліжко|bed/.test(lab)){const h=f.h||24;body=<group><M p={[w/2,h/2-3,d/2]} s={[w,h-6,d]} c="#d6c3a5"/><M p={[w/2,h-2,d/2+2]} s={[w-2,6,d-4]} c="#f8fafc" r={0.95}/><M p={[w/2,(h+16)/2,1.5]} s={[w,h+16,3]} c="#b08d63"/></group>;}
-  else if(/стілець|крісло|chair|armchair/.test(lab)){const h=f.h||34;body=<group><M p={[w/2,9,d/2]} s={[w,18,d]} c="#d1c4b0"/><M p={[w/2,(18+h)/2,2]} s={[w,h-18,4]} c="#d1c4b0"/></group>;}
-  else if(/стіл|table|desk/.test(lab)){const h=f.h||30;body=<group><M p={[w/2,h-0.75,d/2]} s={[w,1.5,d]} c="#b08d63"/>{[[2,2],[w-2,2],[2,d-2],[w-2,d-2]].map(([x,z],i)=><M key={i} p={[x,(h-1.5)/2,z]} s={[1.5,h-1.5,1.5]} c="#8b6b48" e={false}/>)}</group>;}
-  else if(/шаф|полиц|shelf|book|storage/.test(lab)){const h=f.h||72;body=<M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#c9a77c"/>;}
-  else if(/холод|refrig/.test(lab)){body=<M p={[w/2,(f.h||68)/2,d/2]} s={[w,f.h||68,d]} c="#d9dde3" r={0.3}/>;}
-  else if(/плит|духов|stove|oven|посудом|dish/.test(lab)){body=<M p={[w/2,(f.h||36)/2,d/2]} s={[w,f.h||36,d]} c="#d9dde3" r={0.3}/>;}
-  else{const h=f.h||30;body=<M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#c9a77c"/>;}
+  if(/диван|sofa|couch|секц/.test(lab))body=<MSofa w={w} d={d} h={f.h||30} joinL={joinL} joinR={joinR}/>;
+  else if(/тумба під тв|tv stand|тв-тумба|комод|dresser/.test(lab))body=<MTvStand w={w} d={d} h={f.h||20}/>;
+  else if(/тв|tv|телев/.test(lab))body=<MTv w={w} h={f.h||Math.round(w*0.565)} y={y||20}/>;
+  else if(/рослин|plant|вазон|квіт/.test(lab))body=<MPlant w={w} d={d} h={f.h||60}/>;
+  else if(/килим|rug|carpet/.test(lab))body=<MRug w={w} d={d}/>;
+  else if(/торшер|floor lamp|лампа/.test(lab))body=<MFloorLamp w={w} d={d} h={f.h||64}/>;
+  else if(/кондиц|\bac\b|air cond/.test(lab))body=<MAc w={w} d={d} h={f.h||12} y={y||72}/>;
+  else if(/ліжко|bed/.test(lab))body=<MBed w={w} d={d} h={f.h||22}/>;
+  else if(/стілець|крісло|chair|armchair/.test(lab))body=<MChair w={w} d={d} h={f.h||32}/>;
+  else if(/стіл|table|desk/.test(lab))body=<MTable w={w} d={d} h={f.h||30}/>;
+  else if(/полиц|shelf|book/.test(lab))body=<MShelf w={w} d={d} h={f.h||72}/>;
+  else if(/шаф|storage|closet|wardrobe/.test(lab))body=<MWardrobe w={w} d={d} h={f.h||84}/>;
+  else if(/холод|refrig/.test(lab))body=<MAppliance w={w} d={d} h={f.h||70} kind="fridge"/>;
+  else if(/посудом|dish/.test(lab))body=<MAppliance w={w} d={d} h={f.h||34} kind="dish"/>;
+  else if(/плит|духов|stove|oven/.test(lab))body=<MAppliance w={w} d={d} h={f.h||36} kind="stove"/>;
+  else body=<MBox w={w} d={d} h={f.h||30}/>;
   return <group position={[0,(/тв|tv|кондиц|\bac\b/.test(lab)?0:y)*IN,0]}>{body}</group>;
 }
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
@@ -195,7 +193,22 @@ function Fixture({f,H,geom,look,selected,onDown}:{f:FixBox;H:number;geom:NonNull
   const ang=Math.atan2(geom.dir[f.k][1],geom.dir[f.k][0]);
   const mdl=fixtureModel(f.type,f.model);
   const tint=(f.type==="vanity"||f.type==="sink"||f.type==="cabinet")&&look?.vanity?look.vanity:undefined;
-  const inner=mdl&&mdl.file?<Suspense fallback={<Box w={f.w} d={f.d} h={mdl.h} color="#e5e7eb"/>}><GlbFixture f={f} H={H} tint={tint}/></Suspense>:(()=>{switch(f.type){
+  const mid=mdl&&!mdl.file&&mdl.id.startsWith("m-")?mdl.id:"";const mh=f.h||mdl?.h||30,my=f.y??mdl?.y??0;
+  const modern=mid?(()=>{switch(mid){
+    case "m-one":return <MToilet w={f.w} d={f.d}/>;case "m-hung":return <MToilet w={f.w} d={f.d} hung/>;
+    case "m-float":return <MVanity w={f.w} d={f.d} tint={tint} variant="float"/>;case "m-vessel":return <MVanity w={f.w} d={f.d} tint={tint} variant="vessel"/>;case "m-floor":return <MVanity w={f.w} d={f.d} tint={tint} variant="floor"/>;
+    case "m-wallsink":return <MWallSink w={f.w} d={f.d}/>;
+    case "m-free":return <MTub w={f.w} d={f.d} free/>;case "m-alcove":return <MTub w={f.w} d={f.d}/>;
+    case "m-walk":return <MShower w={f.w} d={f.d}/>;case "m-door":return <MShower w={f.w} d={f.d} door/>;
+    case "m-washer":return <MWasher w={f.w} d={f.d}/>;case "m-stack":return <MWasher w={f.w} d={f.d} stacked/>;case "m-dryer":return <MWasher w={f.w} d={f.d} dryer/>;
+    case "m-base":return <MCabinet w={f.w} d={f.d} kind="base" tint={tint}/>;case "m-upper":return <MCabinet w={f.w} d={f.d} kind="upper" tint={tint}/>;case "m-tall":return <MCabinet w={f.w} d={f.d} kind="tall" tint={tint}/>;
+    case "m-disk":return <MCeilingLight w={f.w} d={f.d} H={H} kind="disk"/>;case "m-pendant":return <MCeilingLight w={f.w} d={f.d} H={H} kind="pendant"/>;case "m-fan":return <MCeilingLight w={f.w} d={f.d} H={H} kind="fan"/>;
+    case "m-roundled":return <MMirror w={f.w} h={mh} y={Math.min(my,H-mh-2)} kind="roundLed"/>;case "m-rectled":return <MMirror w={f.w} h={mh} y={Math.min(my,H-mh-2)} kind="rectLed"/>;case "m-roundblack":return <MMirror w={f.w} h={mh} y={Math.min(my,H-mh-2)} kind="roundBlack"/>;
+    case "m-linear":return <MVanityLight w={f.w} y={Math.min(my,H-6)} kind="linear"/>;case "m-globes":return <MVanityLight w={f.w} y={Math.min(my,H-10)} kind="globes"/>;
+    case "m-bar":return <MTowelBar w={f.w} y={my}/>;case "m-ring":return <MTowelBar w={f.w} y={my} ring/>;
+    case "m-panel":return <MHeater w={f.w} d={f.d}/>;
+  }return null})():null;
+  const inner=modern?modern:mdl&&mdl.file?<Suspense fallback={<Box w={f.w} d={f.d} h={mdl.h} color="#e5e7eb"/>}><GlbFixture f={f} H={H} tint={tint}/></Suspense>:(()=>{switch(f.type){
     case "mirror":return <Mirror w={f.w} h={mdl?.h||24} y={Math.min(mdl?.y||40,H-(mdl?.h||24)-2)} round={(f.model||"round")==="round"}/>;
     case "vanityLight":return <VanityLight w={f.w} y={Math.min(mdl?.y||72,H-10)} n={f.model==="bar2"?2:f.model==="bar3"?3:4}/>;
     case "towelBar":return <TowelBar w={f.w} y={mdl?.y||48} ring={f.model==="ring"}/>;

@@ -87,20 +87,22 @@ export function surveyToPrompt(s:Survey):string{
 }
 
 /** Варіанти 3D-моделей (Kenney Furniture Kit, /public/models). Перший — за замовчуванням. h — висота, дюйми; y — низ над підлогою (для навісних); ceiling — під стелю. */
+// перші варіанти (id "m-…", file:"") — сучасні моделі з коду (components/Modern3D); далі — класичні Kenney GLB
 export const FIXTURE_MODELS:Record<string,{id:string;name:string;file:string;h:number;y?:number;ceiling?:boolean}[]>={
-  toilet:[{id:"toilet",name:"Унітаз",file:"toilet.glb",h:30}],
-  vanity:[{id:"vanityDrawer",name:"Тумба з умивальником",file:"bathroomCabinetDrawer.glb",h:34},{id:"sinkSquare",name:"Підвісний умивальник",file:"bathroomSinkSquare.glb",h:34},{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34}],
-  sink:[{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34},{id:"sinkSquare",name:"Підвісний",file:"bathroomSinkSquare.glb",h:34},{id:"vanityDrawer",name:"Тумба з умивальником",file:"bathroomCabinetDrawer.glb",h:34}],
-  tub:[{id:"tub",name:"Ванна",file:"bathtub.glb",h:20}],
-  shower:[{id:"showerSquare",name:"Квадратний",file:"shower.glb",h:80},{id:"showerRound",name:"Кутовий заокруглений",file:"showerRound.glb",h:80}],
-  washer:[{id:"washer",name:"Пральна",file:"washer.glb",h:36},{id:"stacked",name:"Пральна + сушка (стовпчик)",file:"washerDryerStacked.glb",h:72}],
-  dryer:[{id:"dryer",name:"Сушка",file:"dryer.glb",h:36}],
-  cabinet:[{id:"base",name:"Нижня шафа",file:"kitchenCabinet.glb",h:36},{id:"upper",name:"Навісна шафа",file:"kitchenCabinetUpper.glb",h:30,y:54},{id:"tall",name:"Пенал з дзеркалом",file:"bathroomCabinet.glb",h:72},{id:"mirror",name:"Дзеркало",file:"bathroomMirror.glb",h:30,y:42}],
-  light:[{id:"light",name:"Світильник",file:"lampSquareCeiling.glb",h:10,ceiling:true}],
-  // file:"" — малюється кодом (Room3D), не GLB
-  mirror:[{id:"round",name:"Кругле",file:"",h:24,y:42},{id:"rect",name:"Прямокутне",file:"",h:30,y:40},{id:"framed",name:"В рамі (шафка)",file:"bathroomMirror.glb",h:30,y:40}],
-  vanityLight:[{id:"bar4",name:"4 плафони",file:"",h:8,y:72},{id:"bar3",name:"3 плафони",file:"",h:8,y:72},{id:"bar2",name:"2 плафони",file:"",h:8,y:72}],
-  towelBar:[{id:"bar",name:"Планка",file:"",h:2,y:48},{id:"ring",name:"Кільце",file:"",h:8,y:48}],
-  fan:[{id:"fan",name:"Вентилятор",file:"ceilingFan.glb",h:10,ceiling:true}],
+  toilet:[{id:"m-one",name:"Моноблок (сучасний)",file:"",h:28},{id:"m-hung",name:"Підвісний з інсталяцією",file:"",h:17},{id:"toilet",name:"Класичний",file:"toilet.glb",h:30}],
+  vanity:[{id:"m-float",name:"Підвісна тумба",file:"",h:34},{id:"m-vessel",name:"Підвісна + накладна раковина",file:"",h:39},{id:"m-floor",name:"Тумба на ніжках",file:"",h:34},{id:"vanityDrawer",name:"Класична тумба",file:"bathroomCabinetDrawer.glb",h:34},{id:"sinkSquare",name:"Класичний підвісний",file:"bathroomSinkSquare.glb",h:34},{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34}],
+  sink:[{id:"m-wallsink",name:"Підвісна раковина (сучасна)",file:"",h:34},{id:"pedestal",name:"На п'єдесталі",file:"bathroomSink.glb",h:34},{id:"sinkSquare",name:"Класичний підвісний",file:"bathroomSinkSquare.glb",h:34},{id:"vanityDrawer",name:"Класична тумба",file:"bathroomCabinetDrawer.glb",h:34}],
+  tub:[{id:"m-alcove",name:"Вбудована (сучасна)",file:"",h:20},{id:"m-free",name:"Окремостояча",file:"",h:22},{id:"tub",name:"Класична",file:"bathtub.glb",h:20}],
+  shower:[{id:"m-walk",name:"Walk-in, скло",file:"",h:80},{id:"m-door",name:"Скляні двері",file:"",h:80},{id:"showerSquare",name:"Класичний квадратний",file:"shower.glb",h:80},{id:"showerRound",name:"Кутовий заокруглений",file:"showerRound.glb",h:80}],
+  washer:[{id:"m-washer",name:"Пральна (сучасна)",file:"",h:36},{id:"m-stack",name:"Пральна + сушка (стовпчик)",file:"",h:73},{id:"washer",name:"Класична",file:"washer.glb",h:36},{id:"stacked",name:"Класичний стовпчик",file:"washerDryerStacked.glb",h:72}],
+  dryer:[{id:"m-dryer",name:"Сушка (сучасна)",file:"",h:36},{id:"dryer",name:"Класична",file:"dryer.glb",h:36}],
+  cabinet:[{id:"m-base",name:"Нижня шафа",file:"",h:36},{id:"m-upper",name:"Навісна шафа",file:"",h:30,y:54},{id:"m-tall",name:"Пенал",file:"",h:84},{id:"base",name:"Класична нижня",file:"kitchenCabinet.glb",h:36},{id:"upper",name:"Класична навісна",file:"kitchenCabinetUpper.glb",h:30,y:54},{id:"tall",name:"Пенал з дзеркалом",file:"bathroomCabinet.glb",h:72},{id:"mirror",name:"Дзеркальна шафка",file:"bathroomMirror.glb",h:30,y:42}],
+  light:[{id:"m-disk",name:"LED-панель",file:"",h:2,ceiling:true},{id:"m-pendant",name:"Підвісний",file:"",h:25,ceiling:true},{id:"light",name:"Класичний",file:"lampSquareCeiling.glb",h:10,ceiling:true}],
+  // file:"" — малюється кодом (Room3D / Modern3D), не GLB
+  mirror:[{id:"m-roundled",name:"Кругле з LED",file:"",h:28,y:40},{id:"m-rectled",name:"Прямокутне з LED",file:"",h:32,y:38},{id:"m-roundblack",name:"Кругле, чорна рамка",file:"",h:26,y:42},{id:"round",name:"Кругле просте",file:"",h:24,y:42},{id:"rect",name:"Прямокутне просте",file:"",h:30,y:40},{id:"framed",name:"В рамі (шафка)",file:"bathroomMirror.glb",h:30,y:40}],
+  vanityLight:[{id:"m-linear",name:"LED-лінія",file:"",h:3,y:76},{id:"m-globes",name:"Бра-кулі (латунь)",file:"",h:8,y:72},{id:"bar4",name:"4 плафони",file:"",h:8,y:72},{id:"bar3",name:"3 плафони",file:"",h:8,y:72},{id:"bar2",name:"2 плафони",file:"",h:8,y:72}],
+  towelBar:[{id:"m-bar",name:"Планка, чорна",file:"",h:2,y:48},{id:"m-ring",name:"Кільце, чорне",file:"",h:8,y:48},{id:"bar",name:"Планка, хром",file:"",h:2,y:48},{id:"ring",name:"Кільце, хром",file:"",h:8,y:48}],
+  fan:[{id:"m-fan",name:"Вентилятор з LED",file:"",h:10,ceiling:true},{id:"fan",name:"Класичний",file:"ceilingFan.glb",h:10,ceiling:true}],
+  heater:[{id:"m-panel",name:"Панельний радіатор",file:"",h:24}],
 };
 export function fixtureModel(type:string,model?:string){const v=FIXTURE_MODELS[type];if(!v)return null;return v.find(x=>x.id===model)||v[0]}
