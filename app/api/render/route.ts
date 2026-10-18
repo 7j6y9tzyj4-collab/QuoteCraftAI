@@ -19,7 +19,7 @@ export async function POST(req:NextRequest){
     const prompt=[
       `Photorealistic interior photograph of a freshly renovated ${room}, shot with a wide-angle lens.`,
       `The FIRST image is a simple 3D sketch: reproduce its camera angle and layout exactly — same walls, same door and window positions.`,
-      fixtures?`The ONLY fixtures and furniture in the room are: ${fixtures}. Keep each in the same place as in the sketch.`:`The room is EMPTY: only walls, floor, ceiling, the door(s) and window(s). Do not add any furniture, plumbing fixtures, toilets, sinks, vanities or bathtubs.`,
+      fixtures?`The ONLY fixtures and furniture in the room are: ${fixtures}. The simple boxes in the sketch are exactly these items — render each as that item, in the same place and size as in the sketch.`:`The room is EMPTY: only walls, floor, ceiling, the door(s) and window(s). Do not add any furniture, plumbing fixtures, toilets, sinks, vanities or bathtubs.`,
       `Do not add anything that is not listed. This is NOT a bathroom unless a toilet, tub or shower is listed.`,
       photos.length?`The other images are photos of the room before renovation — keep the same architecture, ceiling height and window light, but show it finished and clean.`:"",
       openings?`Openings: ${openings}. The light-colored rectangular gap in a wall of the sketch is a DOOR opening (draw a door or doorway), not a window, unless listed as window.`:"",

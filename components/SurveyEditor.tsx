@@ -183,7 +183,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     setRenderingRoom(rid);setMsg("");
     try{
       const photos=await roomPhotosData(room,3);
-      const fixtures=(room.fixtures||[]).map(f=>`${FIXTURES[f.type]?.name||f.type}${f.model?` (${FIXTURE_MODELS[f.type]?.find(v=>v.id===f.model)?.name||f.model})`:""} on wall ${f.wall}`).join(", ");
+      // для AI — англійською, з розмірами; «Інше» — за підписом (ТВ, ліжко…)
+      const EN:Record<string,string>={toilet:"toilet",vanity:"bathroom vanity cabinet with sink",sink:"sink",tub:"bathtub",shower:"shower",washer:"washing machine",dryer:"dryer",fan:"ceiling fan",light:"ceiling light",heater:"radiator",cabinet:"cabinet",mirror:"mirror",vanityLight:"vanity light bar above the mirror",towelBar:"towel bar"};
+      const LBL:[RegExp,string][]=[[/тв|tv|телев/i,"TV"],[/ліжко|bed/i,"bed"],[/диван|sofa/i,"sofa"],[/стіл|table/i,"table"],[/стілець|chair/i,"chair"],[/холод|refrig/i,"refrigerator"],[/плит|stove/i,"stove"],[/духов|oven/i,"oven"],[/посудом|dish/i,"dishwasher"],[/камін|fire/i,"fireplace"],[/сходи|stair/i,"stairs"],[/шаф|storage|closet/i,"storage cabinet"]];
+      const MV:Record<string,string>={vanityDrawer:"cabinet vanity",sinkSquare:"wall-hung square sink",pedestal:"pedestal sink",showerSquare:"square shower stall",showerRound:"corner rounded shower",stacked:"stacked washer+dryer",upper:"wall cabinet",tall:"tall cabinet",round:"round mirror",rect:"rectangular mirror",framed:"framed mirror cabinet"};
+      const fixtures=(room.fixtures||[]).map(f=>{const lab=f.label||"";const en=f.type==="other"?(LBL.find(([re])=>re.test(lab))?.[1]||(lab?`"${lab}"`:"item")):(EN[f.type]||f.type);const mv=f.model&&MV[f.model]?` (${MV[f.model]})`:"";return `${en}${mv} ${Math.round(f.w)}" wide against wall ${f.wall}`}).join("; ");
       const tile=room.floorTile?`${room.floorTile.w}×${room.floorTile.h} in`:"";
       const openings=room.openings.map(o=>`${/вікно|window/i.test(o.name)?"window":"door"} ${o.w}×${o.h} in on wall ${o.wall||"?"}`).join(", ");
       const look=room.look?Object.entries(room.look).filter(([,v])=>v).map(([k,v])=>`${k} ${v}`).join(", "):"";
