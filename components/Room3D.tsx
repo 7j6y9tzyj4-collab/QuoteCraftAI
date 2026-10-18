@@ -8,6 +8,7 @@ import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
 import {MSofa,MTvStand,MTv,MPlant,MRug,MFloorLamp,MAc,MBed,MChair,MTable,MShelf,MWardrobe,MAppliance,MBox,MToilet,MVanity,MWallSink,MTub,MShower,MWasher,MCabinet,MMirror,MVanityLight,MTowelBar,MCeilingLight,MHeater} from "@/components/Modern3D";
 import {supabase} from "@/lib/supabase";
+import TexturedScan from "@/components/TexturedScan";
 import {roomGeom,onSeg,type V,type WallSeg,type FixBox} from "@/lib/roomGeom";
 export type ExportFmt="obj"|"glb"|"usdz";
 export type ExportFn=(fmt:ExportFmt)=>Promise<Blob>;
@@ -331,19 +332,20 @@ function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove,scan}:{r
     const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/(tw*IN),1/(th*IN));t.anisotropy=8;t.colorSpace=THREE.SRGBColorSpace;return t;
   },[tile,look?.floor]);
   if(!g)return null;
+  const photo3d=!!(scan&&room.scanMesh);
   return <>
     <ambientLight intensity={0.45}/>
     <hemisphereLight args={["#ffffff","#b9ad9c",0.7]}/>
     <directionalLight position={[L*IN*0.8,H*IN*2.2,W*IN*1.6]} intensity={2.2} castShadow shadow-mapSize={[2048,2048]} shadow-bias={-0.0004} shadow-camera-left={-diag} shadow-camera-right={diag} shadow-camera-top={diag} shadow-camera-bottom={-diag} shadow-camera-near={0.1} shadow-camera-far={diag*6}/>
     <directionalLight position={[-L*IN,H*IN*1.2,-W*IN*0.5]} intensity={0.6}/>
     <pointLight position={[L/2*IN,(H-6)*IN,W/2*IN]} intensity={2.5} distance={diag*2} decay={1.6} color="#fff4df"/>
-    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/><meshStandardMaterial map={tex} roughness={0.75} side={THREE.DoubleSide}/><Edges color="#5b6475" lineWidth={1.2}/></mesh>
-    <ContactShadows position={[L/2*IN,0.02,W/2*IN]} scale={diag*1.2} blur={2.2} opacity={0.45} far={H*IN} resolution={512} frames={1}/>
+    {!photo3d&&<mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/><meshStandardMaterial map={tex} roughness={0.75} side={THREE.DoubleSide}/><Edges color="#5b6475" lineWidth={1.2}/></mesh>}
+    {!photo3d&&<ContactShadows position={[L/2*IN,0.02,W/2*IN]} scale={diag*1.2} blur={2.2} opacity={0.45} far={H*IN} resolution={512} frames={1}/>}
     {/* плінтус по периметру */}
-    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
-    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
-    {scan&&room.scanCloud&&<ScanCloud room={room} H={H}/>}
-    {!(scan&&room.scanCloud)&&g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
+    {!photo3d&&pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
+    {!photo3d&&pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
+    {photo3d?<TexturedScan room={room}/>:scan&&room.scanCloud&&<ScanCloud room={room} H={H}/>}
+    {!(scan&&(room.scanCloud||room.scanMesh))&&g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
     {dims>0&&<group name="dims"><Dims g={g} level={dims}/></group>}
     <OrbitControls ref={ctl} target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;

@@ -1,32 +1,51 @@
 import SwiftUI
 import RoomPlan
 import ARKit
+import SceneKit
 import Metal
 import CoreImage
 import UIKit
 
-// Екран сканування: RoomCaptureView + кнопки «Готово / Скасувати».
-// Під час сканування сам робить до 30 кадрів з різних напрямків і запам'ятовує, куди дивився телефон.
+// Екран сканування у 2 кроки:
+// 1) план (Apple RoomPlan) + до 30 кадрів для AI + хмара точок;
+// 2) «3D-фото»: на тій самій AR-сесії (ті самі координати) — суцільна сітка кімнати з LiDAR і до 40 чітких кадрів у повній якості,
+//    з яких сайт «натягує» фото на сітку (як Polycam/Scaniverse).
+struct ScanResult {
+    let room: CapturedRoom
+    let shots: [ScanShot]
+    let cloud: Data?
+    let mesh: Data?
+    let frames: [KeyFrame]
+}
 struct ScanScreen: View {
-    let onFinish: (CapturedRoom?, [ScanShot], Data?) -> Void
+    let onFinish: (ScanResult?) -> Void
     @StateObject private var ctl = CaptureController()
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            CaptureView(ctl: ctl).ignoresSafeArea()
+            if ctl.phase == 2 { PhotoView(ctl: ctl).ignoresSafeArea() } else { CaptureView(ctl: ctl).ignoresSafeArea() }
             VStack(spacing: 10) {
-                Text("📸 Кадрів: \(ctl.shotCount)/\(CaptureController.maxShots) · 🧊 точок: \(ctl.pointCount / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
+                if ctl.phase == 2 {
+                    Text("Крок 2/2 — 3D-фото. Повільно обійди кімнату ще раз, наводь на меблі й стіни з різних боків. Не поспішай — кадри мають бути чіткі.")
+                        .font(.footnote).multilineTextAlignment(.center).padding(10).background(.ultraThinMaterial).cornerRadius(10).padding(.horizontal)
+                    Text("📷 Кадрів: \(ctl.frameCount)/\(CaptureController.maxFrames) · 🔺 сітка: \(ctl.meshFaces / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
+                } else {
+                    Text("Крок 1/2 — план · 📸 \(ctl.shotCount)/\(CaptureController.maxShots) · 🧊 \(ctl.pointCount / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
+                }
                 if ctl.processing { ProgressView("Обробляю…").padding(10).background(.ultraThinMaterial).cornerRadius(10) }
                 HStack {
-                    Button("Скасувати") { ctl.stop(); onFinish(nil, [], nil) }.buttonStyle(.bordered)
+                    Button("Скасувати") { ctl.stop(); onFinish(nil) }.buttonStyle(.bordered)
                     Spacer()
-                    Button("Готово") { ctl.finish() }.buttonStyle(.borderedProminent).disabled(ctl.processing)
+                    if ctl.phase == 2 { Button("Без 3D-фото") { onFinish(ctl.output(withMesh: false)) }.buttonStyle(.bordered) }
+                    Button(ctl.phase == 2 ? "Готово" : "Далі →") {
+                        if ctl.phase == 2 { ctl.timer?.invalidate(); ctl.processing = true; DispatchQueue.global(qos: .userInitiated).async { let r = ctl.output(withMesh: true); DispatchQueue.main.async { ctl.processing = false; onFinish(r) } } }
+                        else { ctl.finish() }
+                    }.buttonStyle(.borderedProminent).disabled(ctl.processing)
                 }.padding()
             }
         }
         .onAppear { ctl.start() }
-        .onDisappear { ctl.timer?.invalidate() }
-        .onChange(of: ctl.resultTick) { _, _ in if let r = ctl.result { onFinish(r, ctl.shots, ctl.cloud.encoded(room: r)) } }
+        .onDisappear { ctl.stop() }
     }
 }
 
@@ -35,70 +54,175 @@ struct ScanShot {
     let jpeg: Data
     let cx: Double, cz: Double, yaw: Double, pitch: Double
 }
+/// Ключовий кадр для текстури: JPEG у повній якості (орієнтація сенсора, без повороту) + поза камери (4×4, по стовпцях) + внутрішні параметри
+struct KeyFrame {
+    let jpeg: Data
+    let T: [Float]
+    let fx: Float, fy: Float, cx: Float, cy: Float, w: Int, h: Int
+}
 
-final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate, ARSessionDelegate {
     static let maxShots = 30
+    static let maxFrames = 40
     @Published var processing = false
-    @Published var resultTick = 0
+    @Published var phase = 1
     @Published var shotCount = 0
     @Published var pointCount = 0
+    @Published var frameCount = 0
+    @Published var meshFaces = 0
     let cloud = PointCloud()
     private var tick = 0
     var result: CapturedRoom? = nil
     var shots: [ScanShot] = []
+    var frames: [KeyFrame] = []
     var timer: Timer?
-    let view = RoomCaptureView(frame: .zero)
+    let arSession = ARSession()
+    let view: RoomCaptureView
     private var finishing = false
     private let ci = CIContext()
     private var lastShotAt = Date.distantPast
+    private var lastFrameAt = Date.distantPast
+    private var prevPose: simd_float4x4? = nil
 
-    override init() { super.init(); view.delegate = self; view.captureSession.delegate = self }
+    override init() {
+        view = RoomCaptureView(frame: .zero, arSession: arSession)
+        super.init(); view.delegate = self; view.captureSession.delegate = self
+    }
     func start() {
-        shots = []; shotCount = 0; cloud.reset(); pointCount = 0
+        shots = []; frames = []; shotCount = 0; frameCount = 0; cloud.reset(); pointCount = 0; phase = 1
         view.captureSession.run(configuration: RoomCaptureSession.Configuration())
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.maybeShoot() }
     }
-    func stop() { timer?.invalidate(); view.captureSession.stop() }
-    func finish() { timer?.invalidate(); finishing = true; processing = true; view.captureSession.stop() }
+    func stop() { timer?.invalidate(); if phase == 2 { arSession.pause() } else { view.captureSession.stop() } }
+    // крок 1 → обробка плану; AR-сесію НЕ зупиняємо, щоб крок 2 був у тих самих координатах
+    func finish() { timer?.invalidate(); finishing = true; processing = true; view.captureSession.stop(pauseARSession: false) }
 
-    // Знімаємо кадр, якщо це новий ракурс: інший напрямок (≥ 20°) або та сама сторона, але з іншого місця (≥ 0.9 м) — і телефон тримається рівно
+    private func startPhoto() {
+        let cfg = ARWorldTrackingConfiguration()
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) { cfg.sceneReconstruction = .meshWithClassification }
+        else if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) { cfg.sceneReconstruction = .mesh }
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) { cfg.frameSemantics.insert(.sceneDepth) }
+        arSession.run(cfg) // без reset — світові координати лишаються ті самі, що в RoomPlan
+        phase = 2
+        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.maybeKeyFrame() }
+    }
+
+    // Крок 1: кадр для AI, якщо новий ракурс (≥ 20° або ≥ 0.9 м від попередніх) і телефон рівно
     private func maybeShoot() {
-        // 3D-скан (як у Roborock): точки з LiDAR-глибини з кольором з камери; без глибини — вершини сітки ARKit
-        if let f = view.captureSession.arSession.currentFrame, case .normal = f.camera.trackingState {
+        if let f = arSession.currentFrame, case .normal = f.camera.trackingState {
             tick += 1
             cloud.add(frame: f, meshToo: tick % 4 == 0) { n in DispatchQueue.main.async { self.pointCount = n } }
         }
         guard shots.count < Self.maxShots, Date().timeIntervalSince(lastShotAt) > 0.9,
-              let frame = view.captureSession.arSession.currentFrame,
+              let frame = arSession.currentFrame,
               case .normal = frame.camera.trackingState else { return }
         let t = frame.camera.transform
         let fwd = SIMD3<Float>(-t.columns.2.x, -t.columns.2.y, -t.columns.2.z)
         let yaw = Double(atan2(fwd.z, fwd.x))
         let pitch = Double(asin(max(-1, min(1, fwd.y))))
-        guard abs(pitch) < 0.5 else { return } // не стеля і не підлога
+        guard abs(pitch) < 0.5 else { return }
         let px = Double(t.columns.3.x), pz = Double(t.columns.3.z)
         for s in shots {
             var d = abs(s.yaw - yaw); if d > .pi { d = 2 * .pi - d }
             let dist = ((s.cx - px) * (s.cx - px) + (s.cz - pz) * (s.cz - pz)).squareRoot()
             if d < 20 * .pi / 180 && dist < 0.9 { return }
         }
-        guard let jpeg = jpegFrom(frame.capturedImage) else { return }
-        shots.append(ScanShot(jpeg: jpeg, cx: Double(t.columns.3.x), cz: Double(t.columns.3.z), yaw: yaw, pitch: pitch))
+        guard let jpeg = jpegFrom(frame.capturedImage, maxSide: 1000, rotate: true, q: 0.7) else { return }
+        shots.append(ScanShot(jpeg: jpeg, cx: px, cz: pz, yaw: yaw, pitch: pitch))
         lastShotAt = Date()
         DispatchQueue.main.async { self.shotCount = self.shots.count }
     }
-    private func jpegFrom(_ buf: CVPixelBuffer) -> Data? {
-        let img = CIImage(cvPixelBuffer: buf).oriented(.right)
-        let scale = 1000.0 / max(img.extent.width, img.extent.height)
-        let small = img.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+    // Крок 2: чіткий ключовий кадр, якщо новий ракурс (≥ 12° або ≥ 0.4 м) і телефон майже нерухомий (без змазу)
+    private func maybeKeyFrame() {
+        guard let frame = arSession.currentFrame, case .normal = frame.camera.trackingState else { return }
+        tick += 1
+        if tick % 2 == 0 { cloud.add(frame: frame, meshToo: false) { n in DispatchQueue.main.async { self.pointCount = n } } }
+        if tick % 4 == 0 { let n = frame.anchors.compactMap { ($0 as? ARMeshAnchor)?.geometry.faces.count }.reduce(0, +); DispatchQueue.main.async { self.meshFaces = n } }
+        let T = frame.camera.transform
+        defer { prevPose = T }
+        guard let prev = prevPose else { return }
+        // кутова швидкість між тиками (0.25 с): кут між осями погляду + зсув
+        let f0 = SIMD3<Float>(-prev.columns.2.x, -prev.columns.2.y, -prev.columns.2.z), f1 = SIMD3<Float>(-T.columns.2.x, -T.columns.2.y, -T.columns.2.z)
+        let rot = acos(max(-1, min(1, simd_dot(simd_normalize(f0), simd_normalize(f1)))))
+        let mv = simd_distance(SIMD3<Float>(prev.columns.3.x, prev.columns.3.y, prev.columns.3.z), SIMD3<Float>(T.columns.3.x, T.columns.3.y, T.columns.3.z))
+        guard rot < 2.5 * .pi / 180, mv < 0.05, frames.count < Self.maxFrames, Date().timeIntervalSince(lastFrameAt) > 0.6 else { return }
+        let pos = SIMD3<Float>(T.columns.3.x, T.columns.3.y, T.columns.3.z)
+        for k in frames {
+            let kf = SIMD3<Float>(-k.T[8], -k.T[9], -k.T[10]), kp = SIMD3<Float>(k.T[12], k.T[13], k.T[14])
+            let a = acos(max(-1, min(1, simd_dot(simd_normalize(kf), simd_normalize(f1)))))
+            if a < 12 * .pi / 180 && simd_distance(kp, pos) < 0.4 { return }
+        }
+        let img = frame.capturedImage
+        let w = CVPixelBufferGetWidth(img), h = CVPixelBufferGetHeight(img)
+        guard let jpeg = jpegFrom(img, maxSide: CGFloat(max(w, h)), rotate: false, q: 0.72) else { return }
+        let K = frame.camera.intrinsics
+        var m: [Float] = []
+        for c in [T.columns.0, T.columns.1, T.columns.2, T.columns.3] { m += [c.x, c.y, c.z, c.w] }
+        frames.append(KeyFrame(jpeg: jpeg, T: m, fx: K[0][0], fy: K[1][1], cx: K[2][0], cy: K[2][1], w: w, h: h))
+        lastFrameAt = Date()
+        DispatchQueue.main.async { self.frameCount = self.frames.count }
+    }
+
+    private func jpegFrom(_ buf: CVPixelBuffer, maxSide: CGFloat, rotate: Bool, q: CGFloat) -> Data? {
+        var img = CIImage(cvPixelBuffer: buf)
+        if rotate { img = img.oriented(.right) }
+        let scale = min(1, maxSide / max(img.extent.width, img.extent.height))
+        let small = scale < 1 ? img.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) : img
         guard let cg = ci.createCGImage(small, from: small.extent) else { return nil }
-        return UIImage(cgImage: cg).jpegData(compressionQuality: 0.7)
+        return UIImage(cgImage: cg).jpegData(compressionQuality: q)
+    }
+
+    /// Сітка з LiDAR → "QCMS" + UInt32 nv + UInt32 nf + nv×3 Float32 (світ, метри) + nf×3 UInt32 + nf×UInt8 (клас: 0 нема, 1 стіна, 2 підлога, 3 стеля, 4 стіл, 5 сидіння, 6 вікно, 7 двері)
+    private func meshData() -> Data? {
+        guard let anchors = arSession.currentFrame?.anchors.compactMap({ $0 as? ARMeshAnchor }), !anchors.isEmpty else { return nil }
+        var pos = Data(), idx = Data(), cls = Data()
+        var nv: UInt32 = 0, nf: UInt32 = 0
+        for a in anchors {
+            let g = a.geometry, vs = g.vertices, fs = g.faces
+            let vp = vs.buffer.contents()
+            for i in 0..<vs.count {
+                let v = vp.advanced(by: vs.offset + vs.stride * i).assumingMemoryBound(to: (Float, Float, Float).self).pointee
+                let w = a.transform * simd_float4(v.0, v.1, v.2, 1)
+                for c in [w.x, w.y, w.z] { var le = c.bitPattern.littleEndian; withUnsafeBytes(of: &le) { pos.append(contentsOf: $0) } }
+            }
+            let fp = fs.buffer.contents()
+            let per = fs.indexCountPerPrimitive, bpi = fs.bytesPerIndex
+            for f in 0..<fs.count {
+                for j in 0..<per {
+                    let o = (f * per + j) * bpi
+                    let ix: UInt32 = bpi == 4 ? fp.load(fromByteOffset: o, as: UInt32.self) : UInt32(fp.load(fromByteOffset: o, as: UInt16.self))
+                    var le = (ix + nv).littleEndian; withUnsafeBytes(of: &le) { idx.append(contentsOf: $0) }
+                }
+                var c: UInt8 = 0
+                if let cs = g.classification { c = cs.buffer.contents().advanced(by: cs.offset + cs.stride * f).load(as: UInt8.self) }
+                cls.append(c)
+            }
+            nv += UInt32(vs.count); nf += UInt32(fs.count)
+        }
+        guard nf > 100 else { return nil }
+        var out = Data("QCMS".utf8)
+        var a = nv.littleEndian, b = nf.littleEndian
+        withUnsafeBytes(of: &a) { out.append(contentsOf: $0) }; withUnsafeBytes(of: &b) { out.append(contentsOf: $0) }
+        out.append(pos); out.append(idx); out.append(cls)
+        return out
+    }
+
+    func output(withMesh: Bool) -> ScanResult? {
+        if Thread.isMainThread { timer?.invalidate() }
+        guard let r = result else { return nil }
+        let mesh = withMesh ? meshData() : nil
+        arSession.pause()
+        return ScanResult(room: r, shots: shots, cloud: cloud.encoded(room: r), mesh: mesh, frames: withMesh ? frames : [])
     }
 
     // RoomCaptureViewDelegate
     func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool { true }
     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-        DispatchQueue.main.async { self.processing = false; if self.finishing { self.result = processedResult; self.resultTick += 1 } }
+        DispatchQueue.main.async {
+            self.processing = false
+            if self.finishing && self.phase == 1 { self.result = processedResult; self.startPhoto() }
+        }
     }
     func encode(with coder: NSCoder) {}
     required init?(coder: NSCoder) { nil }
@@ -109,7 +233,12 @@ struct CaptureView: UIViewRepresentable {
     func makeUIView(context: Context) -> RoomCaptureView { ctl.view }
     func updateUIView(_ uiView: RoomCaptureView, context: Context) {}
 }
-
+/// Камера для кроку 2 (та сама AR-сесія)
+struct PhotoView: UIViewRepresentable {
+    let ctl: CaptureController
+    func makeUIView(context: Context) -> ARSCNView { let v = ARSCNView(frame: .zero); v.session = ctl.arSession; v.automaticallyUpdatesLighting = false; return v }
+    func updateUIView(_ uiView: ARSCNView, context: Context) {}
+}
 
 /// Хмара точок кімнати: вокселі 1 см, колір з камери. Формат для QuoteCraft: "QCPC" + UInt32 n + n × (Int16 x,y,z у мм, UInt8 r,g,b), little-endian, координати ARKit.
 final class PointCloud {

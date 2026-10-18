@@ -1,10 +1,10 @@
 // Імпорт LiDAR-скану (Apple RoomPlan через додаток QuoteCraft Scan) у кімнату огляду.
 // Сирі дані в метрах, система ARKit (y вгору, план — площина x/z). Ми: дюйми, стіни A(верх) B(право) C(низ) D(ліво), обхід за годинниковою.
-import {DOOR,WINDOW,FIXTURES,type Room,type Opening,type Fixture,type SurveyPhoto} from "./survey";
+import {DOOR,WINDOW,FIXTURES,type ScanFrame,type Room,type Opening,type Fixture,type SurveyPhoto} from "./survey";
 
 export type ScanItem={id?:string;cx:number;cy:number;cz:number;yaw:number;w:number;h:number;d?:number;parent?:string;category?:string;confidence?:string};
 export type ScanPhoto={path:string;cx:number;cz:number;yaw:number;pitch?:number};
-export type ScanPayload={cloud?:{path:string;n:number};photos?:ScanPhoto[];walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
+export type ScanPayload={mesh?:{path:string;frames:ScanFrame[]};cloud?:{path:string;n:number};photos?:ScanPhoto[];walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
 
 const M2IN=39.3701;
 const CAT:Record<string,{type:string;label?:string}>={
@@ -83,7 +83,9 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
   const note=`Скан: ${Math.round(L)}"×${Math.round(W)}", стеля ${Math.round(Hin)}", стін ${walls.length}, прорізів ${openings.length}, об'єктів ${fixtures.length}`;
   const oldPhotos=(prev.photos||[]).filter(x=>!x.view);
   const scanCloud=p.cloud&&typeof p.cloud.path==="string"&&p.cloud.path?{path:p.cloud.path,n:Number(p.cloud.n)||0,th,minX,minZ,floorY}:undefined;
-  return {...(scanCloud?{scanCloud}:{}),length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],photos:[...photos,...oldPhotos],note:note+(photos.length?`, кадрів ${photos.length}`:"")+(scanCloud?`, 3D-точок ${Math.round(scanCloud.n/1000)}k`:"")};
+  const frames=(p.mesh?.frames||[]).filter(f=>f&&typeof f.path==="string"&&Array.isArray(f.T)&&f.T.length===16).slice(0,60).map(f=>({path:f.path,T:f.T.map(Number),fx:+f.fx,fy:+f.fy,cx:+f.cx,cy:+f.cy,w:+f.w,h:+f.h}));
+  const scanMesh=p.mesh&&typeof p.mesh.path==="string"&&frames.length?{path:p.mesh.path,frames,th,minX,minZ,floorY}:undefined;
+  return {...(scanCloud?{scanCloud}:{}),...(scanMesh?{scanMesh}:{}),length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],photos:[...photos,...oldPhotos],note:note+(photos.length?`, кадрів ${photos.length}`:"")+(scanCloud?`, 3D-точок ${Math.round(scanCloud.n/1000)}k`:"")+(scanMesh?`, 3D-фото ${frames.length} кадрів`:"")};
 }
 // FIXTURES використовується для перевірки типів у майбутньому
 void FIXTURES;

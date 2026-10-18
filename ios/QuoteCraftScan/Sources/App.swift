@@ -21,6 +21,8 @@ final class ScanSession: ObservableObject {
     @Published var payload: [String: Any]? = nil
     var shots: [ScanShot] = []
     var cloud: Data? = nil
+    var mesh: Data? = nil
+    var frames: [KeyFrame] = []
     @Published var sending = false
     @Published var sent = false
     @Published var pin: String = ""
@@ -83,8 +85,10 @@ final class ScanSession: ObservableObject {
         sending = true
         uploadShots(token: token, i: 0, metas: []) { metas in
           self.uploadCloud(token: token) { cloudInfo in
+           self.uploadMesh(token: token) { meshInfo in
             var body = payload; body["photos"] = metas
             if let cloudInfo { body["cloud"] = cloudInfo }
+            if let meshInfo { body["mesh"] = meshInfo }
             self.status = "Відправляю план…"
             self.post("/api/scan-import", ["token": token, "scan": body]) { code, json, err in
                 self.sending = false
@@ -95,26 +99,53 @@ final class ScanSession: ObservableObject {
                     self.status = "Помилка \(code): " + ((json?["error"] as? String) ?? "")
                 }
             }
+           }
           }
         }
     }
 
-    // 3D-скан (хмара точок, до ~20 МБ) → напряму в сховище за одноразовим посиланням → шлях
-    private func uploadCloud(token: String, done: @escaping ([String: Any]?) -> Void) {
-        guard let cloud, cloud.count > 8 else { done(nil); return }
-        let mb = Double(cloud.count) / 1_000_000
-        status = String(format: "Відправляю 3D-скан (%.1f МБ)…", mb)
-        post("/api/scan-cloud-url", ["token": token]) { code, json, _ in
+    // Великий файл → напряму в сховище за одноразовим посиланням (минаючи ліміт сервера) → шлях
+    private func putSigned(token: String, name: String, data: Data, type: String, done: @escaping (String?) -> Void) {
+        post("/api/scan-cloud-url", ["token": token, "name": name]) { code, json, _ in
             guard code == 200, let up = json?["uploadUrl"] as? String, let path = json?["path"] as? String, let url = URL(string: up) else { done(nil); return }
             var req = URLRequest(url: url)
             req.httpMethod = "PUT"; req.timeoutInterval = 300
-            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            req.setValue(type, forHTTPHeaderField: "Content-Type")
             req.setValue("true", forHTTPHeaderField: "x-upsert")
             if let k = json?["apikey"] as? String, !k.isEmpty { req.setValue(k, forHTTPHeaderField: "apikey") }
-            URLSession.shared.uploadTask(with: req, from: cloud) { _, resp, _ in
+            URLSession.shared.uploadTask(with: req, from: data) { _, resp, _ in
                 let ok = ((resp as? HTTPURLResponse)?.statusCode ?? 0) == 200
-                DispatchQueue.main.async { done(ok ? ["path": path, "n": (cloud.count - 8) / 9] : nil) }
+                DispatchQueue.main.async { done(ok ? path : nil) }
             }.resume()
+        }
+    }
+    // 3D-скан (хмара точок)
+    private func uploadCloud(token: String, done: @escaping ([String: Any]?) -> Void) {
+        guard let cloud, cloud.count > 8 else { done(nil); return }
+        status = String(format: "Відправляю 3D-точки (%.1f МБ)…", Double(cloud.count) / 1_000_000)
+        putSigned(token: token, name: "cloud", data: cloud, type: "application/octet-stream") { path in
+            done(path.map { ["path": $0, "n": (cloud.count - 8) / 9] })
+        }
+    }
+    // 3D-фото: сітка + ключові кадри (по одному)
+    private func uploadMesh(token: String, done: @escaping ([String: Any]?) -> Void) {
+        guard let mesh, mesh.count > 12, !frames.isEmpty else { done(nil); return }
+        status = String(format: "Відправляю 3D-сітку (%.1f МБ)…", Double(mesh.count) / 1_000_000)
+        putSigned(token: token, name: "mesh", data: mesh, type: "application/octet-stream") { meshPath in
+            guard let meshPath else { done(nil); return }
+            self.uploadFrames(token: token, i: 0, metas: []) { metas in
+                done(metas.isEmpty ? nil : ["path": meshPath, "frames": metas])
+            }
+        }
+    }
+    private func uploadFrames(token: String, i: Int, metas: [[String: Any]], done: @escaping ([[String: Any]]) -> Void) {
+        guard i < frames.count else { done(metas); return }
+        status = "Відправляю 3D-фото \(i + 1)/\(frames.count)…"
+        let f = frames[i]
+        putSigned(token: token, name: "kf-\(i)", data: f.jpeg, type: "image/jpeg") { path in
+            var m = metas
+            if let path { m.append(["path": path, "T": f.T, "fx": f.fx, "fy": f.fy, "cx": f.cx, "cy": f.cy, "w": f.w, "h": f.h]) }
+            self.uploadFrames(token: token, i: i + 1, metas: m, done: done)
         }
     }
 

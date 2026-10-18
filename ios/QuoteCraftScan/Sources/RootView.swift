@@ -24,7 +24,7 @@ struct RootView: View {
                         Text("Скан готовий. Введи код з QuoteCraft (один раз) — відправиться сам.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         CodeEntry()
                     }
-                    Button("🔄 Сканувати ще раз") { s.payload = nil; s.shots = []; s.cloud = nil; s.sent = false; scanning = true }
+                    Button("🔄 Сканувати ще раз") { s.payload = nil; s.shots = []; s.cloud = nil; s.mesh = nil; s.frames = []; s.sent = false; scanning = true }
                 } else {
                     Image(systemName: "cube.transparent").font(.system(size: 64)).foregroundStyle(.blue)
                     Text("Сканування кімнати").font(.title2.bold())
@@ -46,10 +46,12 @@ struct RootView: View {
             .onAppear { if s.paired && s.token == nil { s.checkPending(quiet: true) } }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in if s.paired && s.token == nil && !s.sent { s.checkPending(quiet: true) } }
             .fullScreenCover(isPresented: $scanning) {
-                ScanScreen { room, shots, cloud in
-                    s.payload = room.map { var j = RoomJSON.build($0); j["_shots"] = shots.count; j["_points"] = cloud.map { ($0.count - 8) / 9 } ?? 0; return j }
-                    s.shots = shots
-                    s.cloud = cloud
+                ScanScreen { res in
+                    s.payload = res.map { var j = RoomJSON.build($0.room); j["_shots"] = $0.shots.count; j["_points"] = $0.cloud.map { ($0.count - 8) / 9 } ?? 0; j["_frames"] = $0.frames.count; j["_faces"] = $0.mesh.map { $0.count > 12 ? Int($0.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 8, as: UInt32.self) }) : 0 } ?? 0; return j }
+                    s.shots = res?.shots ?? []
+                    s.cloud = res?.cloud
+                    s.mesh = res?.mesh
+                    s.frames = res?.frames ?? []
                     scanning = false
                     if s.payload != nil && s.token != nil { s.send() }
                     else if s.payload != nil && s.paired { s.checkPending(quiet: true) }
@@ -69,7 +71,7 @@ struct Summary: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Результат скану").font(.headline)
             Text("Стін: \(walls.count) · Дверей: \(doors.count) · Вікон: \(windows.count)")
-            Text("Кадрів для AI: \((p["_shots"] as? Int) ?? 0) · 3D-точок: \(((p["_points"] as? Int) ?? 0) / 1000)k").font(.footnote).foregroundStyle(.secondary)
+            Text("Кадрів для AI: \((p["_shots"] as? Int) ?? 0) · 3D-точок: \(((p["_points"] as? Int) ?? 0) / 1000)k · 3D-фото: \((p["_frames"] as? Int) ?? 0) кадрів, сітка \(((p["_faces"] as? Int) ?? 0) / 1000)k").font(.footnote).foregroundStyle(.secondary)
             Text("Об'єктів: \(objects.count)" + (objects.isEmpty ? "" : " — " + objects.compactMap { $0["category"] as? String }.joined(separator: ", ")))
             if let h = walls.compactMap({ $0["h"] as? Double }).max() { Text(String(format: "Висота стелі ≈ %.0f\"", h * 39.3701)) }
         }
