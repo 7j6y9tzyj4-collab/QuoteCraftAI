@@ -26,7 +26,7 @@ export async function cloudTopView(room:Room):Promise<string|null>{
   const L=parseInches(room.length)||0,W=parseInches(room.width)||0;if(!L||!W)return null;
   const S=2,cw=Math.ceil(L*S),ch=Math.ceil(W*S);const cv=document.createElement("canvas");cv.width=cw;cv.height=ch;const ctx=cv.getContext("2d")!;
   const img=ctx.createImageData(cw,ch);const hz=new Float32Array(cw*ch).fill(-1);
-  for(let i=0;i<cl.n;i++){const x=Math.floor(cl.pos[i*3]*S),y=cl.pos[i*3+1],z=Math.floor(cl.pos[i*3+2]*S);if(x<0||z<0||x>=cw||z>=ch)continue;const j=z*cw+x;if(y<=hz[j])continue;hz[j]=y;
+  for(let i=0;i<cl.n;i++){const x=Math.floor(cl.pos[i*3]*S),y=cl.pos[i*3+1],z=Math.floor(cl.pos[i*3+2]*S);if(y<3||x<0||z<0||x>=cw||z>=ch)continue;const j=z*cw+x;if(y<=hz[j])continue;hz[j]=y;
     img.data[j*4]=cl.col[i*3];img.data[j*4+1]=cl.col[i*3+1];img.data[j*4+2]=cl.col[i*3+2];img.data[j*4+3]=255}
   ctx.putImageData(img,0,0);
   // трохи «розмазати», щоб не було дірок між точками
