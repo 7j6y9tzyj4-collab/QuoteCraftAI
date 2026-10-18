@@ -2,7 +2,7 @@
 import {useMemo,useRef} from "react";
 import * as THREE from "three";
 import {Canvas,useFrame,useThree} from "@react-three/fiber";
-import {OrbitControls,Html,useGLTF,Line} from "@react-three/drei";
+import {OrbitControls,Html,useGLTF,Line,Edges} from "@react-three/drei";
 import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
@@ -26,17 +26,18 @@ function Wall({a,b,H,segs,camRef,color}:{a:V;b:V;H:number;segs:WallSeg[];camRef:
   if(cur<len)pieces.push({x0:cur,x1:len,z0:0,z1:H});
   // зовнішня нормаль стіни (вправо від напрямку a→b при обході за годинниковою)
   const nx=(b[1]-a[1])/len,ny=-(b[0]-a[0])/len;
-  const mats=useRef<THREE.MeshStandardMaterial[]>([]);
+  const grp=useRef<THREE.Group>(null);
   useFrame(()=>{
     const c=camRef.current;const mx=(a[0]+b[0])/2*IN,my=(a[1]+b[1])/2*IN;
-    const dot=(c.x-mx)*nx+(c.z-my)*ny; // камера з боку зовнішньої нормалі → стіна між нами й кімнатою
-    const op=dot>0?0.03:1;
-    for(const m of mats.current){if(m&&m.opacity!==op){m.opacity=op;m.depthWrite=op>=1;m.needsUpdate=true}}
+    const dot=(c.x-mx)*nx+(c.z-my)*ny; // камера з боку зовнішньої нормалі → стіна між нами й кімнатою → ховаємо повністю
+    const vis=dot<=0;
+    if(grp.current&&grp.current.visible!==vis)grp.current.visible=vis;
   });
-  return <group position={[a[0]*IN,0,a[1]*IN]} rotation={[0,-ang,0]}>
+  return <group ref={grp} position={[a[0]*IN,0,a[1]*IN]} rotation={[0,-ang,0]}>
     {pieces.map((p,i)=><mesh key={i} position={[(p.x0+p.x1)/2*IN,(p.z0+p.z1)/2*IN,-T/2*IN]} castShadow receiveShadow>
       <boxGeometry args={[(p.x1-p.x0)*IN,(p.z1-p.z0)*IN,T*IN]}/>
-      <meshStandardMaterial ref={el=>{if(el)mats.current[i]=el}} color={color||WALL_COLOR} roughness={0.9} transparent opacity={1}/>
+      <meshStandardMaterial color={color||WALL_COLOR} roughness={0.9}/>
+      <Edges color="#5b6475" lineWidth={1} threshold={15}/>
     </mesh>)}
     {ops.map((o,i)=>o.door?<mesh key={"d"+i} position={[(o.s0+o.s1)/2*IN,o.z1/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,o.z1*IN,1*IN]}/><meshStandardMaterial color="#d9cbb3" transparent opacity={0.35}/></mesh>
       :<mesh key={"w"+i} position={[(o.s0+o.s1)/2*IN,(o.z0+o.z1)/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,(o.z1-o.z0)*IN,0.5*IN]}/><meshStandardMaterial color={GLASS} transparent opacity={0.35}/></mesh>)}
@@ -202,21 +203,24 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
   useFrame(()=>{camRef.current.copy(camera.position)});
   const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;
   const shape=useMemo(()=>{const s=new THREE.Shape();pts.forEach((p,i)=>{if(i===0)s.moveTo(p[0]*IN,p[1]*IN);else s.lineTo(p[0]*IN,p[1]*IN)});s.closePath();return s},[pts]);
-  const tile=room.floorTile;const look=room.look;
+  const tile=room.floorTile;
+  // кольори з фото робимо світлішими (змішуємо з білим), інакше кімната виглядає сірою
+  const lighten=(hex?:string,k=0.55)=>{if(!hex)return undefined;const c=new THREE.Color(hex);c.lerp(new THREE.Color("#ffffff"),k);return "#"+c.getHexString()};
+  const look={wall:lighten(room.look?.wall),floor:lighten(room.look?.floor,0.35),vanity:room.look?.vanity};
   // плитка: текстура з однієї плитки, повторюється за розміром (ShapeGeometry має UV у світових одиницях)
   const tex=useMemo(()=>{
     if(!tile||tile.w<=0||tile.h<=0)return null;
     const c=document.createElement("canvas");const S=128;c.width=S;c.height=Math.max(8,Math.round(S*tile.h/tile.w));
-    const ctx=c.getContext("2d")!;ctx.fillStyle=look?.floor||"#ebe7df";ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle="rgba(0,0,0,.18)";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
+    const ctx=c.getContext("2d")!;ctx.fillStyle=look?.floor||"#ebe7df";ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle="rgba(0,0,0,.28)";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
     const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/(tile.w*IN),1/(tile.h*IN));t.anisotropy=4;return t;
   },[tile,look?.floor]);
   if(!g)return null;
   return <>
-    <ambientLight intensity={1.1}/>
-    <hemisphereLight args={["#ffffff","#cfc8bd",0.8]}/>
-    <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={1.6} castShadow/>
-    <directionalLight position={[-L*IN,H*IN*1.5,-W*IN]} intensity={0.5}/>
-    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={look?.floor||FLOOR_COLOR} side={THREE.DoubleSide}/>}</mesh>
+    <ambientLight intensity={1.4}/>
+    <hemisphereLight args={["#ffffff","#d8d2c8",0.9]}/>
+    <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={1.8} castShadow/>
+    <directionalLight position={[-L*IN,H*IN*1.5,-W*IN]} intensity={0.7}/>
+    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={look?.floor||FLOOR_COLOR} side={THREE.DoubleSide}/>}<Edges color="#5b6475" lineWidth={1.2}/></mesh>
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
     {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
     {dims>0&&<Dims g={g} level={dims}/>}
@@ -268,7 +272,7 @@ export default function Room3D({room,dims=1,height=340,captureRef,exportRef}:{ro
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
-    <Canvas shadows camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}}>
+    <Canvas shadows style={{background:"linear-gradient(#f8fafc,#e9edf3)"}} camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}}>
       <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef}/>
     </Canvas>
     <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
