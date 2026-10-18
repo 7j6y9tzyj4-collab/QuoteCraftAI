@@ -177,7 +177,8 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
     case "light":return <Flat w={f.w} d={f.d} H={H} light/>;
     case "heater":return <Box w={f.w} d={f.d} h={24} color="#e5e7eb"/>;
     case "cabinet":return <Box w={f.w} d={f.d} h={Math.min(84,H-2)} color={WOOD}/>;
-    default:return <Box w={f.w} d={f.d} h={f.label&&/ліжко|bed/i.test(f.label)?24:f.label&&/стіл|table/i.test(f.label)?30:f.label&&/стілець|chair/i.test(f.label)?34:f.label&&/холод|refrig/i.test(f.label)?68:36} color={f.label&&/ліжко|bed/i.test(f.label)?"#d7dce6":f.label&&/холод|плит|духов|посудом|refrig|stove|oven|dish/i.test(f.label)?"#d9dde3":"#c9a77c"}/>;
+    default:{const lab=f.label||"";const h=f.h||(/ліжко|bed/i.test(lab)?24:/стіл|table/i.test(lab)?30:/стілець|chair/i.test(lab)?34:/холод|refrig/i.test(lab)?68:/тв|tv/i.test(lab)?22:36);const col=/тв|tv/i.test(lab)?"#1f2937":/ліжко|bed/i.test(lab)?"#d7dce6":/холод|плит|духов|посудом|refrig|stove|oven|dish/i.test(lab)?"#d9dde3":"#c9a77c";
+      return <group position={[0,(f.y||0)*IN,0]}><Box w={f.w} d={f.d} h={h} color={col}/>{/тв|tv/i.test(lab)&&<mesh position={[f.w/2*IN,h/2*IN,(f.d+0.2)*IN]}><planeGeometry args={[(f.w-1.5)*IN,(h-1.5)*IN]}/><meshStandardMaterial color="#0b1020" metalness={0.6} roughness={0.2}/></mesh>}</group>;}
   }})();
   // локальне z у кімнату = −nrm; у three локальна вісь z після повороту на -ang вказує... будуємо явно: x→dir, z→(−nrm)
   const nx=-geom.nrm[f.k][0],ny=-geom.nrm[f.k][1];
@@ -278,11 +279,11 @@ function Dims({g,level}:{g:NonNullable<ReturnType<typeof roomGeom>>;level:number
       return <group key={"o"+i}>
         <DimLine a={[s.p[0],s.z1,s.p[1]]} b={[s.q[0],s.z1,s.q[1]]} off={[-nn[0]*2,6,-nn[1]*2]} up text={`${s.door?"Двері":"Вікно"} ${fmtInches(w)} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>
       </group>})}
-    {level>=2&&g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(fixTop(f,H)+3)*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${f.label||FIX_NAME[f.type]||f.type} ${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
+    {level>=2&&g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(fixTop(f,H)+3)*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${f.label||FIX_NAME[f.type]||f.type} ${fmtInches(f.w)} × ${fmtInches(f.d)}${f.h?` × h ${fmtInches(f.h)}`:""}${f.y?` · від підлоги ${fmtInches(f.y)}`:""}`} color="#475467"/>)}
   </>;
 }
 const FIX_NAME:Record<string,string>={toilet:"Унітаз",vanity:"Тумба",sink:"Раковина",tub:"Ванна",shower:"Душ",washer:"Пральна",dryer:"Сушка",fan:"Вентилятор",light:"Світло",heater:"Радіатор",cabinet:"Шафа",mirror:"Дзеркало",vanityLight:"Світло",towelBar:"Рушники",other:""};
-function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return FIX_H3[f.type]||30;return m.ceiling?H-12:(m.y||0)+m.h}
+function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return (f.y||0)+(f.h||FIX_H3[f.type]||30);return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
 export default function Room3D({room,dims=1,height=340,captureRef,exportRef}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
   const g=roomGeom(room);

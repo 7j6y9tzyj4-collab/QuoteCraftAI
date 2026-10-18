@@ -7,8 +7,7 @@ export type ScanPayload={walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];
 
 const M2IN=39.3701;
 const CAT:Record<string,{type:string;label?:string}>={
-  toilet:{type:"toilet"},bathtub:{type:"tub"},sink:{type:"vanity"},washerDryer:{type:"washer"},storage:{type:"cabinet"},
-  refrigerator:{type:"other",label:"Холодильник"},stove:{type:"other",label:"Плита"},oven:{type:"other",label:"Духовка"},dishwasher:{type:"other",label:"Посудомийка"},
+  toilet:{type:"toilet"},bathtub:{type:"tub"},sink:{type:"vanity"},washerDryer:{type:"washer"},storage:{type:"cabinet"},  refrigerator:{type:"other",label:"Холодильник"},stove:{type:"other",label:"Плита"},oven:{type:"other",label:"Духовка"},dishwasher:{type:"other",label:"Посудомийка"},
   fireplace:{type:"other",label:"Камін"},bed:{type:"other",label:"Ліжко"},sofa:{type:"other",label:"Диван"},table:{type:"other",label:"Стіл"},chair:{type:"other",label:"Стілець"},television:{type:"other",label:"ТВ"},stairs:{type:"other",label:"Сходи"},
 };
 const r1=(n:number)=>Math.round(n*2)/2; // до пів дюйма
@@ -54,7 +53,9 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
     const [rx,rz]=rot(o.cx,o.cz);const [px,py]=toRoom(rx,rz);const k=nearest(px,py);const {ex,ez}=extents(o);
     const w=r1(k===0||k===2?ex:ez),d=r1(k===0||k===2?ez:ex);
     const start=along(k,px,py)-w/2;const t=Math.max(0,Math.min(1,start/Math.max(1,len[k]-w)));
-    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(4,d),fromPhoto:true,...(m.label?{label:m.label}:{})});
+    // висота предмета і його низ над підлогою (cy — центр по вертикалі, підлога ≈ 0)
+    const hIn=r1(o.h*M2IN);const bottom=r1((o.cy-o.h/2)*M2IN);
+    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(4,d),fromPhoto:true,...(m.label?{label:m.label}:{}),...(hIn>2?{h:hIn}:{}),...(bottom>4?{y:bottom}:{})});
   }
   const keep=(prev.fixtures||[]).filter(f=>!f.fromPhoto);
   const note=`Скан: ${Math.round(L)}"×${Math.round(W)}", стеля ${Math.round(Hin)}", стін ${walls.length}, прорізів ${openings.length}, об'єктів ${fixtures.length}`;
