@@ -128,6 +128,34 @@ function TowelBar({w,y,ring}:{w:number;y:number;ring:boolean}){
   :<group><mesh position={[w/2*IN,(y+1)*IN,2.5*IN]} rotation={[0,0,Math.PI/2]}><cylinderGeometry args={[0.35*IN,0.35*IN,w*IN,12]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>
     {[1.5,w-1.5].map((x,i)=><mesh key={i} position={[x*IN,(y+1)*IN,1.2*IN]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.4*IN,0.4*IN,2.5*IN,10]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>)}</group>;
 }
+// Меблі за назвою (з фото/скану): диван, ТВ, тумба, рослина, килим, торшер, кондиціонер, ліжко, стіл…
+function M({p,s,c,r=0.7,e=true}:{p:[number,number,number];s:[number,number,number];c:string;r?:number;e?:boolean}){
+  return <mesh position={[p[0]*IN,p[1]*IN,p[2]*IN]} castShadow receiveShadow><boxGeometry args={[s[0]*IN,s[1]*IN,s[2]*IN]}/><meshStandardMaterial color={c} roughness={r}/>{e&&<Edges color="#6b7280" lineWidth={1}/>}</mesh>;
+}
+function Furniture({f}:{f:FixBox}){
+  const lab=(f.label||"").toLowerCase();const w=f.w,d=f.d,y=f.y||0;
+  let body:React.ReactNode;
+  if(/диван|sofa|couch|секц/.test(lab)){const h=f.h||32,seat=17,arm=Math.min(6,w/8),back=Math.min(9,d/3);const c="#f3efe6";
+    body=<group><M p={[w/2,seat/2,d/2]} s={[w,seat,d]} c={c} r={0.9}/><M p={[w/2,(seat+h)/2,back/2]} s={[w,h-seat,back]} c={c} r={0.9}/>
+      <M p={[arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/><M p={[w-arm/2,(seat+6)/2+2,d/2]} s={[arm,seat+6,d]} c={c} r={0.9}/>
+      {(()=>{const n=Math.max(1,Math.round((w-2*arm)/30));return Array.from({length:n},(_,i)=>{const cw=(w-2*arm)/n;return <M key={i} p={[arm+cw*(i+0.5),seat+2,(back+d)/2]} s={[cw-1,4,d-back-1]} c="#faf7f0" r={0.95}/>})})()}</group>;}
+  else if(/тумба під тв|tv stand|тв-тумба|комод|dresser/.test(lab)){const h=f.h||20;body=<group><M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#f5f5f4" r={0.4}/><M p={[w/2,h*0.45,d+0.1]} s={[w*0.9,0.4,0.2]} c="#9ca3af" e={false}/></group>;}
+  else if(/тв|tv|телев/.test(lab)){const h=f.h||Math.round(w*0.58);const sy=y||(20);body=<group position={[0,sy*IN,0]}><M p={[w/2,h/2,1.5]} s={[w,h,2]} c="#111827" r={0.3}/><mesh position={[w/2*IN,h/2*IN,2.6*IN]}><planeGeometry args={[(w-1)*IN,(h-1)*IN]}/><meshStandardMaterial color="#0b1020" metalness={0.5} roughness={0.15}/></mesh>{!f.y&&<M p={[w/2,-1,3]} s={[w*0.3,2,8]} c="#1f2937"/>}</group>;}
+  else if(/рослин|plant|вазон|квіт/.test(lab)){const h=f.h||60;const r=Math.min(w,d)/2;body=<group><mesh position={[w/2*IN,6*IN,d/2*IN]} castShadow><cylinderGeometry args={[r*0.45*IN,r*0.35*IN,12*IN,20]}/><meshStandardMaterial color="#f5f5f4"/></mesh>
+      {[0.55,0.75,0.92].map((k,i)=><mesh key={i} position={[(w/2+(i-1)*r*0.25)*IN,h*k*IN,(d/2+(i%2?1:-1)*r*0.2)*IN]} castShadow><sphereGeometry args={[r*(0.75-i*0.12)*IN,16,12]}/><meshStandardMaterial color={["#2f6b3a","#3b7d47","#4a8f55"][i]} roughness={0.9}/></mesh>)}
+      <mesh position={[w/2*IN,h*0.4*IN,d/2*IN]}><cylinderGeometry args={[0.8*IN,1*IN,h*0.6*IN,8]}/><meshStandardMaterial color="#6b4f33"/></mesh></group>;}
+  else if(/килим|rug|carpet/.test(lab)){body=<mesh position={[w/2*IN,0.25*IN,d/2*IN]} receiveShadow><boxGeometry args={[w*IN,0.5*IN,d*IN]}/><meshStandardMaterial color="#e7e2d8" roughness={1}/></mesh>;}
+  else if(/торшер|floor lamp|лампа/.test(lab)){const h=f.h||64;body=<group><mesh position={[w/2*IN,0.5*IN,d/2*IN]}><cylinderGeometry args={[5*IN,5*IN,1*IN,20]}/><meshStandardMaterial color="#374151"/></mesh><mesh position={[w/2*IN,h/2*IN,d/2*IN]}><cylinderGeometry args={[0.4*IN,0.4*IN,h*IN,8]}/><meshStandardMaterial color="#374151"/></mesh><mesh position={[w/2*IN,h*IN,d/2*IN]}><coneGeometry args={[7*IN,8*IN,20,1,true]}/><meshStandardMaterial color="#f5f0e1" emissive="#ffe9a8" emissiveIntensity={0.5} side={THREE.DoubleSide}/></mesh></group>;}
+  else if(/кондиц|\bac\b|air cond/.test(lab)){const h=f.h||14;const sy=y||60;body=<group position={[0,sy*IN,0]}><M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#f8fafc" r={0.4}/><M p={[w/2,h*0.35,d+0.1]} s={[w*0.85,h*0.4,0.2]} c="#cbd5e1" e={false}/></group>;}
+  else if(/ліжко|bed/.test(lab)){const h=f.h||24;body=<group><M p={[w/2,h/2-3,d/2]} s={[w,h-6,d]} c="#d6c3a5"/><M p={[w/2,h-2,d/2+2]} s={[w-2,6,d-4]} c="#f8fafc" r={0.95}/><M p={[w/2,(h+16)/2,1.5]} s={[w,h+16,3]} c="#b08d63"/></group>;}
+  else if(/стілець|крісло|chair|armchair/.test(lab)){const h=f.h||34;body=<group><M p={[w/2,9,d/2]} s={[w,18,d]} c="#d1c4b0"/><M p={[w/2,(18+h)/2,2]} s={[w,h-18,4]} c="#d1c4b0"/></group>;}
+  else if(/стіл|table|desk/.test(lab)){const h=f.h||30;body=<group><M p={[w/2,h-0.75,d/2]} s={[w,1.5,d]} c="#b08d63"/>{[[2,2],[w-2,2],[2,d-2],[w-2,d-2]].map(([x,z],i)=><M key={i} p={[x,(h-1.5)/2,z]} s={[1.5,h-1.5,1.5]} c="#8b6b48" e={false}/>)}</group>;}
+  else if(/шаф|полиц|shelf|book|storage/.test(lab)){const h=f.h||72;body=<M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#c9a77c"/>;}
+  else if(/холод|refrig/.test(lab)){body=<M p={[w/2,(f.h||68)/2,d/2]} s={[w,f.h||68,d]} c="#d9dde3" r={0.3}/>;}
+  else if(/плит|духов|stove|oven|посудом|dish/.test(lab)){body=<M p={[w/2,(f.h||36)/2,d/2]} s={[w,f.h||36,d]} c="#d9dde3" r={0.3}/>;}
+  else{const h=f.h||30;body=<M p={[w/2,h/2,d/2]} s={[w,h,d]} c="#c9a77c"/>;}
+  return <group position={[0,(/тв|tv|кондиц|\bac\b/.test(lab)?0:y)*IN,0]}>{body}</group>;
+}
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
   return <mesh position={[w/2*IN,h/2*IN,d/2*IN]} castShadow receiveShadow><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color} roughness={0.7}/><Edges color="#6b7280" lineWidth={1}/></mesh>;
 }
@@ -177,8 +205,7 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
     case "light":return <Flat w={f.w} d={f.d} H={H} light/>;
     case "heater":return <Box w={f.w} d={f.d} h={24} color="#e5e7eb"/>;
     case "cabinet":return <Box w={f.w} d={f.d} h={Math.min(84,H-2)} color={WOOD}/>;
-    default:{const lab=f.label||"";const h=f.h||(/ліжко|bed/i.test(lab)?24:/стіл|table/i.test(lab)?30:/стілець|chair/i.test(lab)?34:/холод|refrig/i.test(lab)?68:/тв|tv/i.test(lab)?22:36);const col=/тв|tv/i.test(lab)?"#1f2937":/ліжко|bed/i.test(lab)?"#d7dce6":/холод|плит|духов|посудом|refrig|stove|oven|dish/i.test(lab)?"#d9dde3":"#c9a77c";
-      return <group position={[0,(f.y||0)*IN,0]}><Box w={f.w} d={f.d} h={h} color={col}/>{/тв|tv/i.test(lab)&&<mesh position={[f.w/2*IN,h/2*IN,(f.d+0.2)*IN]}><planeGeometry args={[(f.w-1.5)*IN,(h-1.5)*IN]}/><meshStandardMaterial color="#0b1020" metalness={0.6} roughness={0.2}/></mesh>}</group>;}
+    default:return <Furniture f={f}/>;
   }})();
   // локальне z у кімнату = −nrm; у three локальна вісь z після повороту на -ang вказує... будуємо явно: x→dir, z→(−nrm)
   const nx=-geom.nrm[f.k][0],ny=-geom.nrm[f.k][1];

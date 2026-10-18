@@ -119,6 +119,14 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   }
 
   const [renderingRoom,setRenderingRoom]=useState("");
+  // опис стін для AI: довжини і прорізи (зі скану або ручні) — щоб він розставляв по правильних стінах
+  function roomLayout(room:Room){
+    const L=parseInches(room.length)||0,W=parseInches(room.width)||0,H=parseInches(room.height)||0;
+    const lens:Record<string,number>={A:L,B:W,C:L,D:W};const from:Record<string,string>={A:"from corner A/D (left) to corner A/B (right)",B:"from corner A/B (top) to corner B/C (bottom)",C:"from corner B/C (right) to corner C/D (left)",D:"from corner C/D (bottom) to corner A/D (top)"};
+    const lines=["A","B","C","D"].map(wl=>{const ops=(room.openings||[]).filter(o=>(o.wall||"A")===wl).map(o=>{const ow=parseInches(o.w)||0;const at=typeof o.t==="number"?Math.round(o.t*Math.max(0,lens[wl]-ow)):null;return `${/двер|door/i.test(o.name)?"door":/проріз|opening/i.test(o.name)?"open passage (no door)":"window"} ${o.w}"×${o.h}"${at!==null?` starting ${at}" along the wall`:""}`});
+      return `Wall ${wl}: ${Math.round(lens[wl])}" long, measured ${from[wl]}; ${ops.length?ops.join(", "):"no openings"}.`});
+    return `Room ${Math.round(L)}"×${Math.round(W)}", ceiling ${Math.round(H)}". `+lines.join(" ");
+  }
   // 📡 LiDAR-скан з iPhone: веб створює токен → відкриває додаток QuoteCraft Scan → чекає payload у scan_inbox
   const [scanWait,setScanWait]=useState<{rid:string;token:string;pin:string}|null>(null);
   const [scanMsg,setScanMsg]=useState("");
@@ -223,17 +231,18 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     setBusyRoom(rid);setMsg("");
     try{
       const photos=await roomPhotosData(room,6);
-      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
+      const r=await fetch("/api/room-plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({room:room.name,areas:roomAreas(room),notes:room.notes,photos,lang,mode:sceneOnly?"scene":"plan",layout:roomLayout(room),tasks:tasks.map(t=>({id:t.id,name:t.name,unit:t.unit,category:t.category}))}),signal:AbortSignal.timeout(70000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"AI error");
       const cur=sRef.current.rooms.find(x=>x.id===rid);if(!cur)return;
       if(lang==="en"&&cur.plan)setRoom(rid,{plan:{...cur.plan,en:{summary:d.summary,tasks:d.tasks}}});
       else{
-        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;wall:string;t:number;style?:string;w?:number;note:string}[];
+        const seen=(Array.isArray(d.fixtures)?d.fixtures:[]) as {type:string;label?:string;wall:string;t:number;off?:number;style?:string;w?:number;d?:number;h?:number;y?:number;note:string}[];
         // сантехніка з фото: додаємо тільки ті типи, яких ще нема (ручні не чіпаємо); у режимі «розставити з фото» — замінюємо всі, що були з фото
         const keep=sceneOnly?(cur.fixtures||[]).filter(f=>!f.fromPhoto):(cur.fixtures||[]);
-        const have=new Set(keep.map(f=>f.type));
-        const okW=(f:{type:string;w?:number})=>{const n=Number(f.w)||0;return n>=6&&n<=120?Math.round(n):FIXTURES[f.type].w};
-        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type)).map(f=>({id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w:okW(f),d:FIXTURES[f.type].d,fromPhoto:true,...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}));
+        const have=new Set(keep.map(f=>f.type+"|"+(f.label||"")));
+        const num=(v:unknown,lo:number,hi:number)=>{const n=Number(v);return Number.isFinite(n)&&n>=lo&&n<=hi?Math.round(n*2)/2:undefined};
+        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type+"|"+(f.label||""))).map(f=>{const w=num(f.w,4,240)??FIXTURES[f.type].w;const dd=num(f.d,1,120)??FIXTURES[f.type].d;const h=num(f.h,1,110);const y=num(f.y,1,110);const off=num(f.off,1,200);
+          return {id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w,d:dd,fromPhoto:true,...(f.type==="other"&&f.label?{label:String(f.label).slice(0,30)}:{}),...(h?{h}:{}),...(y?{y}:{}),...(off?{off}:{}),...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}});
         const tile=d.floorTile&&Number(d.floorTile.w)>0&&Number(d.floorTile.h)>0?{w:Number(d.floorTile.w),h:Number(d.floorTile.h)}:cur.floorTile||null;
         const hex=(v:unknown)=>typeof v==="string"&&/^#[0-9a-fA-F]{6}$/.test(v)?v:undefined;
         const look={...(cur.look||{}),...(hex(d.look?.wall)?{wall:hex(d.look.wall)}:{}),...(hex(d.look?.floor)?{floor:hex(d.look.floor)}:{}),...(hex(d.look?.vanity)?{vanity:hex(d.look.vanity)}:{})};
