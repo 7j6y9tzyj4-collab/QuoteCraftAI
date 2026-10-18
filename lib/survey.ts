@@ -68,7 +68,7 @@ export function roomAreas(r:Room){
   };
 }
 export const newRoom=(name=""):Room=>({id:crypto.randomUUID(),name,length:"",width:"",height:"96",openings:[],photos:[],notes:""});
-export const newSurvey=(address?:string):Survey=>({id:crypto.randomUUID(),date:new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"}),title:"Огляд "+new Date().toLocaleDateString("uk-UA"),address,rooms:[newRoom("Ванна 1 поверх")],notes:"",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+export const newSurvey=(address?:string):Survey=>({id:crypto.randomUUID(),date:new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"}),title:"Огляд "+new Date().toLocaleDateString("uk-UA"),address,rooms:[newRoom("Кімната 1")],notes:"",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
 export const DOOR={name:"Двері",w:"32",h:"80"},WINDOW={name:"Вікно",w:"36",h:"48"};
 
 // текст для калькулятора: кімнати з площами й планом робіт
