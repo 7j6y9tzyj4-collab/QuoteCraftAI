@@ -187,7 +187,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
       const tile=room.floorTile?`${room.floorTile.w}×${room.floorTile.h} in`:"";
       const openings=room.openings.map(o=>`${/вікно|window/i.test(o.name)?"window":"door"} ${o.w}×${o.h} in on wall ${o.wall||"?"}`).join(", ");
       const look=room.look?Object.entries(room.look).filter(([,v])=>v).map(([k,v])=>`${k} ${v}`).join(", "):"";
-      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"bathroom",wish:room.renderWish||"",fixtures,tile,openings,look}),signal:AbortSignal.timeout(90000)});
+      // тип кімнати для AI: спочатку по тому, що в ній стоїть, потім по назві
+      const types=new Set((room.fixtures||[]).map(f=>f.type));const labels=(room.fixtures||[]).map(f=>f.label||"").join(" ").toLowerCase();
+      const kind=types.has("toilet")||types.has("tub")||types.has("shower")?"bathroom":/плит|холод|духов|stove|refrig|oven/.test(labels)?"kitchen":/ліжко|bed/.test(labels)?"bedroom":types.has("washer")||types.has("dryer")?"laundry room":
+        /ванн|bath/i.test(room.name)?"bathroom":/кухн|kitchen/i.test(room.name)?"kitchen":/спальн|bedroom/i.test(room.name)?"bedroom":/вітальн|living/i.test(room.name)?"living room":/коридор|hall/i.test(room.name)?"hallway":/туалет|powder/i.test(room.name)?"powder room":"room";
+      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"",kind,wish:room.renderWish||"",fixtures,tile,openings,look}),signal:AbortSignal.timeout(90000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"Render error");
       const id=uid();let item:SurveyPhoto={id,dataUrl:d.image};
       if(user){

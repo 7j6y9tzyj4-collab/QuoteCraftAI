@@ -13,15 +13,19 @@ export async function POST(req:NextRequest){
     const sketch=String(b.sketch||"");
     if(!IMG.test(sketch)||sketch.length>2_000_000)return NextResponse.json({error:"Нема 3D-ескізу (PNG до 2 МБ)."},{status:400});
     const photos:string[]=(Array.isArray(b.photos)?b.photos:[]).filter((p:unknown)=>typeof p==="string"&&IMG.test(p)&&p.length<=750000).slice(0,3);
-    const room=String(b.room||"room").slice(0,120),wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,600),tile=String(b.tile||"").slice(0,60),openings=String(b.openings||"").slice(0,300),look=String(b.look||"").slice(0,120);
+    const roomName=String(b.room||"").slice(0,120),kind=String(b.kind||"").slice(0,40);
+    const room=kind||"room";void roomName;
+    const wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,600),tile=String(b.tile||"").slice(0,60),openings=String(b.openings||"").slice(0,300),look=String(b.look||"").slice(0,120);
     const prompt=[
       `Photorealistic interior photograph of a freshly renovated ${room}, shot with a wide-angle lens.`,
-      `The FIRST image is a simple 3D sketch: reproduce its camera angle and layout exactly — same walls, same door and window positions, and keep every fixture in the same place and of the same kind (${fixtures||"as drawn"}).`,
+      `The FIRST image is a simple 3D sketch: reproduce its camera angle and layout exactly — same walls, same door and window positions.`,
+      fixtures?`The ONLY fixtures and furniture in the room are: ${fixtures}. Keep each in the same place as in the sketch.`:`The room is EMPTY: only walls, floor, ceiling, the door(s) and window(s). Do not add any furniture, plumbing fixtures, toilets, sinks, vanities or bathtubs.`,
+      `Do not add anything that is not listed. This is NOT a bathroom unless a toilet, tub or shower is listed.`,
       photos.length?`The other images are photos of the room before renovation — keep the same architecture, ceiling height and window light, but show it finished and clean.`:"",
       openings?`Openings: ${openings}. The light-colored rectangular gap in a wall of the sketch is a DOOR opening (draw a door or doorway), not a window, unless listed as window.`:"",
       tile?`Floor: ${tile} tile.`:"",
       look&&!wish?`Current colors to keep unless the wishes say otherwise: ${look}.`:"",
-      wish?`Client wishes / finishes: ${wish}`:"Finishes: modern, light, neutral; porcelain tile, white fixtures, chrome, warm lighting.",
+      wish?`Client wishes / finishes: ${wish}`:"Finishes: modern, light, neutral; clean painted walls, warm lighting.",
       "Realistic materials, soft natural light, high detail. No people, no text, no labels, no dimension tags, no watermark.",
     ].filter(Boolean).join(" ");
     const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:56000,maxRetries:0});
