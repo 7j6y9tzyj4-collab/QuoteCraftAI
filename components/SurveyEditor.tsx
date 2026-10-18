@@ -191,11 +191,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     return photos;
   }
   // 📸 Фото-рендер: 3D-ескіз (ракурс) + фото кімнати + побажання → AI-картинка «після ремонту»
-  async function makeRender(rid:string,sketchPng:string){
+  async function makeRender(rid:string,sketchPng:string,view?:string,aspect?:number){
     const room=sRef.current.rooms.find(r=>r.id===rid);if(!room)return;
     setRenderingRoom(rid);setMsg("");
     try{
-      const photos=await roomPhotosData(room,3);
+      const photos=await roomPhotosData(room,1);
       // для AI — англійською, з розмірами; «Інше» — за підписом (ТВ, ліжко…)
       const EN:Record<string,string>={toilet:"toilet",vanity:"bathroom vanity cabinet with sink",sink:"sink",tub:"bathtub",shower:"shower",washer:"washing machine",dryer:"dryer",fan:"ceiling fan",light:"ceiling light",heater:"radiator",cabinet:"cabinet",mirror:"mirror",vanityLight:"vanity light bar above the mirror",towelBar:"towel bar"};
       const LBL:[RegExp,string][]=[[/тумба під тв|тв-тумба|tv stand|media console/i,"low TV stand / media console"],[/комод|dresser/i,"dresser"],[/кутов|секц|sectional/i,"sectional sofa section"],[/диван|sofa|couch/i,"sofa"],[/крісло|armchair/i,"armchair"],[/тв|tv|телев/i,"TV"],[/ліжко|bed/i,"bed"],[/журнальн|coffee/i,"coffee table"],[/стіл|table|desk/i,"table"],[/стілець|chair/i,"chair"],[/рослин|вазон|plant/i,"large potted plant"],[/килим|rug|carpet/i,"area rug"],[/торшер|floor lamp/i,"floor lamp"],[/кондиц|air cond/i,"wall-mounted air conditioner unit"],[/радіатор|heater|плінтусн/i,"baseboard heater"],[/штор|curtain/i,"curtains"],[/полиц|shelf|book/i,"bookshelf"],[/холод|refrig/i,"refrigerator"],[/плит|stove/i,"stove"],[/духов|oven/i,"oven"],[/посудом|dish/i,"dishwasher"],[/камін|fire/i,"fireplace"],[/сходи|stair/i,"stairs"],[/світильник|люстр|light/i,"ceiling light"],[/шаф|storage|closet/i,"storage cabinet"]];
@@ -209,7 +209,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
       const types=new Set((room.fixtures||[]).map(f=>f.type));const labels=(room.fixtures||[]).map(f=>f.label||"").join(" ").toLowerCase();
       const kind=types.has("toilet")||types.has("tub")||types.has("shower")?"bathroom":/плит|холод|духов|stove|refrig|oven/.test(labels)?"kitchen":/ліжко|bed/.test(labels)?"bedroom":/диван|sofa|тв|tv/.test(labels)?"living room":types.has("washer")||types.has("dryer")?"laundry room":
         /ванн|bath/i.test(room.name)?"bathroom":/кухн|kitchen/i.test(room.name)?"kitchen":/спальн|bedroom/i.test(room.name)?"bedroom":/вітальн|living/i.test(room.name)?"living room":/коридор|hall/i.test(room.name)?"hallway":/туалет|powder/i.test(room.name)?"powder room":"room";
-      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,photos,room:room.name||"",kind,wish:room.renderWish||"",fixtures,tile,openings,look}),signal:AbortSignal.timeout(90000)});
+      const r=await fetch("/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sketch:sketchPng,view:view||"",aspect:aspect||1,photos,room:room.name||"",kind,wish:room.renderWish||"",fixtures,tile,openings,look}),signal:AbortSignal.timeout(90000)});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"Render error");
       const id=uid();let item:SurveyPhoto={id,dataUrl:d.image};
       if(user){
@@ -316,7 +316,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {[["Підлога",a.floorSqft,"sq ft"],["Стіни",a.wallsSqft,"sq ft"],["Стеля",a.ceilingSqft,"sq ft"],["Периметр",a.perimeterFt,"lin ft"]].map(([k,v,u])=><div key={String(k)} className="linetotal"><span>{k}</span><b>{v===null?"—":`${v} ${u}`}</b></div>)}
         </div>}
         {a.wallsSqft!==null&&a.openingsSqft>0&&<small className="muted">стіни без прорізів (−{a.openingsSqft} sq ft)</small>}
-        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})} onFixture={(id,patch)=>{const list=r.fixtures||[];if(patch===null)setRoom(r.id,{fixtures:list.filter(x=>x.id!==id)});else if(list.some(x=>x.id===id))setRoom(r.id,{fixtures:list.map(x=>x.id===id?{...x,...patch}:x)});else setRoom(r.id,{fixtures:[...list,patch as Fixture]})}} onRender={png=>makeRender(r.id,png)} rendering={renderingRoom===r.id}/>
+        <RoomSketch room={r} onOpening={(id,patch)=>setRoom(r.id,{openings:r.openings.map(o=>o.id===id?{...o,...patch}:o)})} onPart={(id,patch)=>setRoom(r.id,{parts:(r.parts||[]).map(x=>x.id===id?{...x,...patch}:x)})} onFixture={(id,patch)=>{const list=r.fixtures||[];if(patch===null)setRoom(r.id,{fixtures:list.filter(x=>x.id!==id)});else if(list.some(x=>x.id===id))setRoom(r.id,{fixtures:list.map(x=>x.id===id?{...x,...patch}:x)});else setRoom(r.id,{fixtures:[...list,patch as Fixture]})}} onRender={(png,view,aspect)=>makeRender(r.id,png,view,aspect)} rendering={renderingRoom===r.id}/>
         <div style={{marginTop:8}}>
           <label>📸 Побажання до фото-рендеру (плитка, кольори, стиль — українською можна)</label>
           <BInput value={r.renderWish||""} onCommit={v=>setRoom(r.id,{renderWish:v})} placeholder="напр.: плитка 12×24 сіра під бетон, біла тумба, чорні крани, LED-дзеркало"/>

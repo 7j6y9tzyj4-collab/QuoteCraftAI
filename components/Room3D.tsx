@@ -222,8 +222,9 @@ function Fixture({f,H,geom,look,selected,onDown}:{f:FixBox;H:number;geom:NonNull
   </group>;
 }
 
+export type CaptureFn=()=>{url:string;view:string;w:number;h:number}|null;
 type Edit={selected?:string|null;onSelect?:(id:string|null)=>void;onMove?:(id:string,px:number,py:number)=>void};
-function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims:number;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
+function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims:number;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
@@ -238,7 +239,22 @@ function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:R
     const up=()=>{if(dragR.current){dragR.current=null;if(ctl.current)ctl.current.enabled=true}};
     window.addEventListener("pointermove",mv);window.addEventListener("pointerup",up);window.addEventListener("pointercancel",up);
     return()=>{window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",up)}},[gl,camera]);
-  useEffect(()=>{if(captureRef)captureRef.current=()=>{try{const d=scene.getObjectByName("dims");if(d)d.visible=false;gl.render(scene,camera);const url=gl.domElement.toDataURL("image/png");if(d)d.visible=true;gl.render(scene,camera);return url}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
+  useEffect(()=>{if(captureRef)captureRef.current=()=>{try{const d=scene.getObjectByName("dims");if(d)d.visible=false;gl.render(scene,camera);const url=gl.domElement.toDataURL("image/png");if(d)d.visible=true;gl.render(scene,camera);return {url,view:describeView(),w:gl.domElement.width,h:gl.domElement.height}}catch{return null}};return()=>{if(captureRef)captureRef.current=null}});
+  // опис кадру словами для AI: де на картинці (ліво/центр/право, низ/верх) кожен предмет і проріз, і під яким кутом камера
+  const describeView=()=>{if(!g)return "";const out:string[]=[];const HH=g.H;
+    const dirv=new THREE.Vector3();camera.getWorldDirection(dirv);const pitch=Math.round(-Math.asin(Math.max(-1,Math.min(1,dirv.y)))*180/Math.PI);
+    out.push(pitch>35?`Camera: high elevated viewpoint looking DOWN into the room at about ${pitch} degrees (cutaway dollhouse view from above). Keep this exact high angle, do NOT switch to eye level.`:pitch>15?`Camera: slightly elevated, looking down about ${pitch} degrees.`:`Camera: eye level.`);
+    const where=(x:number,y:number,z:number)=>{const v=new THREE.Vector3(x*IN,y*IN,z*IN).project(camera);if(v.z>1||Math.abs(v.x)>1.05||Math.abs(v.y)>1.05)return null;const hx=v.x<-0.33?"left":v.x>0.33?"right":"center";const vy=v.y<-0.33?"bottom":v.y>0.33?"top":"middle";return `${vy}-${hx}`};
+    const NM:Record<string,string>={toilet:"toilet",vanity:"vanity cabinet with sink",sink:"sink",tub:"bathtub",shower:"shower",washer:"washer",dryer:"dryer",fan:"ceiling fan",light:"ceiling light",heater:"radiator",cabinet:"tall cabinet",mirror:"mirror",vanityLight:"wall light",towelBar:"towel bar"};
+    const label=(f:FixBox)=>f.type!=="other"?(NM[f.type]||f.type):(f.label?`"${f.label}"`:"item");
+    const vis:string[]=[],hid:string[]=[];
+    for(const f of g.fixtures){const top=fixTop(f,HH);const cx=(f.p0[0]+f.p2[0])/2,cz=(f.p0[1]+f.p2[1])/2;const w=where(cx,((f.y||0)+top)/2,cz);if(w)vis.push(`${label(f)} at ${w} of the image`);else hid.push(label(f))}
+    const seen=new Set<string>();
+    for(const sg of g.segs){if(seen.has(sg.id))continue;seen.add(sg.id);const w=where((sg.p[0]+sg.q[0])/2,(sg.z0+sg.z1)/2,(sg.p[1]+sg.q[1])/2);const o=room.openings.find(x=>x.id===sg.id);const nm=o&&/вікно|window/i.test(o.name)?"window":o&&/проріз|opening/i.test(o.name)?"open passage":"door";if(w)vis.push(`${nm} at ${w} of the image`);else hid.push(nm)}
+    if(vis.length)out.push("Visible in the frame: "+vis.join("; ")+".");
+    if(hid.length)out.push("Outside the frame (do not show): "+hid.join(", ")+".");
+    if(!room.openings.some(o=>/вікно|window/i.test(o.name)))out.push("The room has NO windows: do not add any window.");
+    return out.join(" ")};
   // Експорт сцени: OBJ (SketchUp Pro → File → Import, одиниці: feet), GLB (будь-який 3D-в'юер), USDZ (iPhone AR Quick Look)
   useEffect(()=>{if(!exportRef)return;exportRef.current=async(fmt)=>{
     // без підписів і світла — тільки геометрія кімнати
@@ -332,7 +348,7 @@ function Dims({g,level}:{g:NonNullable<ReturnType<typeof roomGeom>>;level:number
 const FIX_NAME:Record<string,string>={toilet:"Унітаз",vanity:"Тумба",sink:"Раковина",tub:"Ванна",shower:"Душ",washer:"Пральна",dryer:"Сушка",fan:"Вентилятор",light:"Світло",heater:"Радіатор",cabinet:"Шафа",mirror:"Дзеркало",vanityLight:"Світло",towelBar:"Рушники",other:""};
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return (f.y||0)+(f.h||FIX_H3[f.type]||30);return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=1,height=340,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
+export default function Room3D({room,dims=1,height=340,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<CaptureFn|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
