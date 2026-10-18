@@ -189,7 +189,8 @@ function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
   },[scene,f.w,f.d,f.h,H,m,tint]);
   return obj?<primitive object={obj}/>:null;
 }
-function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>;look?:Room["look"]}){
+type Pick={selected?:string|null;onDown?:(id:string,e:any)=>void};
+function Fixture({f,H,geom,look,selected,onDown}:{f:FixBox;H:number;geom:NonNullable<ReturnType<typeof roomGeom>>;look?:Room["look"]}&Pick){
   // локальна система: початок у p0, x вздовж стіни, z у кімнату
   const ang=Math.atan2(geom.dir[f.k][1],geom.dir[f.k][0]);
   const mdl=fixtureModel(f.type,f.model);
@@ -215,13 +216,28 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
   const nx=-geom.nrm[f.k][0],ny=-geom.nrm[f.k][1];
   const m=new THREE.Matrix4().makeBasis(new THREE.Vector3(geom.dir[f.k][0],0,geom.dir[f.k][1]),new THREE.Vector3(0,1,0),new THREE.Vector3(nx,0,ny));
   m.setPosition(f.p0[0]*IN,0,f.p0[1]*IN);
-  return <group matrixAutoUpdate={false} matrix={m}>{inner}</group>;
+  const isSel=selected===f.id;const top=fixTop(f,H);const bot=Math.min(f.y||0,top-1);
+  return <group matrixAutoUpdate={false} matrix={m} onPointerDown={onDown?(e=>{e.stopPropagation();onDown(f.id,e)}):undefined}>{inner}
+    {isSel&&<mesh position={[f.w*IN/2,(bot+top)/2*IN,f.d*IN/2]}><boxGeometry args={[f.w*IN+0.05,(top-bot)*IN+0.05,f.d*IN+0.05]}/><meshBasicMaterial color="#2f6df6" transparent opacity={0.18} depthWrite={false}/><Edges color="#2f6df6" lineWidth={2.5}/></mesh>}
+  </group>;
 }
 
-function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
+type Edit={selected?:string|null;onSelect?:(id:string|null)=>void;onMove?:(id:string,px:number,py:number)=>void};
+function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims:number;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
+  // перетягування предмета по підлозі: промінь з пальця → площина підлоги (y=0) → дюйми плану
+  const ctl=useRef<any>(null);const dragR=useRef<{id:string;ox:number;oy:number}|null>(null);
+  const moveRef=useRef(onMove);moveRef.current=onMove;
+  const floorAt=(clientX:number,clientY:number)=>{const r=gl.domElement.getBoundingClientRect();const v=new THREE.Vector2((clientX-r.left)/r.width*2-1,-((clientY-r.top)/r.height)*2+1);const rc=new THREE.Raycaster();rc.setFromCamera(v,camera);const p=new THREE.Vector3();return rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),p)?[p.x/IN,p.z/IN] as [number,number]:null};
+  const onDown=(id:string,e:any)=>{onSelect?.(id);if(!onMove)return;const fb=g?.fixtures.find(x=>x.id===id);const pt=floorAt(e.nativeEvent?.clientX??e.clientX,e.nativeEvent?.clientY??e.clientY);if(!fb||!pt)return;
+    const cx=(fb.p0[0]+fb.p2[0])/2,cy=(fb.p0[1]+fb.p2[1])/2;dragR.current={id,ox:cx-pt[0],oy:cy-pt[1]};if(ctl.current)ctl.current.enabled=false};
+  useEffect(()=>{const el=gl.domElement;
+    const mv=(ev:PointerEvent)=>{const d=dragR.current;if(!d)return;const pt=floorAt(ev.clientX,ev.clientY);if(pt)moveRef.current?.(d.id,pt[0]+d.ox,pt[1]+d.oy)};
+    const up=()=>{if(dragR.current){dragR.current=null;if(ctl.current)ctl.current.enabled=true}};
+    window.addEventListener("pointermove",mv);window.addEventListener("pointerup",up);window.addEventListener("pointercancel",up);
+    return()=>{window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",up);window.removeEventListener("pointercancel",up)}},[gl,camera]);
   useEffect(()=>{if(captureRef)captureRef.current=()=>{try{const d=scene.getObjectByName("dims");if(d)d.visible=false;gl.render(scene,camera);const url=gl.domElement.toDataURL("image/png");if(d)d.visible=true;gl.render(scene,camera);return url}catch{return null}};return()=>{if(captureRef)captureRef.current=null}},[captureRef,gl,scene,camera]);
   // Експорт сцени: OBJ (SketchUp Pro → File → Import, одиниці: feet), GLB (будь-який 3D-в'юер), USDZ (iPhone AR Quick Look)
   useEffect(()=>{if(!exportRef)return;exportRef.current=async(fmt)=>{
@@ -271,9 +287,9 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
     {/* плінтус по периметру */}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
-    {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
+    {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
     {dims>0&&<group name="dims"><Dims g={g} level={dims}/></group>}
-    <OrbitControls target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
+    <OrbitControls ref={ctl} target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;
 }
 
@@ -316,14 +332,14 @@ function Dims({g,level}:{g:NonNullable<ReturnType<typeof roomGeom>>;level:number
 const FIX_NAME:Record<string,string>={toilet:"Унітаз",vanity:"Тумба",sink:"Раковина",tub:"Ванна",shower:"Душ",washer:"Пральна",dryer:"Сушка",fan:"Вентилятор",light:"Світло",heater:"Радіатор",cabinet:"Шафа",mirror:"Дзеркало",vanityLight:"Світло",towelBar:"Рушники",other:""};
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return (f.y||0)+(f.h||FIX_H3[f.type]||30);return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=1,height=340,captureRef,exportRef}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
+export default function Room3D({room,dims=1,height=340,captureRef,exportRef,selected,onSelect,onMove}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}&Edit){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
   return <div style={{height,width:"100%",borderRadius:12,overflow:"hidden",border:"1px solid #e4e7ec",background:"#fff",touchAction:"none",position:"relative"}}>
-    <Canvas shadows style={{background:"linear-gradient(#f8fafc,#e9edf3)"}} camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}}>
-      <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef}/>
+    <Canvas shadows style={{background:"linear-gradient(#f8fafc,#e9edf3)"}} camera={{position:[g.L*IN*1.15,g.H*IN*0.7,g.W*IN+diag*0.6],fov:50}} dpr={[1,2]} gl={{antialias:true,preserveDrawingBuffer:true}} onPointerMissed={()=>onSelect?.(null)}>
+      <Scene room={room} dims={dims} captureRef={captureRef} exportRef={exportRef} selected={selected} onSelect={onSelect} onMove={onMove}/>
     </Canvas>
-    <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>один палець — крутити · два — наблизити/посунути</div>
+    <div style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:11,color:"#98a2b3",pointerEvents:"none"}}>{onSelect?"тап по предмету — виділити й тягнути · один палець — крутити · два — наблизити":"один палець — крутити · два — наблизити/посунути"}</div>
   </div>;
 }
