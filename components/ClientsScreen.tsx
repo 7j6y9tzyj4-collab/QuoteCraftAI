@@ -57,7 +57,10 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
       </div>
       <section className="panel"><div className="head"><h2>📋 Огляди об'єкта</h2><button className="add" onClick={()=>{const s=newSurvey(cur.address);onSave({...cur,surveys:[s,...(cur.surveys||[])],updatedAt:new Date().toISOString()});setSurveyId(s.id)}}>＋ Огляд</button></div>
         {!(cur.surveys||[]).length&&<p className="muted" style={{fontSize:14}}>Приїхав на об'єкт → «＋ Огляд»: кімнати, розміри в дюймах, фото, що треба зробити → AI складе план → одним натиском в естімейт.</p>}
-        {(cur.surveys||[]).map(s=><button key={s.id} className="estimate" onClick={()=>setSurveyId(s.id)}><span><b>{s.title||"Огляд"}</b><small>{s.date} · кімнат {s.rooms.length} · фото {s.rooms.reduce((a,r)=>a+r.photos.length,0)}{s.rooms.some(r=>r.plan)?" · є план":""}</small></span><span style={{alignSelf:"center"}}>›</span></button>)}
+        {(cur.surveys||[]).map(s=><div key={s.id} style={{display:"flex",gap:6,alignItems:"stretch"}}>
+          <button className="estimate" style={{flex:1}} onClick={()=>setSurveyId(s.id)}><span><b>{s.title||"Огляд"}</b><small>{s.date} · кімнат {s.rooms.length} · фото {s.rooms.reduce((a,r)=>a+r.photos.length,0)}{s.rooms.some(r=>r.plan)?" · є план":""}</small></span><span style={{alignSelf:"center"}}>›</span></button>
+          <button type="button" title="Видалити огляд" onClick={()=>{const photos=s.rooms.reduce((a,r)=>a+r.photos.length,0);if(!confirm(`Видалити «${s.title||"Огляд"}» (${s.date}, кімнат ${s.rooms.length}, фото ${photos})? Це назавжди.`))return;onSave({...cur,surveys:(cur.surveys||[]).filter(x=>x.id!==s.id),updatedAt:new Date().toISOString()})}} style={{marginTop:9,width:44,borderRadius:14,background:"#fff0ee",color:"#b42318",fontSize:18}}>🗑</button>
+        </div>)}
       </section>
       <section className="total">
         <div><span>Оцінено (естімейти)</span><span>{money(h.quoted)}</span></div>

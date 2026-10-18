@@ -2,7 +2,7 @@
 import {useMemo,useRef} from "react";
 import * as THREE from "three";
 import {Canvas,useFrame,useThree} from "@react-three/fiber";
-import {OrbitControls,Html,useGLTF,Line,Edges} from "@react-three/drei";
+import {OrbitControls,Html,useGLTF,Line,Edges,ContactShadows} from "@react-three/drei";
 import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
@@ -13,7 +13,7 @@ export type ExportFn=(fmt:ExportFmt)=>Promise<Blob>;
 // 3D кімната: стіни з прорізами, підлога з плиткою, сантехніка з простих форм. Одиниці — фути (дюйми/12).
 const IN=1/12;
 const T=4; // товщина стіни, дюйми
-const WALL_COLOR="#f4f1ea",FLOOR_COLOR="#e8e4dc",PORC="#fbfbfd",CHROME="#b8c0cc",WOOD="#c9a77c",GLASS="#cfe3ff";
+const WALL_COLOR="#efe9df",FLOOR_COLOR="#e8e4dc",PORC="#fbfbfd",CHROME="#b8c0cc",WOOD="#c9a77c",GLASS="#cfe3ff";
 
 function Wall({a,b,H,segs,camRef,color}:{a:V;b:V;H:number;segs:WallSeg[];camRef:React.MutableRefObject<THREE.Vector3>;color?:string}){
   const len=Math.hypot(b[0]-a[0],b[1]-a[1]);
@@ -36,8 +36,8 @@ function Wall({a,b,H,segs,camRef,color}:{a:V;b:V;H:number;segs:WallSeg[];camRef:
   return <group ref={grp} position={[a[0]*IN,0,a[1]*IN]} rotation={[0,-ang,0]}>
     {pieces.map((p,i)=><mesh key={i} position={[(p.x0+p.x1)/2*IN,(p.z0+p.z1)/2*IN,-T/2*IN]} castShadow receiveShadow>
       <boxGeometry args={[(p.x1-p.x0)*IN,(p.z1-p.z0)*IN,T*IN]}/>
-      <meshStandardMaterial color={color||WALL_COLOR} roughness={0.9}/>
-      <Edges color="#5b6475" lineWidth={1} threshold={15}/>
+      <meshStandardMaterial color={color||WALL_COLOR} roughness={0.95}/>
+      <Edges color="#4b5563" lineWidth={1} threshold={15}/>
     </mesh>)}
     {ops.map((o,i)=>o.door?<mesh key={"d"+i} position={[(o.s0+o.s1)/2*IN,o.z1/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,o.z1*IN,1*IN]}/><meshStandardMaterial color="#d9cbb3" transparent opacity={0.35}/></mesh>
       :<mesh key={"w"+i} position={[(o.s0+o.s1)/2*IN,(o.z0+o.z1)/2*IN,-T/2*IN]}><boxGeometry args={[(o.s1-o.s0)*IN,(o.z1-o.z0)*IN,0.5*IN]}/><meshStandardMaterial color={GLASS} transparent opacity={0.35}/></mesh>)}
@@ -129,7 +129,7 @@ function TowelBar({w,y,ring}:{w:number;y:number;ring:boolean}){
     {[1.5,w-1.5].map((x,i)=><mesh key={i} position={[x*IN,(y+1)*IN,1.2*IN]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.4*IN,0.4*IN,2.5*IN,10]}/><meshStandardMaterial color={CHROME} metalness={0.8} roughness={0.3}/></mesh>)}</group>;
 }
 function Box({w,d,h,color}:{w:number;d:number;h:number;color:string}){
-  return <mesh position={[w/2*IN,h/2*IN,d/2*IN]}><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color}/></mesh>;
+  return <mesh position={[w/2*IN,h/2*IN,d/2*IN]} castShadow receiveShadow><boxGeometry args={[w*IN,h*IN,d*IN]}/><meshStandardMaterial color={color} roughness={0.7}/><Edges color="#6b7280" lineWidth={1}/></mesh>;
 }
 // Готові моделі (Kenney Furniture Kit, CC0, /public/models) — варіанти в lib/survey FIXTURE_MODELS. Вписуються в габарит w×h×d, перед — у кімнату.
 function GlbFixture({f,H,tint}:{f:FixBox;H:number;tint?:string}){
@@ -177,7 +177,7 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
     case "light":return <Flat w={f.w} d={f.d} H={H} light/>;
     case "heater":return <Box w={f.w} d={f.d} h={24} color="#e5e7eb"/>;
     case "cabinet":return <Box w={f.w} d={f.d} h={Math.min(84,H-2)} color={WOOD}/>;
-    default:return <Box w={f.w} d={f.d} h={30} color="#e5e7eb"/>;
+    default:return <Box w={f.w} d={f.d} h={f.label&&/ліжко|bed/i.test(f.label)?24:f.label&&/стіл|table/i.test(f.label)?30:f.label&&/стілець|chair/i.test(f.label)?34:f.label&&/холод|refrig/i.test(f.label)?68:36} color={f.label&&/ліжко|bed/i.test(f.label)?"#d7dce6":f.label&&/холод|плит|духов|посудом|refrig|stove|oven|dish/i.test(f.label)?"#d9dde3":"#c9a77c"}/>;
   }})();
   // локальне z у кімнату = −nrm; у three локальна вісь z після повороту на -ang вказує... будуємо явно: x→dir, z→(−nrm)
   const nx=-geom.nrm[f.k][0],ny=-geom.nrm[f.k][1];
@@ -201,7 +201,7 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
     const buf=await new GLTFExporter().parseAsync(src,{binary:true}) as ArrayBuffer;return new Blob([buf],{type:"model/gltf-binary"});
   };return()=>{if(exportRef)exportRef.current=null}},[exportRef,scene]);
   useFrame(()=>{camRef.current.copy(camera.position)});
-  const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;
+  const pts=g?.pts||[],H=g?.H||96,L=g?.L||0,W=g?.W||0;const diag=Math.hypot(L,W,H)*IN;
   const shape=useMemo(()=>{const s=new THREE.Shape();pts.forEach((p,i)=>{if(i===0)s.moveTo(p[0]*IN,p[1]*IN);else s.lineTo(p[0]*IN,p[1]*IN)});s.closePath();return s},[pts]);
   const tile=room.floorTile;
   // кольори з фото робимо світлішими (змішуємо з білим), інакше кімната виглядає сірою
@@ -209,18 +209,35 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRe
   const look={wall:lighten(room.look?.wall),floor:lighten(room.look?.floor,0.35),vanity:room.look?.vanity};
   // плитка: текстура з однієї плитки, повторюється за розміром (ShapeGeometry має UV у світових одиницях)
   const tex=useMemo(()=>{
-    if(!tile||tile.w<=0||tile.h<=0)return null;
-    const c=document.createElement("canvas");const S=128;c.width=S;c.height=Math.max(8,Math.round(S*tile.h/tile.w));
-    const ctx=c.getContext("2d")!;ctx.fillStyle=look?.floor||"#ebe7df";ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle="rgba(0,0,0,.28)";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
-    const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/(tile.w*IN),1/(tile.h*IN));t.anisotropy=4;return t;
+    const c=document.createElement("canvas");
+    const noise=(ctx:CanvasRenderingContext2D,w:number,h:number,a:number)=>{for(let i=0;i<w*h/6;i++){ctx.fillStyle=`rgba(0,0,0,${Math.random()*a})`;ctx.fillRect(Math.random()*w,Math.random()*h,2,2)}};
+    let tw:number,th:number;
+    if(tile&&tile.w>0&&tile.h>0){
+      const S=256;c.width=S;c.height=Math.max(16,Math.round(S*tile.h/tile.w));const ctx=c.getContext("2d")!;
+      ctx.fillStyle=look?.floor||"#e6e1d8";ctx.fillRect(0,0,c.width,c.height);noise(ctx,c.width,c.height,0.06);
+      ctx.strokeStyle="rgba(60,55,50,.45)";ctx.lineWidth=4;ctx.strokeRect(2,2,c.width-4,c.height-4);
+      tw=tile.w;th=tile.h;
+    }else{
+      // дошки 6"×48": світле дерево з волокнами
+      const S=256;c.width=S;c.height=S*8;const ctx=c.getContext("2d")!;
+      const base=look?.floor||"#d9c4a3";ctx.fillStyle=base;ctx.fillRect(0,0,c.width,c.height);
+      for(let i=0;i<60;i++){ctx.strokeStyle=`rgba(90,60,30,${0.05+Math.random()*0.08})`;ctx.lineWidth=1+Math.random()*2;ctx.beginPath();const x=Math.random()*S;ctx.moveTo(x,0);ctx.bezierCurveTo(x+20,c.height/3,x-20,c.height*2/3,x+Math.random()*30-15,c.height);ctx.stroke()}
+      ctx.strokeStyle="rgba(50,35,20,.5)";ctx.lineWidth=3;ctx.strokeRect(1.5,1.5,c.width-3,c.height-3);
+      tw=6;th=48;
+    }
+    const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1/(tw*IN),1/(th*IN));t.anisotropy=8;t.colorSpace=THREE.SRGBColorSpace;return t;
   },[tile,look?.floor]);
   if(!g)return null;
   return <>
-    <ambientLight intensity={1.4}/>
-    <hemisphereLight args={["#ffffff","#d8d2c8",0.9]}/>
-    <directionalLight position={[L*IN,H*IN*2,W*IN*1.5]} intensity={1.8} castShadow/>
-    <directionalLight position={[-L*IN,H*IN*1.5,-W*IN]} intensity={0.7}/>
-    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={look?.floor||FLOOR_COLOR} side={THREE.DoubleSide}/>}<Edges color="#5b6475" lineWidth={1.2}/></mesh>
+    <ambientLight intensity={0.45}/>
+    <hemisphereLight args={["#ffffff","#b9ad9c",0.7]}/>
+    <directionalLight position={[L*IN*0.8,H*IN*2.2,W*IN*1.6]} intensity={2.2} castShadow shadow-mapSize={[2048,2048]} shadow-bias={-0.0004} shadow-camera-left={-diag} shadow-camera-right={diag} shadow-camera-top={diag} shadow-camera-bottom={-diag} shadow-camera-near={0.1} shadow-camera-far={diag*6}/>
+    <directionalLight position={[-L*IN,H*IN*1.2,-W*IN*0.5]} intensity={0.6}/>
+    <pointLight position={[L/2*IN,(H-6)*IN,W/2*IN]} intensity={2.5} distance={diag*2} decay={1.6} color="#fff4df"/>
+    <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/><meshStandardMaterial map={tex} roughness={0.75} side={THREE.DoubleSide}/><Edges color="#5b6475" lineWidth={1.2}/></mesh>
+    <ContactShadows position={[L/2*IN,0.02,W/2*IN]} scale={diag*1.2} blur={2.2} opacity={0.45} far={H*IN} resolution={512} frames={1}/>
+    {/* плінтус по периметру */}
+    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
     {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
     {dims>0&&<Dims g={g} level={dims}/>}
