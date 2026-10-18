@@ -17,8 +17,11 @@ struct RootView: View {
                     } else if s.token != nil {
                         Button(s.sending ? "Відправляю…" : "📤 Відправити в QuoteCraft") { s.send() }
                             .buttonStyle(.borderedProminent).disabled(s.sending)
+                    } else if s.paired {
+                        Text("Скан готовий. У QuoteCraft натисни «📡 Сканувати LiDAR» у потрібній кімнаті, потім:").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button(s.checking ? "…" : "🔄 Перевірити і відправити") { s.checkPending() }.buttonStyle(.borderedProminent).disabled(s.checking)
                     } else {
-                        Text("Скан готовий. Введи код з QuoteCraft — відправиться сам.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Text("Скан готовий. Введи код з QuoteCraft (один раз) — відправиться сам.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         CodeEntry()
                     }
                     Button("🔄 Сканувати ще раз") { s.payload = nil; s.sent = false; scanning = true }
@@ -28,16 +31,26 @@ struct RootView: View {
                     Text("Повільно обійди кімнату, тримаючи телефон перед собою; наведи на кожну стіну, двері, вікна і сантехніку. Коли контур замкнеться — натисни «Готово».")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
                     Button("▶︎ Почати сканування") { scanning = true }.buttonStyle(.borderedProminent).controlSize(.large)
-                    if s.token == nil { CodeEntry() } else { Text("🔗 Прив'язано до кімнати в QuoteCraft").font(.footnote).foregroundStyle(.green) }
+                    if s.token != nil {
+                        Text("🔗 Прив'язано до кімнати в QuoteCraft").font(.footnote).foregroundStyle(.green)
+                    } else if s.paired {
+                        Button(s.checking ? "…" : "🔄 Перевірити, чи QuoteCraft чекає скан") { s.checkPending() }.buttonStyle(.bordered).disabled(s.checking)
+                    } else {
+                        CodeEntry()
+                    }
                 }
                 if !s.status.isEmpty { Text(s.status).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
             }
             .padding()
             .navigationTitle("QuoteCraft Scan")
+            .onAppear { if s.paired && s.token == nil { s.checkPending(quiet: true) } }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in if s.paired && s.token == nil && !s.sent { s.checkPending(quiet: true) } }
             .fullScreenCover(isPresented: $scanning) {
                 ScanScreen { room in
                     s.payload = room.map(RoomJSON.build)
                     scanning = false
+                    if s.payload != nil && s.token != nil { s.send() }
+                    else if s.payload != nil && s.paired { s.checkPending(quiet: true) }
                 }
             }
         }
@@ -61,17 +74,16 @@ struct Summary: View {
     }
 }
 
-
-// Поле для 6-значного коду з QuoteCraft («📡 Сканувати LiDAR» показує код у кімнаті огляду).
+// Одноразова прив'язка: код з QuoteCraft («📡 Сканувати LiDAR» показує код у кімнаті огляду).
 struct CodeEntry: View {
     @EnvironmentObject var s: ScanSession
     var body: some View {
         VStack(spacing: 8) {
-            Text("Код з QuoteCraft").font(.footnote).foregroundStyle(.secondary)
+            Text("Один раз: код з QuoteCraft, щоб прив'язати цей iPhone").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack {
                 TextField("123 456", text: $s.pin).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
                     .font(.title3.monospacedDigit()).frame(maxWidth: 160).multilineTextAlignment(.center)
-                Button(s.claiming ? "…" : "Підключити") { s.claim() }.buttonStyle(.bordered).disabled(s.claiming)
+                Button(s.claiming ? "…" : "Прив'язати") { s.claim() }.buttonStyle(.bordered).disabled(s.claiming)
             }
             Text("У QuoteCraft: кімната огляду → «📡 Сканувати LiDAR» → там буде код.").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }

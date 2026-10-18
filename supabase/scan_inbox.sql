@@ -21,3 +21,14 @@ create policy "scan_inbox delete own" on public.scan_inbox for delete using (aut
 -- v2: 6-значний код для ручного вводу в додатку (перехід на quotecraftscan:// з домашнього веб-додатка iOS ламає сторінку)
 alter table public.scan_inbox add column if not exists pin text;
 create index if not exists scan_inbox_pin_idx on public.scan_inbox(pin);
+-- v3: прив'язані iPhone (один раз код → ключ пристрою; далі додаток сам бере останню заявку користувача)
+create table if not exists public.scan_devices (
+  key text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text,
+  created_at timestamptz not null default now(),
+  last_seen timestamptz
+);
+create index if not exists scan_devices_user_idx on public.scan_devices(user_id);
+alter table public.scan_devices enable row level security;
+-- доступ тільки через service role (API); користувачу прямий доступ не потрібен

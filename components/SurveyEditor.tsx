@@ -309,9 +309,9 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           {scanMsg&&<span className="muted" style={{fontSize:12,alignSelf:"center",color:/Скан:|Увійди/.test(scanMsg)?"#b42318":undefined}}>{scanMsg}</span>}
           {scanWait?.rid===r.id&&<div style={{flexBasis:"100%",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:13,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:12,padding:"8px 10px"}}>
             <div style={{flex:1,minWidth:200}}>
-              <div>Відкрий на iPhone додаток <b>QuoteCraft Scan</b> і введи код:</div>
-              <div style={{fontSize:30,fontWeight:900,letterSpacing:6,color:"#1d4ed8",margin:"4px 0"}}>{scanWait.pin.slice(0,3)} {scanWait.pin.slice(3)}</div>
-              <div className="muted" style={{fontSize:12}}>⏳ Чекаю скан… код діє 20 хв. Після «Відправити» повернись сюди.</div>
+              <div>Відкрий на iPhone <b>QuoteCraft Scan</b> — він сам побачить цю кімнату. Скануй → «Відправити» → повернись сюди.</div>
+              <div className="muted" style={{fontSize:12,marginTop:4}}>Перший раз (прив'язка iPhone) — введи там код: <b style={{fontSize:18,letterSpacing:3,color:"#1d4ed8"}}>{scanWait.pin.slice(0,3)} {scanWait.pin.slice(3)}</b></div>
+              <div className="muted" style={{fontSize:12}}>⏳ Чекаю скан… заявка діє 20 хв.</div>
             </div>
             <button type="button" onClick={stopScanWait} style={{background:"transparent",color:"#b42318",fontWeight:700}}>скасувати</button>
           </div>}
