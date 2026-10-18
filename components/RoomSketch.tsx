@@ -87,7 +87,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   const lbl=(kk:number)=>{const m=mid(kk);const edge=kk===0?minY:kk===1?maxX:kk===2?maxY:minX;const o:V=kk%2?[edge,m[1]]:[m[0],edge];const oo=add(o,nrm[kk],14/k);return {x:X(oo[0]),y:Y(oo[1]),rot:kk%2?90*(kk===1?1:-1):0}};
   const areas=roomAreas(room);
   const [view,setView]=useState<"2d"|"3d">("2d");
-  const [dims,setDims]=useState(true);
+  const [dims,setDims]=useState(1); // 0 вимк · 1 основні · 2 всі
   const [full,setFull]=useState(false);
   const exportRow=exp&&view==="3d"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,fontSize:12,alignItems:"center"}}>
     <button type="button" onClick={()=>download("obj")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ OBJ — SketchUp</button>
@@ -148,7 +148,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   </svg>;
   return <div style={{marginTop:10}}>
     <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
-      <button type="button" onClick={()=>setDims(d=>!d)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 Розміри</button>
+      <button type="button" onClick={()=>setDims(d=>(d+1)%3)} title="вимкнено → основні → усі" style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"Розміри: вимк":dims===1?"Основні":"Усі"}</button>
       {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
       {view==="3d"&&<button type="button" onClick={()=>setExp(e=>!e)} title="Експорт 3D" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:exp?"#344054":"#eef2f7",color:exp?"#fff":"#344054"}}>⬇ 3D</button>}
       <button type="button" onClick={()=>setFull(f=>!f)} title="На весь екран" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:full?"#344054":"#eef2f7",color:full?"#fff":"#344054"}}>{full?"✕":"⛶"}</button></div>
@@ -167,8 +167,8 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         {s.door&&(()=>{const w=Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]);const inward=s.swing==="in"?-1:1;const hingeAt=s.hinge==="left"?s.p:s.q;const free=s.hinge==="left"?s.q:s.p;const e=add(hingeAt,nrm[s.k],inward*w);const sweep=(s.hinge==="left")!==(s.swing==="in")?0:1;return <g><line x1={X(hingeAt[0])} y1={Y(hingeAt[1])} x2={X(e[0])} y2={Y(e[1])} stroke="#2f6df6" strokeWidth={1.5}/><path d={`M${X(free[0])},${Y(free[1])} A${w*k},${w*k} 0 0 ${sweep} ${X(e[0])},${Y(e[1])}`} fill="none" stroke="#2f6df6" strokeWidth={1}/></g>})()}
       </g>)}
       {dims&&segs.map((sg,i)=>{const w=Math.hypot(sg.q[0]-sg.p[0],sg.q[1]-sg.p[1]);const off=Math.hypot(sg.p[0]-corner[sg.k][0],sg.p[1]-corner[sg.k][1]);const m=add(add(sg.p,dir[sg.k],w/2),nrm[sg.k],-9/k);const o=add(add(corner[sg.k],dir[sg.k],off/2),nrm[sg.k],-9/k);
-        return <g key={"dm"+i} fontSize={9} fill="#1d4ed8"><text x={X(m[0])} y={Y(m[1])} textAnchor="middle" dominantBaseline="middle">{f(w)}</text>{off>6&&<text x={X(o[0])} y={Y(o[1])} textAnchor="middle" dominantBaseline="middle" fill="#98a2b3">{f(off)}</text>}</g>})}
-      {dims&&(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);const c=add(add(p0,dir[kk],w/2),nrm[kk],-(d+7/k));
+        return <g key={"dm"+i} fontSize={9} fill="#1d4ed8"><text x={X(m[0])} y={Y(m[1])} textAnchor="middle" dominantBaseline="middle">{f(w)}</text>{off>6&&segs.filter(x=>x.k===sg.k).length<=2&&<text x={X(o[0])} y={Y(o[1])} textAnchor="middle" dominantBaseline="middle" fill="#98a2b3">{f(off)}</text>}</g>})}
+      {dims>=2&&(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(corner[kk],dir[kk],start);const c=add(add(p0,dir[kk],w/2),nrm[kk],-(d+7/k));
         return <text key={"fd"+fx.id} x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill="#475467">{f(w)} × {f(d)}</text>})}
       {[0,1,2,3].map(kk=>{const l=lbl(kk);return <text key={kk} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight={700} fill="#344054" transform={l.rot?`rotate(${l.rot} ${l.x} ${l.y})`:undefined}>{WALLS[kk]} · {f(len[kk])}</text>})}
       {parts.map((p,i)=>{if(p.kind!=="cut")return null;const kk=["AB","BC","CD","DA"].indexOf(p.wall);if(kk<0)return null;const c=add(add(corner[(kk+1)%4],dir[kk],-p.a/2),dir[(kk+1)%4],p.d/2);return <text key={"c"+i} x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={10} fill="#98a2b3">{f(p.a)}×{f(p.d)}</text>})}
@@ -181,7 +181,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
       <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
         <b style={{fontSize:15}}>{room.name||"Кімната"}</b>
         {(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
-        <button type="button" onClick={()=>setDims(d=>!d)} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏</button>
+        <button type="button" onClick={()=>setDims(d=>(d+1)%3)} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"вимк":dims===1?"основні":"усі"}</button>
         {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const png=captureRef.current?.();if(png)onRender(png);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
         <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕</button>
       </div>

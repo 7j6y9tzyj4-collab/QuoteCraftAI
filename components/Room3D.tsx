@@ -2,7 +2,7 @@
 import {useMemo,useRef} from "react";
 import * as THREE from "three";
 import {Canvas,useFrame,useThree} from "@react-three/fiber";
-import {OrbitControls,Html,useGLTF} from "@react-three/drei";
+import {OrbitControls,Html,useGLTF,Line} from "@react-three/drei";
 import {Suspense,useEffect,useState} from "react";
 import {fmtInches,fixtureModel} from "@/lib/survey";
 import type {Room} from "@/lib/survey";
@@ -185,7 +185,7 @@ function Fixture({f,H,geom,look}:{f:FixBox;H:number;geom:NonNullable<ReturnType<
   return <group matrixAutoUpdate={false} matrix={m}>{inner}</group>;
 }
 
-function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:boolean;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
+function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:number;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
   const g=useMemo(()=>roomGeom(room),[room]);
   const camRef=useRef(new THREE.Vector3());
   const {camera,gl,scene}=useThree();
@@ -219,24 +219,51 @@ function Scene({room,dims,captureRef,exportRef}:{room:Room;dims:boolean;captureR
     <mesh rotation={[Math.PI/2,0,0]} receiveShadow><shapeGeometry args={[shape]}/>{tex?<meshStandardMaterial map={tex} side={THREE.DoubleSide}/>:<meshStandardMaterial color={look?.floor||FLOOR_COLOR} side={THREE.DoubleSide}/>}</mesh>
     {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
     {g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look}/>)}
-    {dims&&<Dims g={g}/>}
+    {dims>0&&<Dims g={g} level={dims}/>}
     <OrbitControls target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>
   </>;
 }
 
 const Tag=({p,text,color="#1d4ed8"}:{p:[number,number,number];text:string;color?:string})=><Html position={p} center zIndexRange={[10,0]} occlude={false} style={{pointerEvents:"none"}}><div style={{background:"rgba(255,255,255,.92)",border:`1px solid ${color}`,color,borderRadius:6,padding:"1px 5px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{text}</div></Html>;
-function Dims({g}:{g:NonNullable<ReturnType<typeof roomGeom>>}){
-  const {pts,H}=g;
+// Розмірна лінія як на кресленні: виносні лінії від країв, лінія зі стрілками, підпис посередині. Координати — дюйми (x, y вгору, z).
+function DimLine({a,b,off,up,text,color="#1d4ed8"}:{a:[number,number,number];b:[number,number,number];off:[number,number,number];up?:boolean;text:string;color?:string}){
+  const A=new THREE.Vector3(...a).multiplyScalar(IN),B=new THREE.Vector3(...b).multiplyScalar(IN),O=new THREE.Vector3(...off).multiplyScalar(IN);
+  const P=A.clone().add(O),Q=B.clone().add(O);const ext=O.clone().normalize().multiplyScalar(3*IN);
+  const dir=Q.clone().sub(P);const L=dir.length();if(L<1e-4)return null;dir.normalize();
+  const mid=P.clone().add(Q).multiplyScalar(0.5);
+  const arrow=(tip:THREE.Vector3,d:THREE.Vector3)=>{const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d);return <mesh position={tip.clone().sub(d.clone().multiplyScalar(2*IN))} quaternion={q}><coneGeometry args={[0.9*IN,4*IN,8]}/><meshBasicMaterial color={color}/></mesh>};
+  return <group>
+    <Line points={[A,P.clone().add(ext)]} color={color} lineWidth={1} opacity={0.6} transparent/>
+    <Line points={[B,Q.clone().add(ext)]} color={color} lineWidth={1} opacity={0.6} transparent/>
+    <Line points={[P,Q]} color={color} lineWidth={1.5}/>
+    {arrow(P,dir.clone().negate())}{arrow(Q,dir)}
+    <Html position={mid.clone().add(up?new THREE.Vector3(0,4*IN,0):O.clone().normalize().multiplyScalar(4*IN))} center zIndexRange={[10,0]} style={{pointerEvents:"none"}}><div style={{background:"rgba(255,255,255,.95)",border:`1.5px solid ${color}`,color,borderRadius:6,padding:"1px 6px",fontSize:12,fontWeight:800,whiteSpace:"nowrap"}}>{text}</div></Html>
+  </group>;
+}
+// level 1 — стіни, висота, прорізи; level 2 — плюс сантехніка/меблі
+function Dims({g,level}:{g:NonNullable<ReturnType<typeof roomGeom>>;level:number}){
+  const {pts,H}=g;const n=pts.length;
+  // зовнішня нормаль ребра (обхід за годинниковою у площині x/z з y вгору → нормаль вправо від напрямку)
+  const outward=(a:V,b:V):V=>{const dx=b[0]-a[0],dz=b[1]-a[1];const l=Math.hypot(dx,dz)||1;return [dz/l,-dx/l]};
+  const dimOff=14; // відступ розмірної лінії від стіни, дюйми
   return <>
-    {pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<12)return null;return <Tag key={"w"+i} p={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} text={fmtInches(l)}/>})}
-    <Tag p={[pts[0][0]*IN,H/2*IN,pts[0][1]*IN]} text={"↕ "+fmtInches(H)} color="#067647"/>
-    {g.segs.filter((s,i,arr)=>arr.findIndex(x=>Math.abs(x.p[0]-s.p[0])<1&&Math.abs(x.p[1]-s.p[1])<1&&Math.abs(x.z0-s.z0)<1)===i).map((s,i)=><Tag key={"o"+i} p={[(s.p[0]+s.q[0])/2*IN,(s.z0+s.z1)/2*IN,(s.p[1]+s.q[1])/2*IN]} text={`${fmtInches(Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]))} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>)}
-    {g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(fixTop(f,H)+3)*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
+    {pts.map((a,i)=>{const b=pts[(i+1)%n];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<12)return null;const nn=outward(a,b);
+      return <DimLine key={"w"+i} a={[a[0],0.5,a[1]]} b={[b[0],0.5,b[1]]} off={[nn[0]*dimOff,0,nn[1]*dimOff]} text={fmtInches(l)}/>})}
+    {/* висота: вертикальна лінійка у двох протилежних кутах, винесена назовні по діагоналі */}
+    {[0,Math.floor(n/2)].map(ci=>{const c=pts[ci];const prev=pts[(ci+n-1)%n],next=pts[(ci+1)%n];const n1=outward(prev,c),n2=outward(c,next);const d:V=[n1[0]+n2[0],n1[1]+n2[1]];const dl=Math.hypot(d[0],d[1])||1;
+      return <DimLine key={"h"+ci} a={[c[0],0,c[1]]} b={[c[0],H,c[1]]} off={[d[0]/dl*dimOff,0,d[1]/dl*dimOff]} text={"H "+fmtInches(H)} color="#067647"/>})}
+    {/* прорізи: ширина над прорізом (лінія на висоті верху + 6"), всередині кімнати */}
+    {g.segs.filter((s,i,arr)=>arr.findIndex(x=>Math.abs(x.p[0]-s.p[0])<1&&Math.abs(x.p[1]-s.p[1])<1&&Math.abs(x.z0-s.z0)<1)===i).map((s,i)=>{const nn=g.nrm[s.k];const w=Math.hypot(s.q[0]-s.p[0],s.q[1]-s.p[1]);
+      return <group key={"o"+i}>
+        <DimLine a={[s.p[0],s.z1,s.p[1]]} b={[s.q[0],s.z1,s.q[1]]} off={[-nn[0]*2,6,-nn[1]*2]} up text={`${s.door?"Двері":"Вікно"} ${fmtInches(w)} × ${fmtInches(s.z1-s.z0)}`} color="#7a5af8"/>
+      </group>})}
+    {level>=2&&g.fixtures.map(f=><Tag key={"f"+f.id} p={[(f.p0[0]+f.p2[0])/2*IN,(fixTop(f,H)+3)*IN,(f.p0[1]+f.p2[1])/2*IN]} text={`${f.label||FIX_NAME[f.type]||f.type} ${fmtInches(f.w)} × ${fmtInches(f.d)}`} color="#475467"/>)}
   </>;
 }
+const FIX_NAME:Record<string,string>={toilet:"Унітаз",vanity:"Тумба",sink:"Раковина",tub:"Ванна",shower:"Душ",washer:"Пральна",dryer:"Сушка",fan:"Вентилятор",light:"Світло",heater:"Радіатор",cabinet:"Шафа",mirror:"Дзеркало",vanityLight:"Світло",towelBar:"Рушники",other:""};
 function fixTop(f:FixBox,H:number){const m=fixtureModel(f.type,f.model);if(!m)return FIX_H3[f.type]||30;return m.ceiling?H-12:(m.y||0)+m.h}
 const FIX_H3:Record<string,number>={toilet:30,vanity:36,sink:34,tub:20,shower:82,washer:36,dryer:36,fan:90,light:90,heater:24,cabinet:84,other:30};
-export default function Room3D({room,dims=true,height=340,captureRef,exportRef}:{room:Room;dims?:boolean;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
+export default function Room3D({room,dims=1,height=340,captureRef,exportRef}:{room:Room;dims?:number;height?:number|string;captureRef?:React.MutableRefObject<(()=>string|null)|null>;exportRef?:React.MutableRefObject<ExportFn|null>}){
   const g=roomGeom(room);
   if(!g)return null;
   const diag=Math.hypot(g.L,g.W,g.H)*IN;
