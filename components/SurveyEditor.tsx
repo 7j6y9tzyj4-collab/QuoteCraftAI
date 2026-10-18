@@ -285,6 +285,14 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           <DimInput label="Ширина" value={r.width} onChange={v=>setRoom(r.id,{width:v})}/>
           <DimInput label="Висота" value={r.height} onChange={v=>setRoom(r.id,{height:v})}/>
         </div>
+        {(()=>{const v=[r.length,r.width,r.height].map(x=>parseInches(x)||0);if(!v.some(x=>x>0&&x<30))return null;
+          // розміри схожі на фути (8.58 замість 103") → план і 3D розвалюються, бо все рахується в дюймах
+          const ft=(x:string)=>{const n=parseInches(x);return n&&n<30?String(Math.round(n*12*2)/2):x};
+          return <div style={{marginTop:8,padding:"8px 10px",background:"#fffaeb",border:"1px solid #fedf89",borderRadius:12,fontSize:13}}>
+            ⚠️ Розміри схожі на <b>фути</b> ({r.length} × {r.width} × {r.height}), а програма рахує в <b>дюймах</b> — тому план і 3D розвалюються.
+            <button type="button" style={{display:"block",marginTop:6,padding:"6px 10px",borderRadius:10,fontWeight:800,background:"#f79009",color:"#fff"}}
+              onClick={()=>setRoom(r.id,{length:ft(r.length),width:ft(r.width),height:ft(r.height),parts:(r.parts||[]).map(p=>({...p,length:ft(p.length),depth:ft(p.depth)}))})}>Перевести фути → дюйми</button>
+          </div>})()}
         <details style={{marginTop:8}} open={!!r.parts?.length}>
           <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, виступ, вирізаний кут)</summary>
           <small className="muted">Головний прямокутник — вище. Тут додай ділянки: <b>ніша/виступ</b> — додається до підлоги й стін; <b>вирізаний кут</b> (Г-подібна кімната) — віднімається від підлоги.</small>
