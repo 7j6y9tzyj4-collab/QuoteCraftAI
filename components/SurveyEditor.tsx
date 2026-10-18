@@ -147,10 +147,27 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         supabase.from("scan_inbox").delete().eq("token",token).then(()=>{});
       }
     },3000);
-    // відкриваємо додаток (custom URL scheme). Якщо не відкрився сам — нижче є посилання «Відкрити QuoteCraft Scan».
+    // Відкриваємо додаток через клік по посиланню (працює і з домашнього веб-додатка). НЕ робимо window.location.href — у standalone-режимі це ламає сторінку («This page couldn't load»).
     try{const a=document.createElement("a");a.href=url;a.rel="noopener";document.body.appendChild(a);a.click();a.remove()}catch{}
-    setTimeout(()=>{try{window.location.href=url}catch{}},300);
   }
+  // Скани, що прийшли, поки сторінка була закрита/зламана: підбираємо при відкритті огляду
+  useEffect(()=>{
+    if(!user)return;let on=true;
+    (async()=>{
+      const {data}=await supabase.from("scan_inbox").select("token,room_id,payload").eq("survey_id",sRef.current.id).not("payload","is",null);
+      if(!on||!data?.length)return;
+      let rooms=sRef.current.rooms;const notes:string[]=[];
+      for(const row of data){
+        const cur=rooms.find(x=>x.id===row.room_id);
+        if(cur){try{const {note,...patch}=importScan(row.payload as ScanPayload,cur);rooms=rooms.map(x=>x.id===cur.id?{...x,...patch}:x);notes.push(note)}catch(e){notes.push("Скан: "+(e instanceof Error?e.message:String(e)))}}
+        supabase.from("scan_inbox").delete().eq("token",row.token).then(()=>{});
+      }
+      if(rooms!==sRef.current.rooms)save({rooms});
+      if(notes.length)setMsg("✅ "+notes.join(" · "));
+    })();
+    return()=>{on=false};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
   useEffect(()=>()=>{if(scanTimer.current)clearInterval(scanTimer.current)},[]);
   async function roomPhotosData(room:Room,max:number){
     const photos:string[]=[];
