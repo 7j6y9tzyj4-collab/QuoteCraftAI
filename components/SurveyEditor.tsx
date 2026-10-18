@@ -241,7 +241,8 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         const keep=sceneOnly?(cur.fixtures||[]).filter(f=>!f.fromPhoto):(cur.fixtures||[]);
         const have=new Set(keep.map(f=>f.type+"|"+(f.label||"")));
         const num=(v:unknown,lo:number,hi:number)=>{const n=Number(v);return Number.isFinite(n)&&n>=lo&&n<=hi?Math.round(n*2)/2:undefined};
-        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!have.has(f.type+"|"+(f.label||""))).map(f=>{const w=num(f.w,4,240)??FIXTURES[f.type].w;const dd=num(f.d,1,120)??FIXTURES[f.type].d;const h=num(f.h,1,110);const y=num(f.y,1,110);const off=num(f.off,1,200);
+        const tiny=(f:{type:string;label?:string;w?:number;d?:number;h?:number})=>f.type==="other"&&((Number(f.w)||99)<10&&(Number(f.h)||99)<10||/розетк|вимикач|outlet|switch/i.test(f.label||""));
+        const added:Fixture[]=seen.filter(f=>FIXTURES[f.type]&&!tiny(f)&&!have.has(f.type+"|"+(f.label||""))).map(f=>{const w=num(f.w,4,240)??FIXTURES[f.type].w;const dd=num(f.d,1,120)??FIXTURES[f.type].d;const h=num(f.h,1,110);const y=num(f.y,1,110);const off=num(f.off,1,200);
           return {id:crypto.randomUUID(),type:f.type,wall:/^[ABCD]$/.test(f.wall)?f.wall:"A",t:Math.max(0,Math.min(1,Number(f.t)||0.5)),w,d:dd,fromPhoto:true,...(f.type==="other"&&f.label?{label:String(f.label).slice(0,30)}:{}),...(h?{h}:{}),...(y?{y}:{}),...(off?{off}:{}),...(f.style&&FIXTURE_MODELS[f.type]?.some(v=>v.id===f.style)?{model:f.style}:{})}});
         const tile=d.floorTile&&Number(d.floorTile.w)>0&&Number(d.floorTile.h)>0?{w:Number(d.floorTile.w),h:Number(d.floorTile.h)}:cur.floorTile||null;
         const hex=(v:unknown)=>typeof v==="string"&&/^#[0-9a-fA-F]{6}$/.test(v)?v:undefined;
