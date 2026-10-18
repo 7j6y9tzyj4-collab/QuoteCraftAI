@@ -1,12 +1,12 @@
 // Огляд об'єкта: кімнати з розмірами в дюймах (з дробами), фото, нотатки, AI-план робіт.
 export type Opening={id:string;name:string;w:string;h:string;count:number;/** стіна A/B/C/D на ескізі */wall?:string;/** двері: всередину/назовні */swing?:"in"|"out";/** петлі: ліворуч/праворуч (дивлячись з кімнати) */hinge?:"left"|"right";/** положення на стіні 0..1 */t?:number};
 /** сантехніка й обладнання на плані */
-export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean;/** варіант 3D-моделі (див. FIXTURE_MODELS) */model?:string;/** висота предмета, дюйми (зі скану) */h?:number;/** низ над підлогою, дюйми (навісні: ТВ, шафки) */y?:number;/** відступ від стіни в кімнату, дюйми (окремостоячі: диван посеред кімнати, килим) */off?:number};
+export type Fixture={id:string;type:string;wall:string;/** 0..1 вздовж стіни */t:number;w:number;d:number;label?:string;fromPhoto?:boolean;/** зі LiDAR-скану (точне положення) */fromScan?:boolean;/** варіант 3D-моделі (див. FIXTURE_MODELS) */model?:string;/** висота предмета, дюйми (зі скану) */h?:number;/** низ над підлогою, дюйми (навісні: ТВ, шафки) */y?:number;/** відступ від стіни в кімнату, дюйми (окремостоячі: диван посеред кімнати, килим) */off?:number};
 export const FIXTURES:Record<string,{name:string;w:number;d:number}>={
   toilet:{name:"Унітаз",w:20,d:28},vanity:{name:"Умивальник / тумба",w:30,d:21},sink:{name:"Раковина",w:20,d:18},tub:{name:"Ванна",w:60,d:30},shower:{name:"Душ",w:36,d:36},
   washer:{name:"Пральна",w:27,d:30},dryer:{name:"Сушка",w:27,d:30},fan:{name:"Вентилятор",w:12,d:12},light:{name:"Світильник",w:10,d:10},heater:{name:"Радіатор",w:24,d:6},cabinet:{name:"Шафа",w:36,d:24},mirror:{name:"Дзеркало",w:24,d:2},vanityLight:{name:"Світло над дзеркалом",w:30,d:5},towelBar:{name:"Тримач рушників",w:24,d:3},other:{name:"Інше",w:24,d:24},
 };
-export type SurveyPhoto={id:string;path?:string;dataUrl?:string};
+export type SurveyPhoto={id:string;path?:string;dataUrl?:string;/** кадр зі сканера: на яку стіну дивився телефон (точно, з LiDAR) і звідки */view?:{facing:string;x:number;y:number;ang:number}};
 export type PlanTask={name:string;qty:number;unit:string;basis:string;note?:string};
 export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string;seen?:{type:string;wall:string;t:number;style?:string;note:string}[];floorTile?:{w:number;h:number}|null};
 /** додаткова ділянка нестандартної кімнати: ніша/виступ (додати) або вирізаний кут (відняти). depth — глибина від стіни */

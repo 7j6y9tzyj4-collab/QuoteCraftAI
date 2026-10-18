@@ -10,7 +10,7 @@ export async function POST(req:NextRequest){
     if(!/^[a-f0-9]{32}$/.test(token))return NextResponse.json({error:"bad token"},{status:400});
     const scan=b.scan;
     if(!scan||typeof scan!=="object"||!Array.isArray(scan.walls))return NextResponse.json({error:"bad scan"},{status:400});
-    if(JSON.stringify(scan).length>400000)return NextResponse.json({error:"scan too large"},{status:413});
+    if(JSON.stringify(scan).length>600000)return NextResponse.json({error:"scan too large"},{status:413});
     const {data:row,error}=await supabaseAdmin.from("scan_inbox").select("token,created_at,used_at").eq("token",token).maybeSingle();
     if(error)return NextResponse.json({error:error.message},{status:500});
     if(!row)return NextResponse.json({error:"Токен не знайдено. Натисни «Сканувати LiDAR» у QuoteCraft ще раз."},{status:404});

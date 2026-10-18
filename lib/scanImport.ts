@@ -1,9 +1,10 @@
 // Імпорт LiDAR-скану (Apple RoomPlan через додаток QuoteCraft Scan) у кімнату огляду.
 // Сирі дані в метрах, система ARKit (y вгору, план — площина x/z). Ми: дюйми, стіни A(верх) B(право) C(низ) D(ліво), обхід за годинниковою.
-import {DOOR,WINDOW,FIXTURES,type Room,type Opening,type Fixture} from "./survey";
+import {DOOR,WINDOW,FIXTURES,type Room,type Opening,type Fixture,type SurveyPhoto} from "./survey";
 
 export type ScanItem={id?:string;cx:number;cy:number;cz:number;yaw:number;w:number;h:number;d?:number;parent?:string;category?:string;confidence?:string};
-export type ScanPayload={walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
+export type ScanPhoto={path:string;cx:number;cz:number;yaw:number;pitch?:number};
+export type ScanPayload={photos?:ScanPhoto[];walls:ScanItem[];doors?:ScanItem[];windows?:ScanItem[];openings?:ScanItem[];objects?:ScanItem[];app?:string;at?:string};
 
 const M2IN=39.3701;
 const CAT:Record<string,{type:string;label?:string}>={
@@ -55,11 +56,24 @@ export function importScan(p:ScanPayload,prev:Room):Partial<Room>&{note:string}{
     const start=along(k,px,py)-w/2;const t=Math.max(0,Math.min(1,start/Math.max(1,len[k]-w)));
     // висота предмета і його низ над підлогою (cy — центр по вертикалі, підлога ≈ 0)
     const hIn=r1(o.h*M2IN);const bottom=r1((o.cy-o.h/2)*M2IN);
-    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(4,d),fromPhoto:true,...(m.label?{label:m.label}:{}),...(hIn>2?{h:hIn}:{}),...(bottom>4?{y:bottom}:{})});
+    fixtures.push({id:crypto.randomUUID(),type:m.type,wall:"ABCD"[k],t,w:Math.max(6,w),d:Math.max(4,d),fromScan:true,...(m.label?{label:m.label}:{}),...(hIn>2?{h:hIn}:{}),...(bottom>4?{y:bottom}:{})});
   }
-  const keep=(prev.fixtures||[]).filter(f=>!f.fromPhoto);
+  const keep=(prev.fixtures||[]).filter(f=>!f.fromPhoto&&!f.fromScan);
+  // кадри зі сканера: позиція камери і напрямок погляду → на яку стіну дивиться кадр
+  const photos:SurveyPhoto[]=[];
+  for(const ph of p.photos||[]){
+    if(!ph.path)continue;
+    const [rx,rz]=rot(ph.cx,ph.cz);const [px,py]=toRoom(rx,rz);
+    const a=ph.yaw+th;const dx=Math.cos(a),dy=Math.sin(a);
+    // промінь з камери до межі прямокутника: яку стіну перетне першою
+    const hits:[string,number][]=[];
+    if(dy<-1e-6)hits.push(["A",-py/dy]);if(dx>1e-6)hits.push(["B",(L-px)/dx]);if(dy>1e-6)hits.push(["C",(W-py)/dy]);if(dx<-1e-6)hits.push(["D",-px/dx]);
+    const facing=hits.filter(h=>h[1]>=0).sort((u,v)=>u[1]-v[1])[0]?.[0]||"A";
+    photos.push({id:crypto.randomUUID(),path:ph.path,view:{facing,x:Math.round(px),y:Math.round(py),ang:Math.round(a*180/Math.PI)}});
+  }
   const note=`Скан: ${Math.round(L)}"×${Math.round(W)}", стеля ${Math.round(Hin)}", стін ${walls.length}, прорізів ${openings.length}, об'єктів ${fixtures.length}`;
-  return {length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],note};
+  const oldPhotos=(prev.photos||[]).filter(x=>!x.view);
+  return {length:String(r1(L)),width:String(r1(W)),height:String(r1(Hin)||prev.height||"96"),openings:openings.length?openings:prev.openings,fixtures:[...keep,...fixtures],photos:[...photos,...oldPhotos],note:note+(photos.length?`, кадрів ${photos.length}`:"")};
 }
 // FIXTURES використовується для перевірки типів у майбутньому
 void FIXTURES;

@@ -24,7 +24,7 @@ struct RootView: View {
                         Text("Скан готовий. Введи код з QuoteCraft (один раз) — відправиться сам.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         CodeEntry()
                     }
-                    Button("🔄 Сканувати ще раз") { s.payload = nil; s.sent = false; scanning = true }
+                    Button("🔄 Сканувати ще раз") { s.payload = nil; s.shots = []; s.sent = false; scanning = true }
                 } else {
                     Image(systemName: "cube.transparent").font(.system(size: 64)).foregroundStyle(.blue)
                     Text("Сканування кімнати").font(.title2.bold())
@@ -46,8 +46,9 @@ struct RootView: View {
             .onAppear { if s.paired && s.token == nil { s.checkPending(quiet: true) } }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in if s.paired && s.token == nil && !s.sent { s.checkPending(quiet: true) } }
             .fullScreenCover(isPresented: $scanning) {
-                ScanScreen { room in
-                    s.payload = room.map(RoomJSON.build)
+                ScanScreen { room, shots in
+                    s.payload = room.map { var j = RoomJSON.build($0); j["_shots"] = shots.count; return j }
+                    s.shots = shots
                     scanning = false
                     if s.payload != nil && s.token != nil { s.send() }
                     else if s.payload != nil && s.paired { s.checkPending(quiet: true) }
@@ -67,6 +68,7 @@ struct Summary: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Результат скану").font(.headline)
             Text("Стін: \(walls.count) · Дверей: \(doors.count) · Вікон: \(windows.count)")
+            Text("Кадрів для AI: \((p["_shots"] as? Int) ?? 0)").font(.footnote).foregroundStyle(.secondary)
             Text("Об'єктів: \(objects.count)" + (objects.isEmpty ? "" : " — " + objects.compactMap { $0["category"] as? String }.joined(separator: ", ")))
             if let h = walls.compactMap({ $0["h"] as? Double }).max() { Text(String(format: "Висота стелі ≈ %.0f\"", h * 39.3701)) }
         }

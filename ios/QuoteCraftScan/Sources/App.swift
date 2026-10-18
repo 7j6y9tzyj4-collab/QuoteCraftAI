@@ -19,6 +19,7 @@ final class ScanSession: ObservableObject {
     @Published var api: String = UserDefaults.standard.string(forKey: "api") ?? "https://quotecraftai-app.vercel.app"
     @Published var status: String = ""
     @Published var payload: [String: Any]? = nil
+    var shots: [ScanShot] = []
     @Published var sending = false
     @Published var sent = false
     @Published var pin: String = ""
@@ -78,15 +79,31 @@ final class ScanSession: ObservableObject {
 
     func send() {
         guard let token, let payload, !sending else { return }
-        sending = true; status = "Відправляю…"
-        post("/api/scan-import", ["token": token, "scan": payload]) { code, json, err in
-            self.sending = false
-            if let err { self.status = "Помилка: " + err.localizedDescription; return }
-            if code == 200 { self.sent = true; self.token = nil; self.status = "✅ Відправлено в QuoteCraft. Повернись у браузер." }
-            else {
-                if code == 404 || code == 410 { self.token = nil }
-                self.status = "Помилка \(code): " + ((json?["error"] as? String) ?? "")
+        sending = true
+        uploadShots(token: token, i: 0, metas: []) { metas in
+            var body = payload; body["photos"] = metas
+            self.status = "Відправляю план…"
+            self.post("/api/scan-import", ["token": token, "scan": body]) { code, json, err in
+                self.sending = false
+                if let err { self.status = "Помилка: " + err.localizedDescription; return }
+                if code == 200 { self.sent = true; self.token = nil; self.status = "✅ Відправлено в QuoteCraft (кадрів \(metas.count)). Повернись у браузер." }
+                else {
+                    if code == 404 || code == 410 { self.token = nil }
+                    self.status = "Помилка \(code): " + ((json?["error"] as? String) ?? "")
+                }
             }
+        }
+    }
+
+    // Кадри по одному (кожен ~100 КБ) → шлях у сховищі + напрямок камери
+    private func uploadShots(token: String, i: Int, metas: [[String: Any]], done: @escaping ([[String: Any]]) -> Void) {
+        guard i < shots.count else { done(metas); return }
+        status = "Відправляю кадр \(i + 1)/\(shots.count)…"
+        let s = shots[i]
+        post("/api/scan-photo", ["token": token, "idx": i, "jpg": s.jpeg.base64EncodedString()]) { code, json, _ in
+            var m = metas
+            if code == 200, let path = json?["path"] as? String { m.append(["path": path, "cx": s.cx, "cz": s.cz, "yaw": s.yaw, "pitch": s.pitch]) }
+            self.uploadShots(token: token, i: i + 1, metas: m, done: done)
         }
     }
 }
