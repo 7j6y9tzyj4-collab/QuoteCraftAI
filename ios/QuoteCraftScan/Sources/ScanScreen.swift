@@ -26,7 +26,7 @@ struct ScanScreen: View {
         }
         .onAppear { ctl.start() }
         .onDisappear { ctl.timer?.invalidate() }
-        .onChange(of: ctl.resultTick) { _, _ in if let r = ctl.result { onFinish(r, ctl.shots, ctl.cloud.encoded()) } }
+        .onChange(of: ctl.resultTick) { _, _ in if let r = ctl.result { onFinish(r, ctl.shots, ctl.cloud.encoded(room: r)) } }
     }
 }
 
@@ -111,28 +111,64 @@ struct CaptureView: UIViewRepresentable {
 }
 
 
-/// Хмара точок кімнати: вокселі 2 см, колір з камери. Формат для QuoteCraft: "QCPC" + UInt32 n + n × (Int16 x,y,z у мм, UInt8 r,g,b), little-endian, координати ARKit.
+/// Хмара точок кімнати: вокселі 1 см, колір з камери. Формат для QuoteCraft: "QCPC" + UInt32 n + n × (Int16 x,y,z у мм, UInt8 r,g,b), little-endian, координати ARKit.
 final class PointCloud {
-    static let maxPoints = 330_000
+    static let maxPoints = 3_000_000   // у пам'яті під час скану
+    static let maxOut = 2_200_000      // у файлі (≈ 20 МБ)
     private let q = DispatchQueue(label: "pointcloud")
     private var keys = Set<Int64>()
     private var data = Data()
     private var count = 0
     private var busy = false
     func reset() { q.sync { keys.removeAll(); data = Data(); count = 0 } }
-    func encoded() -> Data? {
+    /// Файл для QuoteCraft: прибираємо точки стін, підлоги й стелі (їх малює сама кімната) — лишаються предмети; максимум maxOut точок.
+    func encoded(room: CapturedRoom?) -> Data? {
         q.sync { () -> Data? in
             guard count > 500 else { return nil }
+            var walls: [(simd_float4x4, simd_float3)] = []
+            var floorY: Float = -1000, topY: Float = 1000
+            if let room, !room.walls.isEmpty {
+                walls = room.walls.map { ($0.transform.inverse, $0.dimensions) }
+                floorY = room.walls.map { $0.transform.columns.3.y - $0.dimensions.y / 2 }.min() ?? -1000
+                topY = room.walls.map { $0.transform.columns.3.y + $0.dimensions.y / 2 }.max() ?? 1000
+            }
+            var keep = Data(); keep.reserveCapacity(min(count, Self.maxOut) * 9)
+            var n = 0
+            data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+                for i in 0..<count {
+                    let o = i * 9
+                    let x = Float(Int16(littleEndian: raw.loadUnaligned(fromByteOffset: o, as: Int16.self))) / 1000
+                    let y = Float(Int16(littleEndian: raw.loadUnaligned(fromByteOffset: o + 2, as: Int16.self))) / 1000
+                    let z = Float(Int16(littleEndian: raw.loadUnaligned(fromByteOffset: o + 4, as: Int16.self))) / 1000
+                    if y < floorY + 0.015 || y > topY - 0.04 { continue }
+                    var onWall = false
+                    for (inv, d) in walls {
+                        let l = inv * simd_float4(x, y, z, 1)
+                        if abs(l.z) < 0.035 && abs(l.x) < d.x / 2 + 0.03 && abs(l.y) < d.y / 2 + 0.03 { onWall = true; break }
+                    }
+                    if onWall { continue }
+                    keep.append(contentsOf: raw[o..<(o + 9)])
+                    n += 1
+                }
+            }
+            // забагато — проріджуємо рівномірно
+            if n > Self.maxOut {
+                let step = Double(n) / Double(Self.maxOut)
+                var thin = Data(); thin.reserveCapacity(Self.maxOut * 9)
+                var t = 0.0
+                while Int(t) < n && thin.count < Self.maxOut * 9 { let o = Int(t) * 9; thin.append(keep[o..<(o + 9)]); t += step }
+                keep = thin; n = thin.count / 9
+            }
             var out = Data("QCPC".utf8)
-            var n = UInt32(count).littleEndian
-            withUnsafeBytes(of: &n) { out.append(contentsOf: $0) }
-            out.append(data)
+            var nn = UInt32(n).littleEndian
+            withUnsafeBytes(of: &nn) { out.append(contentsOf: $0) }
+            out.append(keep)
             return out
         }
     }
     private func put(_ p: simd_float3, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
         guard count < Self.maxPoints, abs(p.x) < 30, abs(p.y) < 30, abs(p.z) < 30 else { return }
-        let k = (Int64((p.x * 50).rounded()) & 0x1FFFFF) << 42 | (Int64((p.y * 50).rounded()) & 0x1FFFFF) << 21 | (Int64((p.z * 50).rounded()) & 0x1FFFFF)
+        let k = (Int64((p.x * 100).rounded()) & 0x1FFFFF) << 42 | (Int64((p.y * 100).rounded()) & 0x1FFFFF) << 21 | (Int64((p.z * 100).rounded()) & 0x1FFFFF)
         guard keys.insert(k).inserted else { return }
         for c in [p.x, p.y, p.z] {
             var le = Int16((c * 1000).rounded()).littleEndian
@@ -185,9 +221,9 @@ final class PointCloud {
                             let w = T * simd_float4(xc, -yc, -z, 1)
                             if let c = Self.rgb(img, Int(U), Int(V)) { self.put(simd_float3(w.x, w.y, w.z), c.0, c.1, c.2) }
                         }
-                        x += 2
+                        x += 1
                     }
-                    y += 2
+                    y += 1
                 }
             }
             // запасний варіант: вершини сітки, видимі в цьому кадрі

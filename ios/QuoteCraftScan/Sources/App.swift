@@ -99,20 +99,23 @@ final class ScanSession: ObservableObject {
         }
     }
 
-    // 3D-скан (хмара точок) одним файлом → шлях у сховищі
+    // 3D-скан (хмара точок, до ~20 МБ) → напряму в сховище за одноразовим посиланням → шлях
     private func uploadCloud(token: String, done: @escaping ([String: Any]?) -> Void) {
         guard let cloud, cloud.count > 8 else { done(nil); return }
-        status = "Відправляю 3D-скан (\(cloud.count / 1_000_000) МБ)…"
-        var req = URLRequest(url: URL(string: api + "/api/scan-cloud")!)
-        req.httpMethod = "POST"; req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type"); req.setValue(token, forHTTPHeaderField: "X-Token")
-        req.httpBody = cloud; req.timeoutInterval = 120
-        URLSession.shared.dataTask(with: req) { data, resp, _ in
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            DispatchQueue.main.async {
-                if code == 200, let path = json?["path"] as? String { done(["path": path, "n": (cloud.count - 8) / 9]) } else { done(nil) }
-            }
-        }.resume()
+        let mb = Double(cloud.count) / 1_000_000
+        status = String(format: "Відправляю 3D-скан (%.1f МБ)…", mb)
+        post("/api/scan-cloud-url", ["token": token]) { code, json, _ in
+            guard code == 200, let up = json?["uploadUrl"] as? String, let path = json?["path"] as? String, let url = URL(string: up) else { done(nil); return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "PUT"; req.timeoutInterval = 300
+            req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            req.setValue("true", forHTTPHeaderField: "x-upsert")
+            if let k = json?["apikey"] as? String, !k.isEmpty { req.setValue(k, forHTTPHeaderField: "apikey") }
+            URLSession.shared.uploadTask(with: req, from: cloud) { _, resp, _ in
+                let ok = ((resp as? HTTPURLResponse)?.statusCode ?? 0) == 200
+                DispatchQueue.main.async { done(ok ? ["path": path, "n": (cloud.count - 8) / 9] : nil) }
+            }.resume()
+        }
     }
 
     // Кадри по одному (кожен ~100 КБ) → шлях у сховищі + напрямок камери

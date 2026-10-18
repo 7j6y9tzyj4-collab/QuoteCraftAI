@@ -254,8 +254,11 @@ function ScanCloud({room,H}:{room:Room;H:number}){
       const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.BufferAttribute(pos.slice(0,k*3),3));const cc=new THREE.BufferAttribute(col.slice(0,k*3),3);g.setAttribute("color",cc);setGeo(g)});
     return()=>{dead=true}},[sc.path,sc.th,sc.minX,sc.minZ,sc.floorY,H,L,W]);
   if(!geo)return null;
-  return <points geometry={geo}><pointsMaterial size={0.9*IN} vertexColors sizeAttenuation toneMapped={false}/></points>;
+  return <points geometry={geo}><pointsMaterial size={(sc.n>600000?0.55:0.9)*IN} vertexColors sizeAttenuation toneMapped={false} map={dotTex()} alphaTest={0.5} transparent={false}/></points>;
 }
+// кругла «крапка» замість квадратика
+let _dot:THREE.Texture|null=null;
+function dotTex(){if(_dot)return _dot;const c=document.createElement("canvas");c.width=c.height=32;const x=c.getContext("2d")!;x.fillStyle="#fff";x.beginPath();x.arc(16,16,15,0,Math.PI*2);x.fill();_dot=new THREE.CanvasTexture(c);return _dot}
 function parseInchesSafe(s:string){const n=parseFloat(String(s||"").replace(",","."));return Number.isFinite(n)?n:0}
 
 export type CaptureFn=()=>{url:string;view:string;w:number;h:number}|null;
