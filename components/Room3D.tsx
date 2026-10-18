@@ -344,7 +344,7 @@ function Scene({room,dims,captureRef,exportRef,selected,onSelect,onMove,scan}:{r
     {/* плінтус по периметру */}
     {!photo3d&&pts.map((a,i)=>{const b=pts[(i+1)%pts.length];const l=Math.hypot(b[0]-a[0],b[1]-a[1]);if(l<1)return null;const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);return <mesh key={"bb"+i} position={[(a[0]+b[0])/2*IN,2*IN,(a[1]+b[1])/2*IN]} rotation={[0,-ang,0]}><boxGeometry args={[l*IN,4*IN,0.6*IN]}/><meshStandardMaterial color="#ffffff" roughness={0.5}/></mesh>})}
     {!photo3d&&pts.map((a,i)=>{const b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])return null;return <Wall key={i} a={a} b={b} H={H} segs={g.segs} camRef={camRef} color={look?.wall}/>})}
-    {photo3d?<TexturedScan room={room}/>:scan&&room.scanCloud&&<ScanCloud room={room} H={H}/>}
+    {photo3d?<TexturedScan room={room} wallColor={look?.wall}/>:scan&&room.scanCloud&&<ScanCloud room={room} H={H}/>}
     {!(scan&&(room.scanCloud||room.scanMesh))&&g.fixtures.map(f=><Fixture key={f.id} f={f} H={H} geom={g} look={look} selected={selected} onDown={onSelect?onDown:undefined}/>)}
     {dims>0&&<group name="dims"><Dims g={g} level={dims}/></group>}
     <OrbitControls ref={ctl} target={[L/2*IN,H/3*IN,W/2*IN]} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI/2.05} minDistance={3} maxDistance={60}/>

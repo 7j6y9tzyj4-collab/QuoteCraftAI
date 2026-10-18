@@ -88,6 +88,7 @@ export async function buildTextured(buf:ArrayBuffer,frames:ScanFrame[],tr0:Tr,ct
     const m=8;
     if(Li&&Wi&&(X<-m||Z<-m||X>Li+m||Z>Wi+m)){best[t]=-2;continue} // за стінами — шум
     if(Hi&&Math.abs(ny)>0.8&&Y>Hi-6){best[t]=-2;continue}         // стеля
+    if(Math.max(Math.hypot(ux,uy,uz),Math.hypot(vx,vy,vz),Math.hypot(P[c]-P[b],P[c+1]-P[b+1],P[c+2]-P[b+2]))>0.3){best[t]=-2;continue} // «розтягнуті» шматки сітки
     side[t]=4;
     if(Li&&Wi){if(nZ>0.75&&Z<6)side[t]=0;else if(nX>0.75&&X>Li-6)side[t]=1;else if(nZ>0.75&&Z>Wi-6)side[t]=2;else if(nX>0.75&&X<6)side[t]=3}
   }
@@ -154,7 +155,7 @@ function alignToRoom(P:Float32Array,I:Uint32Array,C:Uint8Array,nf:number,tr0:Tr,
   return f1>f0+0.1?{tr:best.tr,moved:true}:{tr:tr0,moved:false};
 }
 
-export default function TexturedScan({room}:{room:Room}){
+export default function TexturedScan({room,wallColor}:{room:Room;wallColor?:string}){
   const sm=room.scanMesh!;
   const [b,setB]=useState<Built|null>(null);const [p,setP]=useState(0);const [err,setErr]=useState("");
   const ctx=():Ctx=>{const L=parseInches(room.length)||0,W=parseInches(room.width)||0,H=parseInches(room.height)||96;
@@ -166,9 +167,15 @@ export default function TexturedScan({room}:{room:Room}){
     return()=>{dead=true}},[sm.path,sm,room.length,room.width]);// eslint-disable-line react-hooks/exhaustive-deps
   const refs=useRef<(THREE.Object3D|null)[]>([]);
   useFrame(({camera})=>{if(!b)return;const x=camera.position.x/IN,z=camera.position.z/IN;const hide=[z<0,x>b.L,z>b.W,x<0,false];
-    b.groups.forEach((g,i)=>{const o=refs.current[i];if(o)o.visible=!hide[g.side]})});
+    b.groups.forEach((g,i)=>{const o=refs.current[i];if(o)o.visible=!hide[g.side]});for(let k=0;k<4;k++){const o=refs.current[b.groups.length+k];if(o)o.visible=!hide[k]}});
   if(!b)return <ProgressNote p={p} err={err}/>;
+  // підкладка: рівні стіни й підлога трохи «за» сканом — дірки в скані виглядають як стіна/підлога, а не порожнеча
+  const H=(parseInches(room.height)||96),L=b.L,W=b.W,o=1.5;
+  const wall=(k:number)=>{const pos:[number,number,number]=k===0?[L/2,H/2,-o]:k===1?[L+o,H/2,W/2]:k===2?[L/2,H/2,W+o]:[-o,H/2,W/2];const len=k%2?W:L;
+    return <mesh key={"bd"+k} ref={el=>{refs.current[b.groups.length+k]=el}} position={[pos[0]*IN,pos[1]*IN,pos[2]*IN]} rotation={[0,k%2?Math.PI/2:0,0]}><planeGeometry args={[(len+2*o)*IN,H*IN]}/><meshLambertMaterial color={wallColor||"#e9e4da"} side={THREE.DoubleSide}/></mesh>};
   return <group>
+    <mesh position={[L/2*IN,-0.6*IN,W/2*IN]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[(L+2*o)*IN,(W+2*o)*IN]}/><meshLambertMaterial color="#d9d3c7" side={THREE.DoubleSide}/></mesh>
+    {[0,1,2,3].map(wall)}
     {b.groups.map((g,i)=><mesh key={g.frame+"-"+g.side+"-"+i} ref={el=>{refs.current[i]=el}} geometry={g.geo}>{g.frame>=0?<meshBasicMaterial map={b.tex.get(g.frame)} side={THREE.DoubleSide} toneMapped={false}/>:<meshLambertMaterial color="#c9c4bb" side={THREE.DoubleSide}/>}</mesh>)}
   </group>;
 }
