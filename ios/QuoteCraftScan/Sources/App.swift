@@ -20,12 +20,33 @@ final class ScanSession: ObservableObject {
     @Published var payload: [String: Any]? = nil
     @Published var sending = false
     @Published var sent = false
+    @Published var pin: String = ""
+    @Published var claiming = false
 
     func handle(url: URL) {
         guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         token = c.queryItems?.first(where: { $0.name == "token" })?.value
         if let a = c.queryItems?.first(where: { $0.name == "api" })?.value, a.hasPrefix("https://") { api = a }
         payload = nil; sent = false; status = token == nil ? "" : "Готово до сканування"
+    }
+
+    // Код з QuoteCraft (6 цифр) → токен. Так додаток можна відкривати вручну, без посилання.
+    func claim() {
+        let code = pin.filter(\.isNumber)
+        guard code.count == 6, !claiming else { status = "Введи 6 цифр коду з QuoteCraft."; return }
+        claiming = true; status = "Перевіряю код…"
+        var req = URLRequest(url: URL(string: api + "/api/scan-claim")!)
+        req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["pin": code])
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            DispatchQueue.main.async {
+                self.claiming = false
+                if let err { self.status = "Помилка: " + err.localizedDescription; return }
+                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                if let t = json?["token"] as? String { self.token = t; self.sent = false; self.status = "✅ Код прийнято — можна сканувати"; if self.payload != nil { self.send() } }
+                else { self.status = "Помилка: " + ((json?["error"] as? String) ?? "код не підійшов") }
+            }
+        }.resume()
     }
 
     func send() {

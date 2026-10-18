@@ -18,3 +18,6 @@ create policy "scan_inbox insert own" on public.scan_inbox for insert with check
 drop policy if exists "scan_inbox delete own" on public.scan_inbox;
 create policy "scan_inbox delete own" on public.scan_inbox for delete using (auth.uid() = user_id);
 -- payload пише сервер (service role) з /api/scan-import — політика update для користувача не потрібна.
+-- v2: 6-значний код для ручного вводу в додатку (перехід на quotecraftscan:// з домашнього веб-додатка iOS ламає сторінку)
+alter table public.scan_inbox add column if not exists pin text;
+create index if not exists scan_inbox_pin_idx on public.scan_inbox(pin);

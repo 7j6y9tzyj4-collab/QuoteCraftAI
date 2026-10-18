@@ -120,7 +120,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
 
   const [renderingRoom,setRenderingRoom]=useState("");
   // 📡 LiDAR-скан з iPhone: веб створює токен → відкриває додаток QuoteCraft Scan → чекає payload у scan_inbox
-  const [scanWait,setScanWait]=useState<{rid:string;token:string;url:string}|null>(null);
+  const [scanWait,setScanWait]=useState<{rid:string;token:string;pin:string}|null>(null);
   const [scanMsg,setScanMsg]=useState("");
   const scanTimer=useRef<ReturnType<typeof setInterval>|null>(null);
   function stopScanWait(){if(scanTimer.current)clearInterval(scanTimer.current);scanTimer.current=null;setScanWait(null)}
@@ -129,10 +129,10 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     if(!user){setScanMsg("Увійди в акаунт, щоб приймати скани.");return}
     setScanMsg("Готую посилання…");
     const token=crypto.randomUUID().replace(/-/g,"");
-    const {error}=await supabase.from("scan_inbox").insert({token,user_id:user.id,survey_id:sRef.current.id,room_id:rid});
+    const pin=String(Math.floor(100000+Math.random()*900000));
+    const {error}=await supabase.from("scan_inbox").insert({token,pin,user_id:user.id,survey_id:sRef.current.id,room_id:rid});
     if(error){setScanMsg("Скан: "+error.message+(/scan_inbox/.test(error.message)?" (таблиця scan_inbox ще не створена)":""));return}
-    const url=`quotecraftscan://scan?token=${token}&api=${encodeURIComponent(window.location.origin)}`;
-    setScanWait({rid,token,url});setScanMsg("");
+    setScanWait({rid,token,pin});setScanMsg("");
     const started=Date.now();
     scanTimer.current=setInterval(async()=>{
       if(Date.now()-started>20*60e3){stopScanWait();setMsg("Скан не прийшов за 20 хв — спробуй ще раз.");return}
@@ -147,8 +147,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
         supabase.from("scan_inbox").delete().eq("token",token).then(()=>{});
       }
     },3000);
-    // Відкриваємо додаток через клік по посиланню (працює і з домашнього веб-додатка). НЕ робимо window.location.href — у standalone-режимі це ламає сторінку («This page couldn't load»).
-    try{const a=document.createElement("a");a.href=url;a.rel="noopener";document.body.appendChild(a);a.click();a.remove()}catch{}
+    // Додаток відкривають вручну і вводять код. Будь-який перехід на quotecraftscan:// з домашнього веб-додатка iOS ламає сторінку («This page couldn't load»), тому автовідкриття нема.
   }
   // Скани, що прийшли, поки сторінка була закрита/зламана: підбираємо при відкритті огляду
   useEffect(()=>{
@@ -309,8 +308,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           <button className="secondary" disabled={busy||!!scanWait} onClick={()=>startScan(r.id)} title="Відкриває додаток QuoteCraft Scan на iPhone (LiDAR). Після сканування розміри, двері/вікна і сантехніка з'являться тут самі.">📡 Сканувати LiDAR</button>
           {scanMsg&&<span className="muted" style={{fontSize:12,alignSelf:"center",color:/Скан:|Увійди/.test(scanMsg)?"#b42318":undefined}}>{scanMsg}</span>}
           {scanWait?.rid===r.id&&<div style={{flexBasis:"100%",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:13,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:12,padding:"8px 10px"}}>
-            <span>⏳ Чекаю скан з iPhone…</span>
-            <a href={scanWait.url} style={{background:"#2f6df6",color:"#fff",borderRadius:10,padding:"6px 12px",fontWeight:800,textDecoration:"none"}}>📱 Відкрити QuoteCraft Scan</a>
+            <div style={{flex:1,minWidth:200}}>
+              <div>Відкрий на iPhone додаток <b>QuoteCraft Scan</b> і введи код:</div>
+              <div style={{fontSize:30,fontWeight:900,letterSpacing:6,color:"#1d4ed8",margin:"4px 0"}}>{scanWait.pin.slice(0,3)} {scanWait.pin.slice(3)}</div>
+              <div className="muted" style={{fontSize:12}}>⏳ Чекаю скан… код діє 20 хв. Після «Відправити» повернись сюди.</div>
+            </div>
             <button type="button" onClick={stopScanWait} style={{background:"transparent",color:"#b42318",fontWeight:700}}>скасувати</button>
           </div>}
           {!!r.photos.length&&<button className="secondary" disabled={busy} onClick={()=>makePlan(r.id,"uk",true)} title="AI подивиться фото і розставить сантехніку, дзеркало, світло, кольори стін і підлоги на план і 3D">{busy?"Дивлюсь…":"🏠 Розставити з фото"}</button>}

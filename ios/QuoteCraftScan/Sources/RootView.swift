@@ -16,8 +16,7 @@ struct RootView: View {
                         Button(s.sent ? "Відправлено ✅" : (s.sending ? "Відправляю…" : "📤 Відправити в QuoteCraft")) { s.send() }
                             .buttonStyle(.borderedProminent).disabled(s.sending || s.sent)
                     } else {
-                        Text("Відкрито без QuoteCraft: натисни «📡 Сканувати LiDAR» у кімнаті огляду, щоб скан потрапив у застосунок.")
-                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        CodeEntry()
                     }
                     Button("🔄 Сканувати ще раз") { s.payload = nil; s.sent = false; scanning = true }
                 } else {
@@ -26,6 +25,7 @@ struct RootView: View {
                     Text("Повільно обійди кімнату, тримаючи телефон перед собою; наведи на кожну стіну, двері, вікна і сантехніку. Коли контур замкнеться — натисни «Готово».")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
                     Button("▶︎ Почати сканування") { scanning = true }.buttonStyle(.borderedProminent).controlSize(.large)
+                    if s.token == nil { CodeEntry() } else { Text("🔗 Прив'язано до кімнати в QuoteCraft").font(.footnote).foregroundStyle(.green) }
                 }
                 if !s.status.isEmpty { Text(s.status).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
             }
@@ -55,5 +55,23 @@ struct Summary: View {
             if let h = walls.compactMap({ $0["h"] as? Double }).max() { Text(String(format: "Висота стелі ≈ %.0f\"", h * 39.3701)) }
         }
         .padding().background(Color(.secondarySystemBackground)).cornerRadius(12)
+    }
+}
+
+
+// Поле для 6-значного коду з QuoteCraft («📡 Сканувати LiDAR» показує код у кімнаті огляду).
+struct CodeEntry: View {
+    @EnvironmentObject var s: ScanSession
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("Код з QuoteCraft").font(.footnote).foregroundStyle(.secondary)
+            HStack {
+                TextField("123 456", text: $s.pin).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+                    .font(.title3.monospacedDigit()).frame(maxWidth: 160).multilineTextAlignment(.center)
+                Button(s.claiming ? "…" : "Підключити") { s.claim() }.buttonStyle(.bordered).disabled(s.claiming)
+            }
+            Text("У QuoteCraft: кімната огляду → «📡 Сканувати LiDAR» → там буде код.").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .padding(10).background(Color(.secondarySystemBackground)).cornerRadius(12)
     }
 }
