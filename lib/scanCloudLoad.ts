@@ -25,11 +25,17 @@ export async function cloudTopView(room:Room):Promise<string|null>{
   const cl=await loadRoomCloud(room);if(!cl||!cl.n)return null;
   const L=parseInches(room.length)||0,W=parseInches(room.width)||0;if(!L||!W)return null;
   const S=2,cw=Math.ceil(L*S),ch=Math.ceil(W*S);const cv=document.createElement("canvas");cv.width=cw;cv.height=ch;const ctx=cv.getContext("2d")!;
-  const img=ctx.createImageData(cw,ch);const hz=new Float32Array(cw*ch).fill(-1);
-  for(let i=0;i<cl.n;i++){const x=Math.floor(cl.pos[i*3]*S),y=cl.pos[i*3+1],z=Math.floor(cl.pos[i*3+2]*S);if(y<3||x<0||z<0||x>=cw||z>=ch)continue;const j=z*cw+x;if(y<=hz[j])continue;hz[j]=y;
-    img.data[j*4]=cl.col[i*3];img.data[j*4+1]=cl.col[i*3+1];img.data[j*4+2]=cl.col[i*3+2];img.data[j*4+3]=255}
+  // карта висот: для кожної клітинки — найвища точка; колір за висотою (чим вище предмет, тим темніше), щоб чітко бачити контури меблів
+  const hz=new Float32Array(cw*ch).fill(-1);
+  for(let i=0;i<cl.n;i++){const x=Math.floor(cl.pos[i*3]*S),y=cl.pos[i*3+1],z=Math.floor(cl.pos[i*3+2]*S);if(y<3||x<0||z<0||x>=cw||z>=ch)continue;const j=z*cw+x;if(y>hz[j])hz[j]=y}
+  // заповнити дірки між точками: максимум у вікні 5×5
+  const hm=new Float32Array(cw*ch).fill(-1);const R=2;
+  for(let z=0;z<ch;z++)for(let x=0;x<cw;x++){let m=-1;for(let dz=-R;dz<=R;dz++){const zz=z+dz;if(zz<0||zz>=ch)continue;for(let dx=-R;dx<=R;dx++){const xx=x+dx;if(xx<0||xx>=cw)continue;const v=hz[zz*cw+xx];if(v>m)m=v}}hm[z*cw+x]=m}
+  const img=ctx.createImageData(cw,ch);
+  for(let j=0;j<cw*ch;j++){const h=hm[j];if(h<0)continue;const t=Math.min(1,h/60);
+    // світло-бірюзовий (низько) → темно-синій (високо)
+    img.data[j*4]=Math.round(150-120*t);img.data[j*4+1]=Math.round(200-150*t);img.data[j*4+2]=Math.round(220-90*t);img.data[j*4+3]=Math.round(110+120*t)}
   ctx.putImageData(img,0,0);
-  // трохи «розмазати», щоб не було дірок між точками
-  const c2=document.createElement("canvas");c2.width=cw;c2.height=ch;const x2=c2.getContext("2d")!;x2.filter="blur(0.8px)";x2.drawImage(cv,0,0);x2.filter="none";x2.drawImage(cv,0,0);
+  const c2=cv;
   return c2.toDataURL("image/png");
 }
