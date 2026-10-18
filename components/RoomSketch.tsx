@@ -91,6 +91,8 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   const [dims,setDims]=useState(1); // 0 вимк · 1 основні · 2 всі
   const [full,setFull]=useState(false);
   const [sel,setSel]=useState<string|null>(null);
+  const [edit,setEdit]=useState(false);
+  const ed=edit?onFixture:undefined; // тапи по предметах працюють лише в режимі «Редагувати»
   const drag=useRef<{id:string;sx:number;sy:number;cx:number;cy:number;moved:boolean}|null>(null);
   const svgRef=useRef<SVGSVGElement|null>(null);
   const exportRow=exp&&view==="3d"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,fontSize:12,alignItems:"center"}}>
@@ -150,14 +152,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
     <text x={vw/2} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fill="#344054">{room.name||"Кімната"} · {f(L)} × {f(W)} × {f(Hh)}</text>
     <text x={vw/2} y={ivh-8} textAnchor="middle" fontSize={11} fill="#98a2b3">тягни пальцем, щоб покрутити</text>
   </svg>;
-  return <div style={{marginTop:10}}>
-    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
-      <button type="button" onClick={()=>setDims(d=>(d+1)%3)} title="вимкнено → основні → усі" style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"Розміри: вимк":dims===1?"Основні":"Усі"}</button>
-      {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
-      {view==="3d"&&<button type="button" onClick={()=>setExp(e=>!e)} title="Експорт 3D" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:exp?"#344054":"#eef2f7",color:exp?"#fff":"#344054"}}>⬇ 3D</button>}
-      <button type="button" onClick={()=>setFull(f=>!f)} title="На весь екран" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:full?"#344054":"#eef2f7",color:full?"#fff":"#344054"}}>{full?"✕":"⛶"}</button></div>
-    {exportRow}
-    {(()=>{const fx=(room.fixtures||[]).find(x=>x.id===sel);if(!fx||!onFixture)return null;const nm=fx.label||FIXTURES[fx.type]?.name||fx.type;const b={padding:"6px 10px",borderRadius:10,fontWeight:800,background:"#eef2f7",color:"#344054"} as const;
+  const editBar=(()=>{const fx=(room.fixtures||[]).find(x=>x.id===sel);if(!fx||!ed||!onFixture)return null;const nm=fx.label||FIXTURES[fx.type]?.name||fx.type;const b={padding:"6px 10px",borderRadius:10,fontWeight:800,background:"#eef2f7",color:"#344054"} as const;
       const nd=(dx:number,dy:number)=>onFixture(fx.id,nudgeFixture(room,fx,dx,dy));
       return <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",margin:"0 0 6px",padding:"6px 8px",background:"#eef4ff",border:"1px solid #c7d7fe",borderRadius:12,fontSize:13}}>
         <b style={{marginRight:4}}>✋ {nm}</b>
@@ -168,8 +163,19 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         <button type="button" style={{...b,background:"#fff0ee",color:"#b42318"}} onClick={()=>{onFixture(fx.id,null);setSel(null)}}>🗑</button>
         <button type="button" style={{...b,marginLeft:"auto"}} onClick={()=>setSel(null)}>Готово</button>
         <span className="muted" style={{flexBasis:"100%",fontSize:11}}>Тягни пальцем на плані або в 3D · стрілки — по 3" · ⟲⟳ — повернути спиною до іншої стіни</span>
-      </div>})()}
-    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340} captureRef={captureRef} exportRef={exportRef} selected={sel} onSelect={setSel} onMove={onFixture?((id:string,px:number,py:number)=>{const f=(room.fixtures||[]).find(x=>x.id===id);if(f)onFixture(id,placeFixture(room,f,px,py))}):undefined}/>:<svg ref={svgRef} onPointerDown={()=>setSel(null)} viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{touchAction:sel?"none":undefined,maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
+      </div>})();
+  const editHint=<div className="muted" style={{fontSize:12,margin:"0 0 6px"}}>✏️ Режим редагування: тапни предмет на плані або в 3D, щоб вибрати й посунути.</div>;
+  return <div style={{marginTop:10}}>
+    <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>{(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
+      <button type="button" onClick={()=>setDims(d=>(d+1)%3)} title="вимкнено → основні → усі" style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"Розміри: вимк":dims===1?"Основні":"Усі"}</button>
+      {onFixture&&<button type="button" onClick={()=>{setEdit(e=>!e);setSel(null)}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:edit?"#2f6df6":"#eef2f7",color:edit?"#fff":"#344054"}}>{edit?"✓ Готово":"✏️ Редагувати"}</button>}
+      {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
+      {view==="3d"&&<button type="button" onClick={()=>setExp(e=>!e)} title="Експорт 3D" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:exp?"#344054":"#eef2f7",color:exp?"#fff":"#344054"}}>⬇ 3D</button>}
+      <button type="button" onClick={()=>setFull(f=>!f)} title="На весь екран" style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:full?"#344054":"#eef2f7",color:full?"#fff":"#344054"}}>{full?"✕":"⛶"}</button></div>
+    {exportRow}
+    {!full&&editBar}
+    {!full&&ed&&!sel&&editHint}
+    {(()=>{const body=view==="3d"?<Room3D room={room} dims={dims} height={full?"100%":340} captureRef={captureRef} exportRef={exportRef} selected={edit?sel:null} onSelect={edit?setSel:undefined} onMove={ed?((id:string,px:number,py:number)=>{const f=(room.fixtures||[]).find(x=>x.id===id);if(f)ed?.(id,placeFixture(room,f,px,py))}):undefined}/>:<svg ref={svgRef} onPointerDown={()=>setSel(null)} viewBox={`0 0 ${vw} ${vh}`} width="100%" height={full?"100%":undefined} style={{touchAction:sel?"none":undefined,maxWidth:full?undefined:440,maxHeight:full?"100%":undefined,display:"block",background:"#fff",border:"1px solid #e4e7ec",borderRadius:12}}>
       {room.floorTile&&room.floorTile.w>0&&room.floorTile.h>0&&<defs><pattern id={"tile"+room.id} x={X(0)} y={Y(0)} width={room.floorTile.w*k} height={room.floorTile.h*k} patternUnits="userSpaceOnUse"><rect width={room.floorTile.w*k} height={room.floorTile.h*k} fill="#f8fafc" stroke="#d0d5dd" strokeWidth={0.6}/></pattern></defs>}
       <polygon points={poly} fill={room.floorTile?`url(#tile${room.id})`:"#f8fafc"} stroke="#101828" strokeWidth={3} strokeLinejoin="miter"/>
       {(room.fixtures||[]).map(fx=>{const kk=WALLS.indexOf(fx.wall as any);if(kk<0)return null;const w=fx.w||24,d=fx.d||24;const t=Math.max(0,Math.min(1,fx.t||0));const start=t*(len[kk]-w);const p0=add(add(corner[kk],dir[kk],start),nrm[kk],-(fx.off||0));
@@ -177,10 +183,10 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         const m=`matrix(${k*dir[kk][0]} ${k*dir[kk][1]} ${-k*nrm[kk][0]} ${-k*nrm[kk][1]} ${X(p0[0])} ${Y(p0[1])})`;
         const c=add(add(p0,dir[kk],w/2),nrm[kk],-d/2);const lab=fx.label||FIXTURES[fx.type]?.name||fx.type;
         const isSel=sel===fx.id;
-        return <g key={fx.id} style={{cursor:onFixture?"grab":undefined,touchAction:"none"}}
-          onPointerDown={onFixture?(e=>{e.stopPropagation();(e.target as Element).setPointerCapture?.(e.pointerId);const [cx,cy]=fixtureCenter(room,fx);drag.current={id:fx.id,sx:e.clientX,sy:e.clientY,cx,cy,moved:false};setSel(fx.id)}):undefined}
-          onPointerMove={onFixture?(e=>{const dr=drag.current;if(!dr||dr.id!==fx.id||!svgRef.current)return;const r=svgRef.current.getBoundingClientRect();const sc=(r.width/vw)*k;const dx=(e.clientX-dr.sx)/sc,dy=(e.clientY-dr.sy)/sc;if(Math.abs(dx)+Math.abs(dy)<1&&!dr.moved)return;dr.moved=true;onFixture(fx.id,placeFixture(room,fx,dr.cx+dx,dr.cy+dy))}):undefined}
-          onPointerUp={onFixture?(()=>{drag.current=null}):undefined}>
+        return <g key={fx.id} style={{cursor:ed?"grab":undefined,touchAction:"none"}}
+          onPointerDown={ed?(e=>{e.stopPropagation();(e.target as Element).setPointerCapture?.(e.pointerId);const [cx,cy]=fixtureCenter(room,fx);drag.current={id:fx.id,sx:e.clientX,sy:e.clientY,cx,cy,moved:false};setSel(fx.id)}):undefined}
+          onPointerMove={ed?(e=>{const dr=drag.current;if(!dr||dr.id!==fx.id||!svgRef.current)return;const r=svgRef.current.getBoundingClientRect();const sc=(r.width/vw)*k;const dx=(e.clientX-dr.sx)/sc,dy=(e.clientY-dr.sy)/sc;if(Math.abs(dx)+Math.abs(dy)<1&&!dr.moved)return;dr.moved=true;ed?.(fx.id,placeFixture(room,fx,dr.cx+dx,dr.cy+dy))}):undefined}
+          onPointerUp={ed?(()=>{drag.current=null}):undefined}>
           <g transform={m}>{fixtureSymbol(fx.type,w,d)}{isSel&&<rect x={-1.5} y={-1.5} width={w+3} height={d+3} fill="rgba(47,109,246,.12)" stroke="#2f6df6" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeDasharray="4 3"/>}</g>{(fx.type==="other"||fx.type==="cabinet"||fx.label)&&<text x={X(c[0])} y={Y(c[1])} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="#344054">{lab.length>12?lab.slice(0,11)+"…":lab}</text>}</g>})}
       {segs.map((s,i)=><g key={i}>
         <line x1={X(s.p[0])} y1={Y(s.p[1])} x2={X(s.q[0])} y2={Y(s.q[1])} stroke="#fff" strokeWidth={5}/>
@@ -203,10 +209,12 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
         <b style={{fontSize:15}}>{room.name||"Кімната"}</b>
         {(["2d","3d"] as const).map(v=><button key={v} type="button" onClick={()=>{setView(v);if(v==="3d")setRot({yaw:35,pitch:30})}} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:view===v?"#2f6df6":"#eef2f7",color:view===v?"#fff":"#344054"}}>{v==="2d"?"План":"3D"}</button>)}
         <button type="button" onClick={()=>setDims(d=>(d+1)%3)} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:dims?"#12b76a":"#eef2f7",color:dims?"#fff":"#344054",marginLeft:"auto"}}>📏 {dims===0?"вимк":dims===1?"основні":"усі"}</button>
-        {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
+        {onFixture&&<button type="button" onClick={()=>{setEdit(e=>!e);setSel(null)}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:edit?"#2f6df6":"#eef2f7",color:edit?"#fff":"#344054"}}>{edit?"✓ Готово":"✏️ Редагувати"}</button>}
+      {view==="3d"&&onRender&&<button type="button" disabled={!!rendering} onClick={()=>{const c=captureRef.current?.();if(c)onRender(c.url,c.view,c.h/c.w);else alert("3D ще не готове — спробуй за секунду.")}} style={{padding:"5px 10px",borderRadius:10,fontWeight:800,background:"#7a5af8",color:"#fff",opacity:rendering?.6:1}}>{rendering?"⏳ Рендер…":"📸 Фото-рендер"}</button>}
         <button type="button" onClick={()=>setFull(false)} style={{padding:"5px 12px",borderRadius:10,fontWeight:800,background:"#344054",color:"#fff"}}>✕</button>
       </div>
       {exportRow}
+      {editBar}{ed&&!sel&&editHint}
       <div style={{flex:1,minHeight:0,display:"flex",alignItems:view==="3d"?"stretch":"center",justifyContent:"center"}}>{body}</div>
     </div>;})()}
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:8}}>
