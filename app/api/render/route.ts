@@ -15,14 +15,14 @@ export async function POST(req:NextRequest){
     const photos:string[]=(Array.isArray(b.photos)?b.photos:[]).filter((p:unknown)=>typeof p==="string"&&IMG.test(p)&&p.length<=750000).slice(0,3);
     const roomName=String(b.room||"").slice(0,120),kind=String(b.kind||"").slice(0,40);
     const room=kind||"room";void roomName;
-    const wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,600),tile=String(b.tile||"").slice(0,60),openings=String(b.openings||"").slice(0,300),look=String(b.look||"").slice(0,120);
+    const wish=String(b.wish||"").slice(0,1500),fixtures=String(b.fixtures||"").slice(0,2000),tile=String(b.tile||"").slice(0,60),openings=String(b.openings||"").slice(0,300),look=String(b.look||"").slice(0,120);
     const prompt=[
       `Photorealistic interior photograph of a freshly renovated ${room}, shot with a wide-angle lens.`,
       `The FIRST image is a simple 3D sketch: reproduce its camera angle and layout exactly — same walls, same door and window positions.`,
       fixtures?`The ONLY fixtures and furniture in the room are: ${fixtures}. The simple boxes in the sketch are exactly these items — render each as that item, in the same place and size as in the sketch.`:`The room is EMPTY: only walls, floor, ceiling, the door(s) and window(s). Do not add any furniture, plumbing fixtures, toilets, sinks, vanities or bathtubs.`,
       `Do not add anything that is not listed. This is NOT a bathroom unless a toilet, tub or shower is listed.`,
       photos.length?`The other images are photos of the room before renovation — keep the same architecture, ceiling height and window light, but show it finished and clean.`:"",
-      openings?`Openings: ${openings}. The light-colored rectangular gap in a wall of the sketch is a DOOR opening (draw a door or doorway), not a window, unless listed as window.`:"",
+      openings?`Openings: ${openings}. A full-height gap in a wall of the sketch is a door or an open passage, not a window, unless listed as window.`:"",
       tile?`Floor: ${tile} tile.`:"",
       look&&!wish?`Current colors to keep unless the wishes say otherwise: ${look}.`:"",
       wish?`Client wishes / finishes: ${wish}`:"Finishes: modern, light, neutral; clean painted walls, warm lighting.",
