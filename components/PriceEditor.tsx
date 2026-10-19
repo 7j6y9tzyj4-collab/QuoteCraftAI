@@ -1,10 +1,11 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import type {PriceRule} from "@/lib/types";
 import {chicagoPrices,applyChicagoPrices} from "@/lib/chicagoPrices";
 import {categories,categoryOf,bounds,validPrice,matches} from "@/lib/priceCatalog";
 import {defaults} from "@/lib/defaults";
 import {raisePrices} from "@/lib/priceHistory";
+import {findPriceDupes} from "@/lib/priceDupes";
 
 // знімок цін перед «Підняти на X%» — щоб можна було відкотити
 const SNAP="qc_prices_before_raise";
@@ -28,6 +29,7 @@ export default function PriceEditor({prices,onSave}:Props){
  const [withMat,setWithMat]=useState(false);
  const [preview,setPreview]=useState<PriceRule[]|null>(null);
  const [snap,setSnap]=useState<Snap|null>(null);
+ const dupes=useMemo(()=>findPriceDupes(draft),[draft]);
  useEffect(()=>{setSnap(readSnap())},[]);
  function applyRaise(){
   if(!preview)return;
@@ -76,6 +78,18 @@ export default function PriceEditor({prices,onSave}:Props){
    </div>}
    {snap&&!preview&&<button className="secondary full" style={{marginTop:8}} disabled={saving} onClick={()=>{if(confirm(`Повернути ціни, які були до підвищення на ${snap.pct}% (${new Date(snap.date).toLocaleDateString("uk-UA")})? Потім натисни «Зберегти ціни».`)){replace(snap.prices);setStatus("Повернуто ціни до підвищення. Натисни «Зберегти ціни».")}}}>↩ Відкотити підвищення на {snap.pct}% від {new Date(snap.date).toLocaleDateString("uk-UA")}</button>}
   </details>
+  {dupes.length>0&&<details style={{margin:"10px 0"}}>
+   <summary><b>🔎 Схожі роботи з різною ціною ({dupes.length})</b></summary>
+   <p className="muted" style={{fontSize:13}}>Одна й та сама робота могла потрапити в прайс двічі. Вибери, яку ціну лишити для обох (потім «Зберегти ціни»), або залиш як є, якщо це різні роботи — наприклад, пакетна ціна для повного ремонту.</p>
+   {dupes.slice(0,40).map(({a,b})=><div key={a.id+b.id} style={{padding:10,border:"1px solid #e4e7ec",borderRadius:12,marginTop:8,fontSize:14}}>
+    <div><b>{a.name}</b> — ${a.rate}/{a.unit} <small className="muted">· {categoryOf(a)}</small></div>
+    <div><b>{b.name}</b> — ${b.rate}/{b.unit} <small className="muted">· {categoryOf(b)}</small></div>
+    <div className="actions" style={{marginTop:6,flexWrap:"wrap"}}>
+     <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>p.id===b.id?{...p,rate:a.rate,rateMin:Math.min(bounds(p).min,a.rate),rateMax:Math.max(bounds(p).max,a.rate)}:p))}>Обидві ${a.rate}</button>
+     <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>p.id===a.id?{...p,rate:b.rate,rateMin:Math.min(bounds(p).min,b.rate),rateMax:Math.max(bounds(p).max,b.rate)}:p))}>Обидві ${b.rate}</button>
+    </div>
+   </div>)}
+  </details>}
   <button className="secondary full" disabled={saving} onClick={()=>replace(applyChicagoPrices(draft))}>Застосувати перевірені ставки Чикаго ({Object.values(chicagoPrices).filter(r=>!r.keepOwnRate).length} позицій)</button>
   <div className="actions">
    <button className="secondary" disabled={saving} onClick={()=>replace(draft.map(p=>recommended.has(p.id)?{...p,rate:defaults.find(d=>d.id===p.id)!.rate,rateMin:undefined,rateMax:undefined}:p))}>Застосувати $75 / $125</button>

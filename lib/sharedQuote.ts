@@ -20,6 +20,12 @@ export type QuoteSnapshot={
   tiers?:{name:string;lines:QuoteLine[];totals:{labor:number;materials:number;finish:number;discount:number;total:number;deposit:number}}[];
   /** який варіант обрав клієнт (0,1,2) */
   chosenTier?:number;
+  /** які опційні позиції клієнт додав, коли приймав (індекси в optional) */
+  chosenOptions?:number[];
+  /** завдаток оплачено карткою (Stripe) */
+  depositPaid?:{amount:number;at:string;session:string};
+  /** нагадування власнику вже надіслано */
+  reminded?:string[];
 };
 export type QuoteStatus="sent"|"viewed"|"accepted";
 
@@ -50,4 +56,23 @@ export function buildQuoteSnapshot(input:{client:string;project:string;items:Cal
         totals:{labor:r2(s.totals.labor),materials:r2(s.totals.materials+s.totals.supplies),finish:r2(s.totals.finish),discount:s.discount,total:s.total,deposit:s.deposit}};
     }):undefined,
   };
+}
+
+/** Сума з урахуванням опцій, які клієнт обрав на сторінці (індекси в q.optional). */
+export function quoteWithOptions(q:QuoteSnapshot,chosen:number[]|undefined){
+  const opts=(chosen||[]).filter(i=>Number.isInteger(i)&&i>=0&&i<q.optional.length);
+  const add=opts.reduce((a,i)=>a+(q.optional[i]?.total||0),0);
+  const total=r2(q.totals.total+add);
+  const pct=q.totals.depositPct||0;
+  return {options:opts,add:r2(add),total,deposit:r2(total*pct/100),depositPct:pct};
+}
+
+/** Що клієнт прийняв і скільки завдатку (з варіантом Good/Better/Best або опціями). */
+export function acceptedAmounts(q:QuoteSnapshot&{chosenTier?:number;chosenOptions?:number[]}){
+  if(q.tiers?.length&&typeof q.chosenTier==="number"){
+    const t=q.tiers[q.chosenTier];
+    return {total:t?.totals.total||0,deposit:t?.totals.deposit||0,label:t?.name||""};
+  }
+  const w=quoteWithOptions(q,q.chosenOptions);
+  return {total:w.total,deposit:w.deposit,label:w.options.length?`+ опції: ${w.options.map(i=>q.optional[i].name).join(", ")}`:""};
 }

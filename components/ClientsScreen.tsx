@@ -13,7 +13,8 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const d=(iso:string)=>iso?new Date(iso).toLocaleDateString("uk-UA"):"";
 
 // Клієнти: список, картка з телефоном/адресою, уся історія (естімейти, розрахунки, оплачено, винен).
-export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate,user,tasks,onSurveyToEstimate}:{
+export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate,user,tasks,onSurveyToEstimate,onShareBundle}:{
+  onShareBundle?:(c:Client,ests:SavedCalc[])=>Promise<string>;
   clients:Client[];calcs:SavedCalc[];statements:Statement[];user:User|null;tasks:CalcTask[];onSurveyToEstimate:(c:Client,s:Survey)=>void;
   onSave:(c:Client)=>void;onDelete:(id:string)=>void;
   onOpenCalc:(c:SavedCalc)=>void;onOpenStatement:(id:string)=>void;onNewEstimate:(c:Client)=>void;
@@ -22,6 +23,8 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
   const [openId,setOpenId]=useState<string|null>(null);
   const [draft,setDraft]=useState<Client|null>(null);
   const [surveyId,setSurveyId]=useState<string|null>(null);
+  const [bundleMsg,setBundleMsg]=useState("");
+  const [bundleBusy,setBundleBusy]=useState(false);
   const missing=useMemo(()=>missingClientNames(clients,calcs,statements),[clients,calcs,statements]);
   const rows=useMemo(()=>clients.map(c=>({c,h:clientHistory(c,calcs,statements)})).sort((a,b)=>{
     const mx=(...xs:string[])=>xs.reduce((m,x)=>x>m?x:m,"");const la=mx(a.h.sts[0]?.updatedAt||"",a.h.ests[0]?.updatedAt||"",a.c.updatedAt),lb=mx(b.h.sts[0]?.updatedAt||"",b.h.ests[0]?.updatedAt||"",b.c.updatedAt);return lb.localeCompare(la)}),[clients,calcs,statements]);
@@ -75,6 +78,11 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
       </section>
       <section className="panel"><div className="head"><h2>Естімейти</h2></div>
         {!h.ests.length&&<p className="empty">Ще немає.</p>}
+        {h.ests.length>0&&onShareBundle&&<div style={{margin:"6px 0 10px"}}>
+          <button className="primary" style={{width:"100%"}} disabled={bundleBusy} onClick={async()=>{setBundleBusy(true);setBundleMsg("");try{setBundleMsg(await onShareBundle(cur,h.ests))}catch(err){setBundleMsg("Не вдалося: "+(err instanceof Error?err.message:String(err)))}finally{setBundleBusy(false)}}}>🔗 {h.ests.length>1?`Одне посилання на всі ${h.ests.length} естімейти`:"Посилання клієнту"}</button>
+          {bundleMsg&&<p className="muted" style={{fontSize:13,marginTop:6,wordBreak:"break-all"}}>{bundleMsg}</p>}
+          {cur.bundleToken&&!bundleMsg&&<p className="muted" style={{fontSize:13,marginTop:6}}>Посилання вже є — натиск оновить цифри в ньому. <a href={`/q/${cur.bundleToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
+        </div>}
         {h.ests.map(c=><button key={c.id} className="estimate" onClick={()=>onOpenCalc(c)}><span><b>{c.project||"Estimate"}</b><small>{d(c.updatedAt)} · {c.items?.length||0} позицій{c.shareToken?" · 🔗":""}</small></span><strong>{money(c.total)}</strong></button>)}
       </section>
     </>;

@@ -8,6 +8,8 @@ import PriceEditor from "@/components/PriceEditor";
 import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
+import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
+import {sanityCheck} from "@/lib/sanity";
 import ClientPicker from "@/components/ClientPicker";
 import ClientsScreen from "@/components/ClientsScreen";
 import {type Client} from "@/lib/clients";
@@ -23,7 +25,7 @@ import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft,SavedCalc} from "@/lib/calcTypes";
-import {buildCalcPdf,buildShoppingPdf,pdfFileName} from "@/lib/calcPdf";
+import {buildCalcPdf,buildShoppingPdf,pdfFileName,COMPANY_NAME,COMPANY_CONTACT} from "@/lib/calcPdf";
 import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
@@ -150,7 +152,8 @@ export default function QuoteCraftApp(){
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
  const [calcShareToken,setCalcShareToken]=useState<string>("");
- const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number}|null>(null);
+ const [ownerPrefs,setOwnerPrefs]=useState<OwnerPrefs>(EMPTY_PREFS);
+ const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[];depositPaid?:{amount:number;at:string;session:string}}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // ---- клієнти (таблиця user_clients, по рядку на клієнта; локальна копія qc_clients) ----
@@ -271,6 +274,15 @@ export default function QuoteCraftApp(){
  const calcGrandTotal=Math.max(0,calcTotalsValue.lineTotal-calcDiscount);
  const calcDeposit=Math.round(calcGrandTotal*(Number(calcDepositPct)||0))/100;
  const calcDiscountLabel=calcDiscountType==="percent"?`Package discount (${calcDiscountValue}% of labor)`:"Package discount";
+ const calcSanity=useMemo(()=>sanityCheck({id:calcSavedId,project:calcProject,items:calcItems,loc:calcLocationMultiplier},calcSaved),[calcSavedId,calcProject,calcItems,calcLocationMultiplier,calcSaved]);
+ const calcMinShort=ownerPrefs.min_job_price>0&&calcGrandTotal>0&&!calcItems.some(i=>i.taskId==="min_job")?Math.round((ownerPrefs.min_job_price-calcGrandTotal)*100)/100:0;
+ function addMinJobLine(){
+   if(calcMinShort<=0)return;
+   const pct=calcDiscountType==="percent"?Math.min(99,Math.max(0,Number(calcDiscountValue)||0)):0;
+   const loc=Number(calcLocationMultiplier)||1;
+   const rate=Math.round(calcMinShort/(1-pct/100)/loc*100)/100;
+   setCalcItems(items=>[...items,{id:crypto.randomUUID(),taskId:"min_job",name:"Small Job Minimum Charge",category:"Інше",unit:"each" as CalcItem["unit"],quantity:1,difficulty:"standard",laborRate:rate,materialRate:0,suppliesPct:0,suppliesFixed:0,minPrice:0,difficultyMultipliers:{basic:1,standard:1,difficult:1},lowMult:1,highMult:1.1,notes:"",note:"Minimum charge for a small job (setup, travel, protection, cleanup).",laborOwn:true}]);
+ }
 
  function applyCalcTask(item:CalcItem,task:CalcTask):CalcItem{
    return{
@@ -662,7 +674,7 @@ export default function QuoteCraftApp(){
      .then(({data}:{data:any})=>{
        if(!data){setCalcQuote(null);return}
        const chosenTier=typeof data.data?.chosenTier==="number"?data.data.chosenTier:undefined;
-       setCalcQuote({status:data.status,viewed_at:data.viewed_at,accepted_at:data.accepted_at,accepted_name:data.accepted_name,chosenTier});
+       setCalcQuote({status:data.status,viewed_at:data.viewed_at,accepted_at:data.accepted_at,accepted_name:data.accepted_name,chosenTier,chosenOptions:Array.isArray(data.data?.chosenOptions)?data.data.chosenOptions:undefined,depositPaid:data.data?.depositPaid});
        if(chosenTier!==undefined)setCalcTiers(t=>t&&t.chosen!==chosenTier?{...t,chosen:chosenTier}:t);
      });
  },[screen,calcShareToken,user]);
@@ -674,6 +686,7 @@ export default function QuoteCraftApp(){
    try{
      const data=buildQuoteSnapshot({client:calcClient,project:calcProject,items:calcItems,locationMultiplier:calcLocationMultiplier,includeFinish:calcIncludeFinish,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes,tiers:calcTiers,discountType:calcDiscountType,discountValue:calcDiscountValue});
      if(calcQuote?.status==="accepted"&&typeof calcTiers?.chosen==="number")data.chosenTier=calcTiers.chosen; // не губимо вибір клієнта
+     if(calcQuote?.status==="accepted"){if(calcQuote.chosenOptions)data.chosenOptions=calcQuote.chosenOptions;if(calcQuote.depositPaid)data.depositPaid=calcQuote.depositPaid}
      let token=calcShareToken;
      if(token){
        const {data:row,error}=await supabase.from("shared_quotes").update({data,updated_at:new Date().toISOString()}).eq("token",token).select("token").maybeSingle();
@@ -697,6 +710,54 @@ export default function QuoteCraftApp(){
      const m=e instanceof Error?e.message:String((e as any)?.message||e);
      setCalcMessage(/shared_quotes/.test(m)?"Спершу створи таблицю shared_quotes у Supabase (SQL від Claude).":"Не вдалося зробити посилання: "+m);
    }finally{setCalcPdfBusy(false)}
+ }
+ // ---- одне посилання на всі естімейти клієнта ----
+ function snapshotFromSaved(s:SavedCalc){
+   const items=s.items||[];const loc=s.locationMultiplier??1;const inc=s.includeFinish!==false;
+   const totals=computeCalcTotals(items,loc,inc);
+   const v=Math.max(0,Number(s.discountValue)||0);const dt=s.discountType??"percent";
+   const disc=Math.min(Math.round((dt==="percent"?totals.labor*v/100:v)*100)/100,totals.labor);
+   return buildQuoteSnapshot({client:s.client||"",project:s.project||"",items,locationMultiplier:loc,includeFinish:inc,totals,discount:disc,
+     discountLabel:dt==="percent"?`Package discount (${v}% of labor)`:"Package discount",grandTotal:Math.max(0,totals.lineTotal-disc),
+     notes:s.notes??"",depositPct:s.depositPct??25,measurementNotes:s.measurementNotes,tiers:s.tiers,discountType:dt,discountValue:v});
+ }
+ async function shareClientBundle(c:Client,ests:SavedCalc[]):Promise<string>{
+   if(!user)throw new Error("Увійди в акаунт.");
+   const list=ests.filter(e=>(e.items||[]).length);
+   if(!list.length)throw new Error("У клієнта ще немає естімейтів.");
+   const tokens:string[]=[];let next=[...calcSaved];
+   for(const e of list){
+     const data=snapshotFromSaved(e);
+     let token=e.shareToken||"";
+     if(token){
+       const {data:row}=await supabase.from("shared_quotes").select("status,data").eq("token",token).maybeSingle();
+       if(!row)token="";
+       else if(row.status!=="accepted"){const {error}=await supabase.from("shared_quotes").update({data,updated_at:new Date().toISOString()}).eq("token",token);if(error)throw error}
+     }
+     if(!token){
+       token=crypto.randomUUID();
+       const {error}=await supabase.from("shared_quotes").insert({token,user_id:user.id,data,status:"sent"});
+       if(error)throw error;
+       const upd={...e,shareToken:token,updatedAt:new Date().toISOString()};
+       next=next.map(x=>x.id===e.id?upd:x);pushCalc(upd);
+       if(e.id===calcSavedId)setCalcShareToken(token);
+     }
+     tokens.push(token);
+   }
+   storeCalcList(next);
+   const bdata={v:1,kind:"bundle",company:COMPANY_NAME,contact:COMPANY_CONTACT,client:c.name,tokens};
+   let bt=c.bundleToken||"";
+   if(bt){const {data:row}=await supabase.from("shared_quotes").update({data:bdata,updated_at:new Date().toISOString()}).eq("token",bt).select("token").maybeSingle();if(!row)bt=""}
+   if(!bt){
+     bt=crypto.randomUUID();
+     const {error}=await supabase.from("shared_quotes").insert({token:bt,user_id:user.id,data:bdata,status:"sent"});
+     if(error)throw error;
+     saveClient({...c,bundleToken:bt,updatedAt:new Date().toISOString()});
+   }
+   const link=`${window.location.origin}/q/${bt}`;
+   const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+   if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});return "Посилання надіслано: "+link}catch{}}
+   try{await navigator.clipboard.writeText(link);return "Посилання скопійовано: "+link}catch{return "Посилання: "+link}
  }
  // ---- естімейт → Оплати ----
  function sendCalcToPayments(){
@@ -1864,16 +1925,18 @@ export default function QuoteCraftApp(){
      {calcOptionalTotal>0&&<div><span>Опційні позиції (не в сумі)</span><span>+{money(calcOptionalTotal)}</span></div>}
     </section>
 
+    {calcMinShort>0&&<div className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}>📏 Сума {money(calcGrandTotal)} менша за твій мінімум {money(ownerPrefs.min_job_price)}. <button className="secondary" style={{marginTop:8}} onClick={addMinJobLine}>＋ Доплата за малу роботу {money(calcMinShort)}</button></div>}
+    {calcSanity.map((n,i)=><div key={i} className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:n.level==="warn"?"#fff4ed":"#eff6ff",fontSize:14}}>{n.level==="warn"?"⚠️":"ℹ️"} {n.text}</div>)}
     <div className="actions noPrint" style={{marginBottom:8}}><button className="primary" onClick={()=>saveCalc()}>💾 {calcSavedId?"Зберегти зміни":"Зберегти естімейт"}</button></div>
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
-    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
+    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}{calcQuote.chosenOptions?.length?` · додав опції: ${calcQuote.chosenOptions.map(i=>calcItems.filter(x=>x.optional)[i]?.name).filter(Boolean).join(", ")}`:""}{calcQuote.depositPaid?` · 💳 завдаток ${money(calcQuote.depositPaid.amount)} оплачено`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
    {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
-   {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
+   {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onShareBundle={shareClientBundle} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
      user={user} tasks={calcTasks}
      onSurveyToEstimate={(c:Client,s:Survey)=>{
        if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий з огляду?"))return;
@@ -1889,6 +1952,7 @@ export default function QuoteCraftApp(){
 <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
   <span className="eyebrow">ACCOUNT</span>
   <BackupPanel user={user}/>
+  <OwnerSettings user={user} onChange={setOwnerPrefs}/>
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>
