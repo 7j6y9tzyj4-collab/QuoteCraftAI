@@ -64,7 +64,7 @@ export default function ClientSplats({client,user,onSave}:{client:Client;user:Us
 
   return <section className="panel">
     <div className="head"><h2>🏠 3D-кімната (фото-реалістична)</h2>
-      <label className="add" style={{cursor:"pointer"}}>＋ Файл<input type="file" accept=".spz,.ply,.splat,.ksplat,application/octet-stream" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)void upload(f)}}/></label></div>
+      <label className="add" style={{cursor:"pointer"}}>＋ Файл<input type="file" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)void upload(f)}}/></label></div>
     {!list.length&&<p className="muted" style={{fontSize:14}}>Безкоштовний додаток <b>Scaniverse</b> на iPhone: «＋» → <b>Splat</b> → повільно обійди кімнату з камерою (1–2 хв, знизу й зверху) → дочекайся обробки → Share → Export → <b>SPZ</b> → збережи у Файли → тут «＋ Файл».</p>}
     {busy&&<p className="muted">{busy}</p>}
     {list.map(s=><div key={s.id} style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",padding:"8px 0",borderTop:"1px solid #eaecf0"}}>
