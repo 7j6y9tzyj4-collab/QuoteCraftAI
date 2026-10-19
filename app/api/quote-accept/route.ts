@@ -1,7 +1,5 @@
 import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
-import {notifyOwner,quoteLabel,usd,esc} from "@/lib/notify";
-import {acceptedAmounts} from "@/lib/sharedQuote";
 
 export const runtime="nodejs";
 
@@ -19,7 +17,7 @@ export async function POST(req:NextRequest){
       if(e.status!=="accepted"){const {error}=await supabaseAdmin.from("estimates").update({status:"accepted"}).eq("share_token",token);if(error)throw error}
       return NextResponse.json({accepted_at:new Date().toISOString()});
     }
-    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at,data,user_id").eq("token",token).maybeSingle();
+    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at,data").eq("token",token).maybeSingle();
     if(!data)return NextResponse.json({error:"Estimate not found"},{status:404});
     if(data.status==="accepted")return NextResponse.json({accepted_at:data.accepted_at});
     const accepted_at=new Date().toISOString();
@@ -39,13 +37,6 @@ export async function POST(req:NextRequest){
     }
     const {error}=await supabaseAdmin.from("shared_quotes").update(upd).eq("token",token);
     if(error)throw error;
-    const d:any=upd.data||data.data;
-    if(d?.kind==="change"){
-      await notifyOwner(data.user_id,`✅ Change order погоджено: <b>${quoteLabel(d)}</b>\nСума: <b>${usd(d.total)}</b>\nПідпис: ${esc(name)}`);
-    }else{
-      const a=acceptedAmounts(d);
-      await notifyOwner(data.user_id,`✅ Естімейт ПРИЙНЯТО: <b>${quoteLabel(d)}</b>\nСума: <b>${usd(a.total)}</b>${a.label?` (${esc(a.label)})`:""}${a.deposit>0?`\nЗавдаток: ${usd(a.deposit)}`:""}\nПідпис: ${esc(name)}`);
-    }
     return NextResponse.json({accepted_at});
   }catch(e){
     return NextResponse.json({error:e instanceof Error?e.message:"Server error"},{status:500});

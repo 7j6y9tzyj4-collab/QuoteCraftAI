@@ -7,8 +7,7 @@ import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import {headers} from "next/headers";
 import OptionsAccept from "./OptionsAccept";
-import {notifyOwner,ownerSettings,quoteLabel,usd} from "@/lib/notify";
-import {getCheckout} from "@/lib/stripe";
+import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
 
 export const dynamic="force-dynamic";
@@ -26,10 +25,9 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
 }
 
-export default async function SharedQuotePage({params,searchParams}:{params:Promise<{token:string}>;searchParams:Promise<{paid?:string}>}){
+export default async function SharedQuotePage({params}:{params:Promise<{token:string}>}){
   const {token}=await params;
-  const {paid}=await searchParams;
-  const ok=/^[0-9a-f-]{36}$/i.test(token);
+    const ok=/^[0-9a-f-]{36}$/i.test(token);
   const {data,error}=ok
     ?await supabaseAdmin.from("shared_quotes").select("data,status,accepted_at,accepted_name,user_id").eq("token",token).maybeSingle()
     :{data:null,error:null};
@@ -40,23 +38,9 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
   const bot=/facebookexternalhit|Twitterbot|Slackbot|WhatsApp|TelegramBot|Discordbot|LinkedInBot|Googlebot|bingbot|preview|crawler|spider|bot\b/i.test(ua);
   if(data.status==="sent"&&!bot){
     await supabaseAdmin.from("shared_quotes").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("token",token);
-    await notifyOwner(data.user_id,`👁 Клієнт відкрив: <b>${quoteLabel(data.data)}</b>`);
   }
   const settings=await ownerSettings(data.user_id);
-  const canPay=!!settings?.stripe_secret_key;
-  // повернулися зі Stripe: перевіряємо оплату й запам'ятовуємо
-  if(paid&&settings?.stripe_secret_key&&!(data.data as any)?.depositPaid){
-    try{
-      const ss=await getCheckout(settings.stripe_secret_key,paid);
-      if(ss.payment_status==="paid"&&ss.metadata?.quote_token===token){
-        const dp={amount:Math.round(ss.amount_total)/100,at:new Date().toISOString(),session:ss.id};
-        (data.data as any).depositPaid=dp;
-        await supabaseAdmin.from("shared_quotes").update({data:data.data}).eq("token",token);
-        await notifyOwner(data.user_id,`💳 Завдаток оплачено карткою: <b>${usd(dp.amount)}</b>\n${quoteLabel(data.data)}`);
-      }
-    }catch{/* покажемо як не оплачено */}
-  }
-  const depositPaid=(data.data as any)?.depositPaid||null;
+  const zelle=settings?.zelle||"";
   if((data.data as any)?.kind==="bundle"){
     const b=data.data as any;
     const toks:string[]=(b.tokens||[]).filter((x:string)=>/^[0-9a-f-]{36}$/i.test(x));
@@ -132,7 +116,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
         </div>
         {q.measurementNotes&&<div style={{margin:"0 0 16px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}><strong>{PRELIMINARY_NOTE}</strong><p style={{whiteSpace:"pre-wrap",margin:"8px 0 0",color:"#667085"}}>Approximate dimensions: {q.measurementNotes}</p></div>}
 
-        {q.tiers?.length?<TierAccept token={token} tiers={q.tiers} chosen={q.chosenTier} canPay={canPay} depositPaid={depositPaid} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>:<>
+        {q.tiers?.length?<TierAccept token={token} tiers={q.tiers} chosen={q.chosenTier} zelle={zelle} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>:<>
         <div style={{overflowX:"auto"}}>
         <table className="sharedTable">
           <thead><tr><th>Description</th><th>Qty</th><th style={{textAlign:"right"}}>Labor</th><th style={{textAlign:"right"}}>Materials</th>{showFinish&&<th style={{textAlign:"right"}}>Finish</th>}<th style={{textAlign:"right"}}>Total</th></tr></thead>
@@ -164,7 +148,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
           <table className="sharedTable"><tbody>
             {q.optional.map((l,i)=><tr key={i}><td><strong>{l.name}</strong>{l.note&&<div className="sharedNote">{l.note}</div>}</td><td style={{whiteSpace:"nowrap"}}>{l.qty} {l.unit}</td><td style={{textAlign:"right"}}>{money(l.total)}</td></tr>)}
           </tbody></table>
-        </>):<OptionsAccept token={token} optional={q.optional} baseTotal={t.total} depositPct={t.depositPct||0} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} chosen={q.chosenOptions} canPay={canPay} depositPaid={depositPaid}/>}
+        </>):<OptionsAccept token={token} optional={q.optional} baseTotal={t.total} depositPct={t.depositPct||0} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} chosen={q.chosenOptions} zelle={zelle}/>}
 
         {q.notes&&<><h3 style={{marginTop:24}}>Notes &amp; exclusions</h3><p style={{whiteSpace:"pre-wrap",fontSize:14,color:"#344054"}}>{q.notes}</p></>}
 

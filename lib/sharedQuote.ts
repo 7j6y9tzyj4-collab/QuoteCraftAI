@@ -22,10 +22,6 @@ export type QuoteSnapshot={
   chosenTier?:number;
   /** які опційні позиції клієнт додав, коли приймав (індекси в optional) */
   chosenOptions?:number[];
-  /** завдаток оплачено карткою (Stripe) */
-  depositPaid?:{amount:number;at:string;session:string};
-  /** нагадування власнику вже надіслано */
-  reminded?:string[];
 };
 export type QuoteStatus="sent"|"viewed"|"accepted";
 

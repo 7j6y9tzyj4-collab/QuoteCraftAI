@@ -1,13 +1,13 @@
 "use client";
 import {useState} from "react";
 import type {QuoteSnapshot} from "@/lib/sharedQuote";
-import PayDeposit from "./PayDeposit";
+import ZelleBox from "./ZelleBox";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const MEDAL=["🥉","🥈","🥇"];
 
 // Сторінка клієнта: три варіанти — обрав один → вписав ім'я → Accept.
-export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt,chosen,canPay=false,depositPaid}:{token:string;tiers:NonNullable<QuoteSnapshot["tiers"]>;accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number;canPay?:boolean;depositPaid?:{amount:number;at:string}|null}){
+export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt,chosen,zelle=""}:{token:string;tiers:NonNullable<QuoteSnapshot["tiers"]>;accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number;zelle?:string}){
   const [sel,setSel]=useState<number>(typeof chosen==="number"?chosen:1);
   const [name,setName]=useState("");
   const [done,setDone]=useState(accepted?{name:acceptedName,at:acceptedAt,tier:chosen}:null as null|{name:string;at:string;tier?:number});
@@ -62,7 +62,7 @@ export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt
 
     {done?<><div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>
       ✓ Option «{tiers[done.tier??sel]?.name}» accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""}. Thank you — we will contact you to schedule the work.
-    </div>{(canPay||depositPaid)&&<PayDeposit token={token} amount={tiers[done.tier??sel]?.totals.deposit||0} paid={depositPaid}/>}</>:<div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
+    </div><ZelleBox zelle={zelle} amount={tiers[done.tier??sel]?.totals.deposit||0}/></>:<div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
       <h3 style={{marginTop:0}}>Accept option «{t.name}» — {money(t.totals.total)}</h3>
       <p style={{fontSize:14,color:"#667085"}}>Type your name and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>

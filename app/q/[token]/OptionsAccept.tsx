@@ -1,15 +1,15 @@
 "use client";
 import {useState} from "react";
 import type {QuoteLine} from "@/lib/sharedQuote";
-import PayDeposit from "./PayDeposit";
+import ZelleBox from "./ZelleBox";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const r2=(n:number)=>Math.round(n*100)/100;
 
 // Сторінка клієнта: опційні позиції — галочками, сума перераховується; потім ім'я → Accept → (за бажанням) завдаток карткою.
-export default function OptionsAccept({token,optional,baseTotal,depositPct,accepted,acceptedName,acceptedAt,chosen,canPay,depositPaid}:{
+export default function OptionsAccept({token,optional,baseTotal,depositPct,accepted,acceptedName,acceptedAt,chosen,zelle}:{
   token:string;optional:QuoteLine[];baseTotal:number;depositPct:number;
-  accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number[];canPay:boolean;depositPaid?:{amount:number;at:string}|null;
+  accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number[];zelle:string;
 }){
   const [sel,setSel]=useState<number[]>(chosen||[]);
   const [name,setName]=useState("");
@@ -50,10 +50,10 @@ export default function OptionsAccept({token,optional,baseTotal,depositPct,accep
       <div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>
         ✓ Estimate accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""} — {money(total)}. Thank you — we will contact you to schedule the work.
       </div>
-      {(canPay||depositPaid)&&<PayDeposit token={token} amount={deposit} paid={depositPaid}/>}
+      <ZelleBox zelle={zelle} amount={deposit}/>
     </>:<div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
       <h3 style={{marginTop:0}}>Accept this estimate — {money(total)}</h3>
-      <p style={{fontSize:14,color:"#667085"}}>Type your name and press Accept. This does not charge anything{canPay&&deposit>0?" — after accepting you can pay the deposit by card, or we will contact you to arrange it.":" — we will contact you to confirm the schedule and deposit."}</p>
+      <p style={{fontSize:14,color:"#667085"}}>Type your name and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your full name" style={{flex:"1 1 200px",padding:10,borderRadius:10,border:"1px solid #d0d5dd"}}/>
         <button className="primary" disabled={busy} onClick={accept}>{busy?"Sending…":"Accept estimate"}</button>

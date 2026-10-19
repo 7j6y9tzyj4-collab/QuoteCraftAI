@@ -153,7 +153,7 @@ export default function QuoteCraftApp(){
  const [calcProject,setCalcProject]=useState("");
  const [calcShareToken,setCalcShareToken]=useState<string>("");
  const [ownerPrefs,setOwnerPrefs]=useState<OwnerPrefs>(EMPTY_PREFS);
- const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[];depositPaid?:{amount:number;at:string;session:string}}|null>(null);
+ const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // ---- клієнти (таблиця user_clients, по рядку на клієнта; локальна копія qc_clients) ----
@@ -674,7 +674,7 @@ export default function QuoteCraftApp(){
      .then(({data}:{data:any})=>{
        if(!data){setCalcQuote(null);return}
        const chosenTier=typeof data.data?.chosenTier==="number"?data.data.chosenTier:undefined;
-       setCalcQuote({status:data.status,viewed_at:data.viewed_at,accepted_at:data.accepted_at,accepted_name:data.accepted_name,chosenTier,chosenOptions:Array.isArray(data.data?.chosenOptions)?data.data.chosenOptions:undefined,depositPaid:data.data?.depositPaid});
+       setCalcQuote({status:data.status,viewed_at:data.viewed_at,accepted_at:data.accepted_at,accepted_name:data.accepted_name,chosenTier,chosenOptions:Array.isArray(data.data?.chosenOptions)?data.data.chosenOptions:undefined});
        if(chosenTier!==undefined)setCalcTiers(t=>t&&t.chosen!==chosenTier?{...t,chosen:chosenTier}:t);
      });
  },[screen,calcShareToken,user]);
@@ -686,7 +686,7 @@ export default function QuoteCraftApp(){
    try{
      const data=buildQuoteSnapshot({client:calcClient,project:calcProject,items:calcItems,locationMultiplier:calcLocationMultiplier,includeFinish:calcIncludeFinish,totals:calcTotalsValue,discount:calcDiscount,discountLabel:calcDiscountLabel,grandTotal:calcGrandTotal,notes:calcNotes,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes,tiers:calcTiers,discountType:calcDiscountType,discountValue:calcDiscountValue});
      if(calcQuote?.status==="accepted"&&typeof calcTiers?.chosen==="number")data.chosenTier=calcTiers.chosen; // не губимо вибір клієнта
-     if(calcQuote?.status==="accepted"){if(calcQuote.chosenOptions)data.chosenOptions=calcQuote.chosenOptions;if(calcQuote.depositPaid)data.depositPaid=calcQuote.depositPaid}
+     if(calcQuote?.status==="accepted"){if(calcQuote.chosenOptions)data.chosenOptions=calcQuote.chosenOptions}
      let token=calcShareToken;
      if(token){
        const {data:row,error}=await supabase.from("shared_quotes").update({data,updated_at:new Date().toISOString()}).eq("token",token).select("token").maybeSingle();
@@ -1931,7 +1931,7 @@ export default function QuoteCraftApp(){
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
-    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}{calcQuote.chosenOptions?.length?` · додав опції: ${calcQuote.chosenOptions.map(i=>calcItems.filter(x=>x.optional)[i]?.name).filter(Boolean).join(", ")}`:""}{calcQuote.depositPaid?` · 💳 завдаток ${money(calcQuote.depositPaid.amount)} оплачено`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
+    {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}{calcQuote.chosenOptions?.length?` · додав опції: ${calcQuote.chosenOptions.map(i=>calcItems.filter(x=>x.optional)[i]?.name).filter(Boolean).join(", ")}`:""}</b>:calcQuote.status==="viewed"?<b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
