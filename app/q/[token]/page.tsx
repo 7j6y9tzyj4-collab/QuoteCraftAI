@@ -5,9 +5,22 @@ import PrintButton from "@/app/e/[token]/PrintButton";
 import AcceptBox from "./AcceptBox";
 import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
+import {headers} from "next/headers";
 
 export const dynamic="force-dynamic";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
+
+export async function generateMetadata({params}:{params:Promise<{token:string}>}){
+  const {token}=await params;
+  if(!/^[0-9a-f-]{36}$/i.test(token))return {title:"Estimate"};
+  const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
+  const d=(data?.data||{}) as any;
+  const company=d.company||"K&V House Renovation";
+  const what=d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
+  const title=`${what} | ${company}`;
+  const description=d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
+  return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
+}
 
 export default async function SharedQuotePage({params}:{params:Promise<{token:string}>}){
   const {token}=await params;
@@ -18,7 +31,9 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   if(error||!data){
     return <main className="shared"><div className="sharedCard" style={{textAlign:"center"}}><h1>Estimate not found</h1><p>This link is no longer valid.</p></div></main>;
   }
-  if(data.status==="sent"){
+  const ua=(await headers()).get("user-agent")||"";
+  const bot=/facebookexternalhit|Twitterbot|Slackbot|WhatsApp|TelegramBot|Discordbot|LinkedInBot|Googlebot|bingbot|preview|crawler|spider|bot\b/i.test(ua);
+  if(data.status==="sent"&&!bot){
     await supabaseAdmin.from("shared_quotes").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("token",token);
   }
   if((data.data as any)?.kind==="change"){
