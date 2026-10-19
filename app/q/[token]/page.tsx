@@ -7,6 +7,7 @@ import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import {headers} from "next/headers";
 import OptionsAccept from "./OptionsAccept";
+import SplatView from "./SplatView";
 import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
 
@@ -19,9 +20,9 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
   const d=(data?.data||{}) as any;
   const company=d.company||"K&V House Renovation";
-  const what=d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
+  const what=d.kind==="splat"?`3D view — ${d.title||"Room"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
   const title=`${what} | ${company}`;
-  const description=d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
+  const description=d.kind==="splat"?`3D capture of your room${d.client?` — ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
   return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
 }
 
@@ -41,6 +42,24 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   }
   const settings=await ownerSettings(data.user_id);
   const zelle=settings?.zelle||"";
+  if((data.data as any)?.kind==="splat"){
+    const sp=data.data as any;
+    const {data:su}=await supabaseAdmin.storage.from("receipts").createSignedUrl(String(sp.path||""),6*3600);
+    return (
+      <main className="shared">
+        <div className="sharedCard">
+          <div className="sharedHead"><div>
+            <span className="sharedEyebrow">{sp.company}</span>
+            <h1>{sp.title||"3D view"}</h1>
+            {sp.client&&<p>Prepared for: <strong>{sp.client}</strong></p>}
+            {sp.contact&&<p>{sp.contact}</p>}
+          </div></div>
+          {su?.signedUrl?<SplatView url={su.signedUrl} fileName={String(sp.path)} flip={sp.flip!==false}/>:<p>This 3D view is no longer available.</p>}
+          <p style={{fontSize:13,color:"#667085",marginTop:8}}>A 3D capture of your room as it is today. Works best on Wi-Fi.</p>
+        </div>
+      </main>
+    );
+  }
   if((data.data as any)?.kind==="bundle"){
     const b=data.data as any;
     const toks:string[]=(b.tokens||[]).filter((x:string)=>/^[0-9a-f-]{36}$/i.test(x));
