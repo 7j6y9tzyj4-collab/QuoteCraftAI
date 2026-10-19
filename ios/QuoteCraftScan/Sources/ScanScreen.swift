@@ -31,20 +31,21 @@ struct ScanScreen: View {
                     if !ctl.hint.isEmpty { Text(ctl.hint).font(.footnote.bold()).foregroundStyle(.orange).padding(8).background(.ultraThinMaterial).cornerRadius(8) }
                     Text("📷 Кадрів: \(ctl.frameCount)/\(CaptureController.maxFrames) · 🔺 сітка: \(ctl.meshFaces / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
                 } else {
-                    Text("Крок 1/2 — план · 📸 \(ctl.shotCount)/\(CaptureController.maxShots) · 🧊 \(ctl.pointCount / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
+                    Text("📸 \(ctl.shotCount)/\(CaptureController.maxShots) · 🧊 \(ctl.pointCount / 1000)k").font(.footnote.bold()).padding(.horizontal, 10).padding(.vertical, 4).background(.ultraThinMaterial).cornerRadius(8)
                 }
                 if ctl.processing { ProgressView("Обробляю…").padding(10).background(.ultraThinMaterial).cornerRadius(10) }
                 HStack {
                     Button("Скасувати") { ctl.stop(); onFinish(nil) }.buttonStyle(.bordered)
                     Spacer()
                     if ctl.phase == 2 { Button("Без 3D-фото") { onFinish(ctl.output(withMesh: false)) }.buttonStyle(.bordered) }
-                    Button(ctl.phase == 2 ? "Готово" : "Далі →") {
+                    Button("Готово") {
                         if ctl.phase == 2 { ctl.timer?.invalidate(); ctl.processing = true; DispatchQueue.global(qos: .userInitiated).async { let r = ctl.output(withMesh: true); DispatchQueue.main.async { ctl.processing = false; onFinish(r) } } }
                         else { ctl.finish() }
                     }.buttonStyle(.borderedProminent).disabled(ctl.processing)
                 }.padding()
             }
         }
+        .onReceive(ctl.$planReady) { ready in if ready { ctl.processing = true; DispatchQueue.global(qos: .userInitiated).async { let r = ctl.output(withMesh: false); DispatchQueue.main.async { ctl.processing = false; onFinish(r) } } } }
         .onAppear { ctl.start() }
         .onDisappear { ctl.stop() }
     }
@@ -67,6 +68,8 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
     static let maxFrames = 50
     @Published var processing = false
     @Published var phase = 1
+    /// план готовий → одразу відправляємо (крок 2 «3D-фото» вимкнено: не давав гарного результату)
+    @Published var planReady = false
     @Published var shotCount = 0
     @Published var pointCount = 0
     @Published var frameCount = 0
@@ -91,7 +94,7 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
         super.init(); view.delegate = self; view.captureSession.delegate = self
     }
     func start() {
-        shots = []; frames = []; shotCount = 0; frameCount = 0; cloud.reset(); pointCount = 0; phase = 1
+        shots = []; frames = []; shotCount = 0; frameCount = 0; cloud.reset(); pointCount = 0; phase = 1; planReady = false
         view.captureSession.run(configuration: RoomCaptureSession.Configuration())
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.maybeShoot() }
     }
@@ -234,7 +237,7 @@ final class CaptureController: NSObject, ObservableObject, RoomCaptureViewDelega
     func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
         DispatchQueue.main.async {
             self.processing = false
-            if self.finishing && self.phase == 1 { self.result = processedResult; self.startPhoto() }
+            if self.finishing && self.phase == 1 { self.result = processedResult; self.planReady = true }
         }
     }
     func encode(with coder: NSCoder) {}
