@@ -5,9 +5,7 @@ import {statementTotals} from "./statement";
 
 export type Client={id:string;name:string;phone?:string;email?:string;address?:string;notes?:string;createdAt:string;updatedAt:string;
   /** огляди об'єкта (кімнати, фото, плани) */ surveys?:import("./survey").Survey[];
-  /** одне посилання клієнту на всі його естімейти (/q/<token>) */ bundleToken?:string;
-  /** фотореалістичні 3D-кімнати (Gaussian splat з Scaniverse) */ splats?:ClientSplat[]};
-export type ClientSplat={id:string;name:string;path:string;size:number;createdAt:string;flip?:boolean;shareToken?:string};
+  /** одне посилання клієнту на всі його естімейти (/q/<token>) */ bundleToken?:string};
 export const normName=(s:string)=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 export const newClient=(name="",extra:Partial<Client>={}):Client=>({id:crypto.randomUUID(),name:name.trim(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...extra});
 export const findClient=(clients:Client[],name:string)=>{const n=normName(name);return n?clients.find(c=>normName(c.name)===n)||null:null};

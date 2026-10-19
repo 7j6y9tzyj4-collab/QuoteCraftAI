@@ -4,7 +4,6 @@ import type {SavedCalc} from "@/lib/calcTypes";
 import type {Statement} from "@/lib/statement";
 import {statementTotals} from "@/lib/statement";
 import {clientHistory,missingClientNames,newClient,telHref,smsHref,mapHref,type Client} from "@/lib/clients";
-import ClientSplats from "@/components/ClientSplats";
 import {newSurvey,type Survey} from "@/lib/survey";
 import SurveyEditor from "@/components/SurveyEditor";
 import type {User} from "@supabase/supabase-js";
@@ -66,7 +65,6 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
           <button type="button" title="Видалити огляд" onClick={()=>{const photos=s.rooms.reduce((a,r)=>a+r.photos.length,0);if(!confirm(`Видалити «${s.title||"Огляд"}» (${s.date}, кімнат ${s.rooms.length}, фото ${photos})? Це назавжди.`))return;onSave({...cur,surveys:(cur.surveys||[]).filter(x=>x.id!==s.id),updatedAt:new Date().toISOString()})}} style={{marginTop:9,width:44,borderRadius:14,background:"#fff0ee",color:"#b42318",fontSize:18}}>🗑</button>
         </div>)}
       </section>
-      <ClientSplats client={cur} user={user} onSave={onSave}/>
       <section className="total">
         <div><span>Оцінено (естімейти)</span><span>{money(h.quoted)}</span></div>
         <div><span>Отримано</span><span>{money(h.paid)}</span></div>
