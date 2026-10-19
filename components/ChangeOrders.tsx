@@ -97,7 +97,7 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
       setCo(co.id,{token,status:co.status==="draft"?"sent":co.status});
       const link=`${window.location.origin}/q/${token}`;
       const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
-      if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({url:link});setMsg("Посилання на доплату надіслано.");return}catch{/* скасував */}}
+      if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Посилання на доплату надіслано.");return}catch{/* скасував */}}
       try{await navigator.clipboard.writeText(link);setMsg("Посилання на доплату скопійовано: "+link)}catch{setMsg("Посилання: "+link)}
     }catch(e){setMsg("Не вдалося надіслати: "+(e instanceof Error?e.message:String((e as any)?.message||e)))}
   }

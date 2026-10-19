@@ -690,7 +690,7 @@ export default function QuoteCraftApp(){
      const link=`${window.location.origin}/q/${token}`;
      const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
      if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){
-       try{await nav.share({url:link});setCalcMessage("Посилання надіслано: "+link);return}catch{}
+       try{await nav.share({text:link});setCalcMessage("Посилання надіслано: "+link);return}catch{}
      }
      try{await navigator.clipboard.writeText(link);setCalcMessage("Посилання скопійовано: "+link)}catch{setCalcMessage("Посилання: "+link)}
    }catch(e){
@@ -1447,7 +1447,7 @@ export default function QuoteCraftApp(){
    const nav=navigator as Navigator&{share?:(data:{title?:string;text?:string;url?:string})=>Promise<void>};
    if(nav.share){
      try{
-       await nav.share({url:link});
+       await nav.share({text:link});
      }catch{}
    }
  };
