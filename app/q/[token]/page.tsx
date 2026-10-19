@@ -5,7 +5,7 @@ import PrintButton from "@/app/e/[token]/PrintButton";
 import AcceptBox from "./AcceptBox";
 import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
-import {headers} from "next/headers";
+import ViewPing from "./ViewPing";
 import OptionsAccept from "./OptionsAccept";
 import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
@@ -34,11 +34,6 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   if(error||!data){
     return <main className="shared"><div className="sharedCard" style={{textAlign:"center"}}><h1>Estimate not found</h1><p>This link is no longer valid.</p></div></main>;
   }
-  const ua=(await headers()).get("user-agent")||"";
-  const bot=/facebookexternalhit|Twitterbot|Slackbot|WhatsApp|TelegramBot|Discordbot|LinkedInBot|Googlebot|bingbot|preview|crawler|spider|bot\b/i.test(ua);
-  if(data.status==="sent"&&!bot){
-    await supabaseAdmin.from("shared_quotes").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("token",token);
-  }
   const settings=await ownerSettings(data.user_id);
   const zelle=settings?.zelle||"";
   if((data.data as any)?.kind==="bundle"){
@@ -48,7 +43,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
     const list=toks.map(t=>(rows||[]).find((r:any)=>r.token===t)).filter(Boolean) as any[];
     const sum=list.reduce((a,r)=>a+(r.status==="accepted"?acceptedAmounts(r.data).total:(r.data?.tiers?.length?r.data.tiers[1]?.totals.total||0:r.data?.totals?.total||0)),0);
     return (
-      <main className="shared">
+      <main className="shared"><ViewPing token={token}/>
         <div className="sharedCard">
           <div className="sharedHead"><div>
             <span className="sharedEyebrow">{b.company}</span>
@@ -73,7 +68,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   if((data.data as any)?.kind==="change"){
     const c=data.data as ChangeSnapshot;
     return (
-      <main className="shared">
+      <main className="shared"><ViewPing token={token}/>
         <div className="sharedCard">
           <div className="sharedHead">
             <div>
@@ -102,7 +97,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   const showFinish=q.lines.some(l=>l.finish>0);
   const m0=(n:number)=>n>0?money(n):"—";
   return (
-    <main className="shared">
+    <main className="shared"><ViewPing token={token}/>
       <div className="sharedCard">
         <div className="sharedHead">
           <div>
