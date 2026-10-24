@@ -13,12 +13,13 @@ export type Draft={
   include:boolean;
   /** «вже є: …» — дублікат */ dupOf?:string;
   /** куди додати: id розрахунку, "new" — новий проєкт з назви файлу, "" — ще не вибрано */ targetId:string;
+  /** AI вибрав проєкт: впевненість і чому */ aiConf?:number;aiReason?:string;
 };
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 
-export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTarget,onJoin,onCancel,onSave}:{
-  drafts:Draft[];list:Statement[];askTarget:boolean;saving:boolean;
+export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTarget,onJoin,onCancel,onSave,projectsFor}:{
+  drafts:Draft[];list:Statement[];askTarget:boolean;saving:boolean;projectsFor?:(targetId:string)=>Statement[];
   onPatch:(key:string,patch:Partial<Draft>)=>void;
   onTarget:(source:string,targetId:string)=>void;
   onJoin:(key:string)=>void;
@@ -37,7 +38,7 @@ export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTar
       <small className="muted">Читаю чеки… {done} / {drafts.length}. Можна вже виправляти прочитані.</small>
     </div>}
     {!reading&&dups.length>0&&<p style={{marginTop:8,padding:"8px 10px",background:"#fffaeb",borderRadius:10,color:"#93370d",fontSize:14}}>
-      {dups.length} пропущено — вже є в проєкті. Щоб усе одно додати, постав галочку біля чека.</p>}
+      {dups.length} пропущено — ці чеки вже є в програмі (або двічі в цьому пакеті). Щоб усе одно додати, постав галочку біля чека.</p>}
     {drafts.map((d,i)=>{
       const firstOfSource=i===0||drafts[i-1].source!==d.source;
       const canJoin=i>0&&drafts[i-1].source===d.source&&d.fromPdf&&!reading&&!saving;
@@ -66,6 +67,12 @@ export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTar
                 <input type="number" step="0.01" value={d.amount} onChange={e=>onPatch(d.key,{amount:Number(e.target.value)||0})}/>
               </div>
               <input placeholder="Що купив" value={d.items} onChange={e=>onPatch(d.key,{items:e.target.value})}/>
+              {(()=>{const projs=d.targetId&&d.targetId!=="new"&&projectsFor?projectsFor(d.targetId):[];if(projs.length<2||d.dupOf)return null;
+                const unsure=typeof d.aiConf==="number"&&d.aiConf<0.6;
+                return <label style={{display:"grid",gap:2}}><small className="muted">Проєкт{typeof d.aiConf==="number"?(unsure?" · ⚠️ AI не впевнений — перевір":" · вибрав AI"):""}{d.aiReason?` — ${d.aiReason}`:""}</small>
+                  <select value={d.targetId} onChange={e=>onPatch(d.key,{targetId:e.target.value,aiConf:undefined,aiReason:undefined})} style={{borderColor:unsure?"#f79009":undefined}}>
+                    {projs.map(s=><option key={s.id} value={s.id}>{s.project||"Без назви"}</option>)}
+                  </select></label>})()}
             </>}
             {canJoin&&<button className="secondary" style={{justifySelf:"start",padding:"5px 10px",fontSize:13}} onClick={()=>onJoin(d.key)}>⤒ З'єднати з попереднім (довгий чек)</button>}
           </div>

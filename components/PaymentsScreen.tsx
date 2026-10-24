@@ -231,23 +231,60 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  function setB(fn:(d:Draft[]|null)=>Draft[]|null){batchRef.current=fn(batchRef.current);setBatch(batchRef.current)}
  const patchDraft=(key:string,patch:Partial<Draft>)=>setB(ds=>ds&&ds.map(d=>d.key===key?{...d,...patch}:d));
 
- // дублікати: проти чеків у проєкті і проти попередніх чеків цього ж пакета
+ // дублікати: проти чеків У ВСІХ проєктах (будь-якого клієнта) і проти попередніх чеків цього ж пакета
  function markDuplicates(){
    setB(ds=>{
      if(!ds)return ds;
-     const seen:Record<string,Receipt[]>={};
+     const all=listRef.current;
+     const seen:Receipt[]=[];
      return ds.map(d=>{
-       if(d.status!=="ok"||!d.targetId)return d.dupOf?{...d,dupOf:undefined,include:d.status==="ok"}:d;
-       const st=listRef.current.find(s=>s.id===d.targetId);
-       const pool=[...(st?.receipts||[]),...(seen[d.targetId]||[])];
-       const dup=findDuplicate(d,pool);
-       let out:Draft;
-       if(dup)out={...d,include:false,dupOf:`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`};
-       else out=d.dupOf?{...d,dupOf:undefined,include:true}:d;
-       if(!dup)(seen[d.targetId]||=[]).push({id:d.key,date:d.date,store:d.store,items:"",amount:d.amount,receiptNo:d.receiptNo,hash:d.hash});
-       return out;
+       if(d.status!=="ok")return d.dupOf?{...d,dupOf:undefined}:d;
+       let label="";
+       for(const st of all){
+         const r=findDuplicate(d,st.receipts||[]);
+         if(r){label=`${r.date} · ${r.store||"чек"} · ${money(Number(r.amount)||0)} — у «${st.client||"Без імені"}${st.project?` — ${st.project}`:""}»`;break}
+       }
+       if(!label&&findDuplicate(d,seen))label="той самий чек уже є вище в цьому пакеті";
+       if(!label)seen.push({id:d.key,date:d.date,store:d.store,items:"",amount:d.amount,receiptNo:d.receiptNo,hash:d.hash});
+       if(label)return {...d,include:false,dupOf:label};
+       return d.dupOf?{...d,dupOf:undefined,include:true}:d;
      });
    });
+ }
+
+ // у клієнта кілька проєктів → AI розкладає кожен чек у свій проєкт за тим, що куплено
+ const sameClient=(a:string,b:string)=>a.trim().toLowerCase()===b.trim().toLowerCase();
+ function projectsFor(targetId:string){
+   const t=listRef.current.find(s=>s.id===targetId);
+   if(!t||t.own)return [];
+   return listRef.current.filter(s=>!s.own&&sameClient(s.client,t.client));
+ }
+ async function autoAssign(){
+   const ds=batchRef.current;if(!ds)return;
+   const groups=new Map<string,Draft[]>();
+   for(const d of ds){
+     if(d.status!=="ok"||d.dupOf||!d.targetId||d.targetId==="new")continue;
+     const projs=projectsFor(d.targetId);if(projs.length<2)continue;
+     const k=projs.map(p=>p.id).sort().join(",");(groups.get(k)||groups.set(k,[]).get(k)!).push(d);
+   }
+   for(const [k,items] of groups){
+     const projs=k.split(",").map(id=>listRef.current.find(s=>s.id===id)!).filter(Boolean);
+     const projects=projs.map(p=>{
+       const calc=findCalcFor(p,calcs);
+       const ctx=[p.labor.map(l=>l.description).filter(Boolean).join("; "),calc?"Estimate items: "+(calc.items||[]).map(i=>i.name).slice(0,40).join("; "):"",
+         p.receipts.length?"Receipts already filed: "+p.receipts.map(r=>r.items).filter(Boolean).slice(-15).join(" | "):""].filter(Boolean).join("\n");
+       return {id:p.id,label:`${p.client} — ${p.project||"(no name)"}`,context:ctx};
+     });
+     try{
+       setMsg("AI розкладає чеки по проєктах…");
+       const res=await fetch("/api/receipt-assign",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({projects,receipts:items.map(d=>({key:d.key,date:d.date,store:d.store,items:d.items,amount:d.amount}))})});
+       const j=await res.json();
+       if(!res.ok)throw new Error(j?.error||"AI error");
+       const m=new Map<string,{project_id:string;confidence:number;reason:string}>((j.assign||[]).map((a:any)=>[a.key,a]));
+       setB(x=>x&&x.map(d=>{const a=m.get(d.key);return a&&projs.some(p=>p.id===a.project_id)?{...d,targetId:a.project_id,aiConf:a.confidence,aiReason:a.reason}:d}));
+       setMsg("");
+     }catch(e){setMsg("Не вдалося розкласти по проєктах автоматично ("+errText(e)+") — вибери проєкт біля кожного чека.")}
+   }
  }
 
  async function readDraft(key:string){
@@ -274,6 +311,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const worker=async()=>{while(i<keys.length&&batchRef.current){await readDraft(keys[i++])}};
    await Promise.all([worker(),worker(),worker()]);
    markDuplicates();
+   await autoAssign();
  }
 
  // targetId: проєкт, куди скинули; null — з головної Оплат (шукаємо проєкт за назвою файлу)
@@ -298,8 +336,9 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  }
 
  function batchTarget(source:string,targetId:string){
-   setB(ds=>ds&&ds.map(d=>d.source===source?{...d,targetId}:d));
+   setB(ds=>ds&&ds.map(d=>d.source===source?{...d,targetId,aiConf:undefined,aiReason:undefined}:d));
    markDuplicates();
+   void autoAssign();
  }
 
  // довгий чек на 2 сторінки: приклеюємо сторінку до попередньої і читаємо ще раз
@@ -360,7 +399,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  });
 
  const batchView=batch&&<ReceiptBatch drafts={batch} list={list} askTarget={batchAsk} saving={saving}
-   onPatch={patchDraft} onTarget={batchTarget} onJoin={joinDraft} onCancel={()=>{if(saving)return;if(confirm("Скасувати пакет? Нічого не буде додано.")){setB(()=>null);setMsg("")}}} onSave={saveBatch}/>;
+   onPatch={patchDraft} onTarget={batchTarget} projectsFor={projectsFor} onJoin={joinDraft} onCancel={()=>{if(saving)return;if(confirm("Скасувати пакет? Нічого не буде додано.")){setB(()=>null);setMsg("")}}} onSave={saveBatch}/>;
 
  // фото чеків для PDF (з акаунта або локальна копія)
  async function loadPhotos(s:Statement):Promise<ReceiptPhoto[]>{
