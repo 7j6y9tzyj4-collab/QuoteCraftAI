@@ -247,7 +247,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(!label&&findDuplicate(d,seen))label="той самий чек уже є вище в цьому пакеті";
        if(!label)seen.push({id:d.key,date:d.date,store:d.store,items:"",amount:d.amount,receiptNo:d.receiptNo,hash:d.hash});
        if(label)return {...d,include:false,dupOf:label};
-       return d.dupOf?{...d,dupOf:undefined,include:true}:d;
+       return d.dupOf?{...d,dupOf:undefined,include:(Number(d.amount)||0)!==0}:d;
      });
    });
  }
@@ -302,7 +302,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        finally{URL.revokeObjectURL(orig)}
      }
      patchDraft(key,{status:"ok",date:j.date||today(),store:j.store||"",items:j.items||"",amount:Number(j.total)||0,
-       receiptNo:String(j.receipt_no||""),confidence:typeof j.confidence==="number"?j.confidence:1,hash:await imageHash(d.dataUrl),scan,include:true});
+       receiptNo:String(j.receipt_no||""),confidence:typeof j.confidence==="number"?j.confidence:1,hash:await imageHash(d.dataUrl),scan,include:(Number(j.total)||0)!==0});
    }catch(e){patchDraft(key,{status:"error",error:errText(e),include:false})}
  }
 

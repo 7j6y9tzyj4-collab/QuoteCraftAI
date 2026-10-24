@@ -58,7 +58,7 @@ export default function ReceiptBatch({drafts,list,askTarget,saving,onPatch,onTar
           <div style={{display:"grid",gap:6,minWidth:0}}>
             <small className="muted">{d.source}{d.pages>1?` · стор. ${d.page}/${d.pages}`:""}
               {d.status==="reading"&&" · читаю…"}{d.status==="wait"&&" · у черзі"}
-              {d.status==="ok"&&d.confidence<0.7&&<b style={{color:"#b54708"}}> · перевір суму</b>}
+              {d.status==="ok"&&!d.dupOf&&(Number(d.amount)||0)===0?<b style={{color:"#b42318"}}> · сума $0 — не додаю (сторінка без підсумку?). Впиши суму й постав галочку, якщо треба</b>:d.status==="ok"&&d.confidence<0.7&&<b style={{color:"#b54708"}}> · перевір суму</b>}
               {d.dupOf&&<b style={{color:"#93370d"}}> · вже є: {d.dupOf}</b>}</small>
             {d.status==="error"?<small style={{color:"#b42318"}}>Не прочитав: {d.error}</small>:<>
               <div style={{display:"grid",gridTemplateColumns:"minmax(0,130px) minmax(0,1fr) minmax(0,110px)",gap:6}}>
