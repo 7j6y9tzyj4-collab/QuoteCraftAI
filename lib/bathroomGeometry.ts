@@ -14,8 +14,16 @@ export type BathroomAreas={showerWalls:number;pan:number;floorTotal:number;floor
 export function calculateBathroomAreas(text:string):BathroomAreas|null{
   const n=text.toLowerCase().replace(/,/g,".").replace(/[×х]/g,"x");
   if(!/bath|ванн|shower|душ/.test(n))return null;
-  const room=n.match(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/);
-  const h=n.match(/(?:ceiling|height|стел\w*|висот\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)/)||n.match(/(\d+(?:\.\d+)?)\s*(?:in|inch\w*|ft|feet|фут\w*|дюйм\w*)?\s*(?:ceiling|height|стел\w*|висот\w*)/);
+  // Розмір кімнати — перше «A x B», яке НЕ стоїть після слова shower/душ
+  // («enlarge shower to 38x65» — це душ, не ванна кімната).
+  let room:RegExpMatchArray|null=null;
+  for(const m of n.matchAll(/(\d+(?:\.\d+)?)\s*(?:x|на|by)\s*(\d+(?:\.\d+)?)/g)){
+    const before=n.slice(Math.max(0,(m.index||0)-30),m.index);
+    if(/shower|душ|niche|ніш|tile|плитк|panel|панел/.test(before))continue;
+    room=m;break;
+  }
+  // Висота — число після ceiling/height, але не «ceiling 70 sqft» (площа плитки до стелі)
+  const h=n.match(/(?:ceiling|height|стел\w*|висот\w*)[^0-9]{0,15}(\d+(?:\.\d+)?)(?!\s*(?:sq|кв|each|шт))/)||n.match(/(\d+(?:\.\d+)?)\s*(?:in|inch\w*|ft|feet|фут\w*|дюйм\w*)?\s*(?:ceiling|height|стел\w*|висот\w*)/);
   if(!room||!h)return null;
   const inches=/\binch\w*|дюйм\w*|"|\bin\b/.test(n)&&!/\bft\b|\bfeet\b|фут\w*/.test(n);
   const d=inches?12:1;
@@ -87,7 +95,8 @@ const STANDALONE_TO_PACKAGE:Record<string,string|{wall:string;floor:string}>={
   bathroom_accessories_set_each:"br_accessories",
   shower_glass_door_install_each:"br_shower_door_install",
   shower_glass_panel_install_each:"br_glass_enclosure_2wall_install",
-  frameless_glass_enclosure_install_each:"br_glass_enclosure_2wall_install",
+  frameless_glass_enclosure_install_each:"br_glass_enclosure_sub",
+  bathroom_debris_haul_each:"br_debris_haul_remodel",
   demo_general_sqft:"br_demo_partition_wall",
   bath_fan_replace:"br_fan_replace",
   bath_fan_install_each:"br_fan_replace",
@@ -135,7 +144,9 @@ const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
   {re:/toilet|унітаз/,id:"br_toilet_remove",desc:"Remove toilet"},
   {re:/reinstall(?:ing)? (?:the )?toilet|toilet back|унітаз назад|поставити унітаз/,id:"br_toilet_reinstall",desc:"Reinstall toilet after tiling"},
   {re:/baseboard|плінтус/,id:"br_baseboard_install_paint",desc:"Install and paint baseboard"},
-  {re:/vanity|тумб/,id:"br_vanity_install_single",desc:"Install vanity"},
+  {re:/(?:install|new|replace|поставити|нов\w+)\s+(?:a |the |double |single )?(?:vanity|тумб)/,id:"br_vanity_install_single",desc:"Install vanity"},
+  {re:/heated floor|floor heat|тепл\w+ підлог|підігрів підлог/,id:"br_heated_floor_thermostat",desc:"Heated floor thermostat and hookup"},
+  {re:/washer|washing machine|laundry hookup|пралк|праль/,id:"br_washer_hookup",desc:"Washer hookup (supply box, drain, vent)"},
   {re:/faucet and drain|connect faucet|підключ\w+ кран/,id:"br_vanity_connect",desc:"Connect faucet and drain for vanity"},
   {re:/shower drain|дренаж/,id:"br_drain_connect",desc:"Connect shower drain"},
   {re:/valve|змішувач/,id:"br_valve_replace",desc:"Replace shower valve and head"},
@@ -147,7 +158,7 @@ const EXCLUDED_RE=/not included|excluded|by (?:the |a )?glass company|by others|
 export function glassExcluded(text:string){
   return text.toLowerCase().split(/[.;\n!?]+/).some(c=>GLASS_RE.test(c)&&EXCLUDED_RE.test(c));
 }
-const GLASS_IDS=new Set(["br_glass_enclosure_2wall_install","br_shower_door_install"]);
+const GLASS_IDS=new Set(["br_glass_enclosure_2wall_install","br_shower_door_install","br_glass_enclosure_sub"]);
 
 function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
   const n=text.toLowerCase();
@@ -159,7 +170,7 @@ function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
   const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
   // мірні альтернативи: якщо є «relocate valve», не додаємо «replace valve»; якщо є нова
   // тумба з подвійною мийкою — не додаємо одинарну і т.д.
-  const alt:Record<string,string[]>={br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_vanity_install_single:["br_vanity_install_double"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"],br_shower_door_install:["br_glass_enclosure_2wall_install"]};
+  const alt:Record<string,string[]>={br_glass_enclosure_2wall_install:["br_glass_enclosure_sub"],br_shower_door_install:["br_glass_enclosure_sub","br_glass_enclosure_2wall_install"],br_demo_tub:["br_demo_jetted_tub_deck","br_demo_tub_shower"],br_demo_shower_cabin:["br_demo_shower_full"],br_vanity_install_single:["br_vanity_install_double","br_cabinet_reinstall_on_top","br_demo_countertop_sinks"],br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"]};
   const noGlass=glassExcluded(text);
   for(const e of ENSURE){
     if(!e.re.test(n)||has(e.id)||(alt[e.id]||[]).some(has))continue;
@@ -180,12 +191,12 @@ export function applyBathroomMeasurements(result:any,text:string,idKey:"taskId"|
   remapToPackage(result,idKey);
   ensurePackageItems(result,text,idKey);
   // Разові роботи на ванну — завжди кількість 1 («2 shower walls» — не кількість).
-  const LS_ONE=new Set(["br_demo_bathroom_full","br_wall_prep","br_floor_prep","br_ceiling_prep","br_wallpaper_prep","br_baseboard_install_paint","br_trim","br_electrical_allowance","br_plumbing_sub","br_demo_partition_wall","br_mud_pan_build","br_prefab_pan_install","br_curbless_pan","br_plastic_tray_install","br_glass_enclosure_2wall_install","br_shower_door_install","br_ceiling_drywall","br_ceiling_prep_paint","br_ceiling_repair_other_room","br_tub_install","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin","br_demo_soffit","br_vanity_install_single","br_vanity_install_double","br_vanity_connect","br_valve_replace","br_valve_relocate","br_shower_system_install","br_drain_connect","br_drain_relocate","br_fan_replace","br_toilet_remove","br_toilet_reinstall","br_toilet_install_new","br_mirror_install","br_mirror_replace","br_medicine_cabinet","br_accessories","br_tall_cabinet_medicine","br_window_detail","br_window_return_trim","br_wood_frame_tub","br_tub_pipes","br_tub_drain","kp_cabinets_demo","kp_baseboard_repair_paint"]);
+  const LS_ONE=new Set(["br_demo_bathroom_full","br_wall_prep","br_floor_prep","br_ceiling_prep","br_wallpaper_prep","br_baseboard_install_paint","br_trim","br_electrical_allowance","br_plumbing_sub","br_demo_partition_wall","br_mud_pan_build","br_prefab_pan_install","br_curbless_pan","br_plastic_tray_install","br_glass_enclosure_2wall_install","br_shower_door_install","br_ceiling_drywall","br_ceiling_prep_paint","br_ceiling_repair_other_room","br_tub_install","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin","br_demo_soffit","br_vanity_install_single","br_vanity_install_double","br_vanity_connect","br_valve_replace","br_valve_relocate","br_shower_system_install","br_drain_connect","br_drain_relocate","br_fan_replace","br_toilet_remove","br_toilet_reinstall","br_toilet_install_new","br_mirror_install","br_mirror_replace","br_medicine_cabinet","br_accessories","br_tall_cabinet_medicine","br_window_detail","br_window_return_trim","br_wood_frame_tub","br_tub_pipes","br_tub_drain","br_demo_jetted_tub_deck","br_demo_shower_full","br_demo_countertop_sinks","br_cabinet_reinstall_on_top","br_debris_haul_remodel","br_shower_wall_relocate","br_heated_floor_thermostat","br_washer_hookup","br_tub_lines_cap","br_lighting_zones","br_glass_enclosure_sub","kp_cabinets_demo","kp_baseboard_repair_paint"]);
   result.items.forEach((i:any)=>{if(LS_ONE.has(id(i)))i.quantity=1});
   // Повний демонтаж уже включає плитку, ванну, тумбу — окремі демонтажі прибираємо.
   const hasId=(x:string)=>result.items.some((i:any)=>id(i)===x);
   if(hasId("br_demo_bathroom_full")){
-    const included=new Set(["br_demo_wall_tile_sqft","br_demo_floor_sqft","br_demo_drywall_behind_tile_sqft","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin"]);
+    const included=new Set(["br_demo_wall_tile_sqft","br_demo_floor_sqft","br_demo_drywall_behind_tile_sqft","br_demo_tub","br_demo_tub_shower","br_demo_vanity","br_demo_vanity_set","br_demo_shower_cabin","br_demo_jetted_tub_deck","br_demo_shower_full","br_demo_countertop_sinks"]);
     result.items=result.items.filter((i:any)=>!included.has(id(i)));
   }
   // Знос перегородки вже включає латання — AI-шна «латка стелі» зайва.
