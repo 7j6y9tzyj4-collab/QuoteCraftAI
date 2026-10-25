@@ -129,10 +129,12 @@ function remapToPackage(result:any,idKey:"taskId"|"serviceId"){
 
 // AI (gpt-4.1-mini) регулярно «губить» 2–4 дрібні позиції з довгого опису.
 // Для найтиповіших робіт перевіряємо текст напряму і додаємо пропущене.
+const GLASS_SUB_RE=/by (?:the |a )?glass (?:company|contractor|shop)|glass company|by others|скляна фірма|скляної фірми|скло від фірми|скляр/;
 const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
   {re:/partition wall|перегородк/,id:"br_demo_partition_wall",desc:"Remove partition wall, patch ceiling, wall and floor"},
   {re:/medicine cabinet|аптечк/,id:"br_medicine_cabinet",desc:"Install medicine cabinet"},
   {re:/accessories|аксесуар/,id:"br_accessories",desc:"Install bathroom accessories"},
+  {re:GLASS_SUB_RE,id:"br_glass_enclosure_sub",desc:"Frameless glass shower enclosure — by glass company (allowance)"},
   {re:/glass (shower )?enclosure|2-wall glass|скляну? кабін/,id:"br_glass_enclosure_2wall_install",desc:"Install 2-wall glass shower enclosure"},
   {re:/glass door|двері душу|скляні двері/,id:"br_shower_door_install",desc:"Install shower glass door"},
   {re:/niche|ніш/,id:"br_niche",desc:"Build and tile shower niche"},
@@ -154,7 +156,9 @@ const ENSURE:Array<{re:RegExp;id:string;desc:string;qty?:RegExp}>=[
 ];
 // «Glass enclosure by glass company, not included» — скло не рахуємо зовсім
 const GLASS_RE=/glass|скл/;
-const EXCLUDED_RE=/not included|excluded|by (?:the |a )?glass company|by others|separate(?:ly)?|не входить|не рахува|окремо|скляна компанія|скляної компанії/;
+// Скло не рахуємо лише коли сказано прямо, що воно не входить. «By glass company» —
+// це allowance-рядок br_glass_enclosure_sub (ціна фірми проходить через естімейт).
+const EXCLUDED_RE=/not included|excluded|not (?:in|part of) (?:the |this )?(?:estimate|quote)|не входить|не рахува|без скла|no glass/;
 export function glassExcluded(text:string){
   return text.toLowerCase().split(/[.;\n!?]+/).some(c=>GLASS_RE.test(c)&&EXCLUDED_RE.test(c));
 }
@@ -164,13 +168,13 @@ function ensurePackageItems(result:any,text:string,idKey:"taskId"|"serviceId"){
   const n=text.toLowerCase();
   if(glassExcluded(text))result.items=result.items.filter((i:any)=>!GLASS_IDS.has(String(i?.[idKey]||"")));
   // «full demo including the partition wall» — перегородка вже в ціні демонтажу, окремо не рахуємо
-  const partitionInDemo=/(?:demo|demolition|демонтаж)[^.;]{0,100}(?:including|incl\.?|together with|with|разом з|включно з|разом із)[^.;]{0,40}(?:partition|перегородк)/.test(n);
+  const partitionInDemo=/(?:demo|demolition|remove|демонтаж|зняти|розібрати)[^.;]{0,100}(?:including|incl\.?|together with|with|and|разом з|включно з|разом із|і|та)[^.;]{0,60}(?:partition|перегородк)/.test(n);
   if(partitionInDemo)result.items=result.items.filter((i:any)=>String(i?.[idKey]||"")!=="br_demo_partition_wall");
   const id=(i:any)=>String(i?.[idKey]||"");
   const has=(x:string)=>result.items.some((i:any)=>id(i)===x);
   // мірні альтернативи: якщо є «relocate valve», не додаємо «replace valve»; якщо є нова
   // тумба з подвійною мийкою — не додаємо одинарну і т.д.
-  const alt:Record<string,string[]>={br_glass_enclosure_2wall_install:["br_glass_enclosure_sub"],br_shower_door_install:["br_glass_enclosure_sub","br_glass_enclosure_2wall_install"],br_demo_tub:["br_demo_jetted_tub_deck","br_demo_tub_shower"],br_demo_shower_cabin:["br_demo_shower_full"],br_vanity_install_single:["br_vanity_install_double","br_cabinet_reinstall_on_top","br_demo_countertop_sinks"],br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"]};
+  const alt:Record<string,string[]>={br_floor_prep:["br_cement_board_floor_sqft","br_floor_underlayment_sqft"],br_demo_partition_wall:["br_demo_shower_full"],br_glass_enclosure_2wall_install:["br_glass_enclosure_sub"],br_shower_door_install:["br_glass_enclosure_sub","br_glass_enclosure_2wall_install"],br_demo_tub:["br_demo_jetted_tub_deck","br_demo_tub_shower"],br_demo_shower_cabin:["br_demo_shower_full"],br_vanity_install_single:["br_vanity_install_double","br_cabinet_reinstall_on_top","br_demo_countertop_sinks"],br_valve_replace:["br_valve_relocate","br_shower_system_install"],br_drain_connect:["br_drain_relocate"],br_mirror_install:["br_mirror_replace"],br_toilet_remove:["br_demo_bathroom_full"],br_toilet_reinstall:["br_toilet_install_new"],br_fan_replace:["bath_fan_install_each"]};
   const noGlass=glassExcluded(text);
   for(const e of ENSURE){
     if(!e.re.test(n)||has(e.id)||(alt[e.id]||[]).some(has))continue;
