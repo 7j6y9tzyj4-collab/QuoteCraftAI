@@ -324,6 +324,10 @@ export default function QuoteCraftApp(){
  function removeCalcItem(id:string){
    setCalcItems(items=>items.filter(it=>it.id!==id));
  }
+ // ▲▼ — переставити рядок вище/нижче (порядок іде в PDF і в посилання клієнту)
+ function moveCalcItem(id:string,dir:-1|1){
+   setCalcItems(items=>{const i=items.findIndex(it=>it.id===id);const j=i+dir;if(i<0||j<0||j>=items.length)return items;const next=items.slice();[next[i],next[j]]=[next[j],next[i]];return next});
+ }
 
  function addCalcItem(){
    const task=calcTasks[0];
@@ -706,7 +710,7 @@ export default function QuoteCraftApp(){
      const link=`${window.location.origin}/q/${token}`;
      const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
      if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){
-       try{await nav.share({text:link});setCalcMessage("Посилання надіслано: "+link);return}catch{}
+       try{await nav.share({text:link});setCalcMessage("Посилання готове — вибери, куди надіслати: "+link);return}catch{}
      }
      try{await navigator.clipboard.writeText(link);setCalcMessage("Посилання скопійовано: "+link)}catch{setCalcMessage("Посилання: "+link)}
    }catch(e){
@@ -759,7 +763,7 @@ export default function QuoteCraftApp(){
    }
    const link=`${window.location.origin}/q/${bt}`;
    const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
-   if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});return "Посилання надіслано: "+link}catch{}}
+   if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});return "Посилання готове — вибери, куди надіслати: "+link}catch{}}
    try{await navigator.clipboard.writeText(link);return "Посилання скопійовано: "+link}catch{return "Посилання: "+link}
  }
  // ---- естімейт → Оплати ----
@@ -1873,6 +1877,8 @@ export default function QuoteCraftApp(){
            {!li.taskId&&<option value="">— Select task —</option>}
            {calcCategories.map(cat=><optgroup label={cat} key={cat}>{calcTasks.filter(t=>t.category===cat).map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</optgroup>)}
           </select>
+          <button className="remove noPrint" title="Вище" aria-label="Вище" onClick={()=>moveCalcItem(li.id,-1)} style={{background:"#eef2f7",color:"#344054"}}>▲</button>
+          <button className="remove noPrint" title="Нижче" aria-label="Нижче" onClick={()=>moveCalcItem(li.id,1)} style={{background:"#eef2f7",color:"#344054"}}>▼</button>
           <button className="remove noPrint" onClick={()=>removeCalcItem(li.id)}>×</button>
          </div>
          {/* назва й примітка так, як їх побачить клієнт у PDF і на сторінці за посиланням */}
