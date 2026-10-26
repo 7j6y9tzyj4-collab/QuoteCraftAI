@@ -52,6 +52,20 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
       const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
     catch(e){alert("Експорт не вийшов: "+(e instanceof Error?e.message:String(e)))}
   }
+  // Усі хуки — до раннього return (інакше React #310, коли розміри з'являються після першого рендера)
+  const [view,setView]=useState<"2d"|"3d">("2d");
+  const [dims,setDims]=useState(1); // 0 вимк · 1 основні · 2 всі
+  const [full,setFull]=useState(false);
+  const [sel,setSel]=useState<string|null>(null);
+  const [edit,setEdit]=useState(false);
+  const [scanView,setScanView]=useState(!!(room.scanCloud||room.scanMesh));
+  // «привид» скану під моделями і на плані — щоб ставити моделі точно на реальні предмети
+  const [ghost,setGhost]=useState(true);const [top,setTop]=useState<string|null>(null);
+  useEffect(()=>{let dead=false;setTop(null);if(room.scanCloud)cloudTopView(room).then(u=>{if(!dead)setTop(u)});return()=>{dead=true}},[room.scanCloud?.path,room.length,room.width,room.height]);// eslint-disable-line react-hooks/exhaustive-deps
+  const drag=useRef<{id:string;sx:number;sy:number;cx:number;cy:number;moved:boolean}|null>(null);
+  const svgRef=useRef<SVGSVGElement|null>(null);
+  const [rot,setRot]=useState({yaw:35,pitch:30});
+  const dragRef=useRef<{x:number;y:number;yaw:number;pitch:number}|null>(null);
   const L=parseInches(room.length),W=parseInches(room.width),H=parseInches(room.height);
   if(!L||!W)return null;
   const corner:V[]=[[0,0],[L,0],[L,W],[0,W]];
@@ -88,18 +102,7 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   const mid=(k:number)=>add(corner[k],dir[k],len[k]/2);
   const lbl=(kk:number)=>{const m=mid(kk);const edge=kk===0?minY:kk===1?maxX:kk===2?maxY:minX;const o:V=kk%2?[edge,m[1]]:[m[0],edge];const oo=add(o,nrm[kk],14/k);return {x:X(oo[0]),y:Y(oo[1]),rot:kk%2?90*(kk===1?1:-1):0}};
   const areas=roomAreas(room);
-  const [view,setView]=useState<"2d"|"3d">("2d");
-  const [dims,setDims]=useState(1); // 0 вимк · 1 основні · 2 всі
-  const [full,setFull]=useState(false);
-  const [sel,setSel]=useState<string|null>(null);
-  const [edit,setEdit]=useState(false);
-  const [scanView,setScanView]=useState(!!(room.scanCloud||room.scanMesh));
-  // «привид» скану під моделями і на плані — щоб ставити моделі точно на реальні предмети
-  const [ghost,setGhost]=useState(true);const [top,setTop]=useState<string|null>(null);
-  useEffect(()=>{let dead=false;setTop(null);if(room.scanCloud)cloudTopView(room).then(u=>{if(!dead)setTop(u)});return()=>{dead=true}},[room.scanCloud?.path,room.length,room.width,room.height]);// eslint-disable-line react-hooks/exhaustive-deps
   const ed=edit?onFixture:undefined; // тапи по предметах працюють лише в режимі «Редагувати»
-  const drag=useRef<{id:string;sx:number;sy:number;cx:number;cy:number;moved:boolean}|null>(null);
-  const svgRef=useRef<SVGSVGElement|null>(null);
   const exportRow=exp&&view==="3d"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6,fontSize:12,alignItems:"center"}}>
     <button type="button" onClick={()=>download("obj")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ OBJ — SketchUp</button>
     <button type="button" onClick={()=>download("glb")} className="secondary" style={{padding:"5px 10px",borderRadius:10}}>⬇ GLB</button>
@@ -108,8 +111,6 @@ export default function RoomSketch({room,onOpening,onPart,onFixture,onRender,ren
   </div>;
 
   // ---- 3D, яке можна крутити пальцем (як у SketchUp): поворот навколо центру кімнати ----
-  const [rot,setRot]=useState({yaw:35,pitch:30});
-  const dragRef=useRef<{x:number;y:number;yaw:number;pitch:number}|null>(null);
   const Hh=H||96;
   const cx=(minX+maxX)/2,cy=(minY+maxY)/2,cz=Hh/2;
   const ya=rot.yaw*Math.PI/180,pa=rot.pitch*Math.PI/180;
