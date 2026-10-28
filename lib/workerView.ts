@@ -50,7 +50,7 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
     projects.push({sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
       scope:items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional})),
-      notes:String(calc?.notes||""),
+      notes:"", // умови для клієнта (оплата, що не входить) помічнику не показуємо
       materials:items.filter(i=>(Number(i.materialRate)||0)>0&&!i.optional).map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||"")})),
       days,hours:Math.round(h*100)/100,
       receipts:s.receipts.length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").length,

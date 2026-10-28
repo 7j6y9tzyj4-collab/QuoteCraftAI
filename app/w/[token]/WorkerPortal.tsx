@@ -55,7 +55,7 @@ async function post(body:object){
 
 function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
   const L=T[lang];const fmt=(d:string)=>fmtL(d,L.loc);const unitL=(u:string)=>L.units[u]||u;
-  const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),p.notes,...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk");
+  const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk");
   const router=useRouter();
   const [date,setDate]=useState(today());
   const [hours,setHours]=useState<number|"">("");
@@ -123,7 +123,6 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
     {p.scope.length>0&&<details style={card}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>
       <ol style={{paddingLeft:20}}>{p.scope.filter(s=>!s.optional).map((s,i)=><li key={i} style={{marginTop:6}}><b>{tr(s.name)}</b>{s.qty>1||s.unit!=="each"?` — ${s.qty} ${unitL(s.unit)}`:""}{s.note&&<div style={{fontSize:13,color:"#667085"}}>{tr(s.note)}</div>}</li>)}</ol>
       {p.scope.some(s=>s.optional)&&<p style={{fontSize:13,color:"#667085"}}>{L.opts}{p.scope.filter(s=>s.optional).map(s=>tr(s.name)).join("; ")}</p>}
-      {p.notes&&<p style={{whiteSpace:"pre-wrap",fontSize:13,color:"#475467"}}>{tr(p.notes)}</p>}
     </details>}
     {p.materials.length>0&&<details style={card}><summary style={{fontWeight:800,fontSize:16}}>{L.buy}{trBusy?` · ${L.tr}`:""}</summary>
       <ul style={{paddingLeft:20}}>{p.materials.map((m,i)=><li key={i} style={{marginTop:6}}>{tr(m.name)}{m.note&&<div style={{fontSize:13,color:"#667085"}}>{tr(m.note)}</div>}</li>)}</ul>
