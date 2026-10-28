@@ -689,6 +689,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
            </div>
            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 130px",gap:6}}>
              <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
+             {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
              <select value={catOf(r)} onChange={e=>setLine<Receipt>("receipts",r.id,{category:e.target.value})}>{OWN_CATS.map(c=><option key={c}>{c}</option>)}</select>
            </div>
            {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}
@@ -786,6 +787,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <div style={{display:"grid",gap:6}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
+         {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
        </div>
        <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
