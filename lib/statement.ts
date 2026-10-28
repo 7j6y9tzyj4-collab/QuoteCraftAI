@@ -5,7 +5,8 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** запасний варіант без акаунта: маленька копія фото */ photoData?:string;
   /** номер чека (Receipt #, Order #) — для пошуку дублікатів */ receiptNo?:string;
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
-  /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string};
+  /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string;
+  /** хто додав (помічник за посиланням) */ by?:string};
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
 export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string};
 export type Payout={id:string;date:string;workerId:string;amount:number};
@@ -41,6 +42,8 @@ export type Statement={
   workLog?:WorkEntry[];
   /** виплати помічникам */
   payouts?:Payout[];
+  /** фото роботи (від мене або помічника за посиланням) */
+  photos?:{id:string;path:string;date:string;by?:string;note?:string}[];
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";

@@ -18,6 +18,8 @@ import HoursCalendar from "@/components/HoursCalendar";
 import MonthEarnings from "@/components/MonthEarnings";
 import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
 import JobsSchedule from "@/components/JobsSchedule";
+import WorkerLinks from "@/components/WorkerLinks";
+import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
@@ -133,6 +135,39 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    persist(next);
    return done.length?"✓ Записано: "+done.join("; "):"Нічого не записано.";
  }
+
+ // ---- 👷 що надіслав помічник за посиланням (worker_inbox) → у розрахунки ----
+ async function pullWorkerInbox(){
+   if(!user)return;
+   const {data,error}=await supabase.from("worker_inbox").select("id,token,worker,sid,kind,payload,created_at").eq("user_id",user.id).is("applied_at",null).order("created_at");
+   if(error||!data?.length)return;
+   const {data:links}=await supabase.from("worker_links").select("token,rate").eq("user_id",user.id);
+   const rateOf=(t:string)=>Number((links||[]).find((l:any)=>l.token===t)?.rate)||0;
+   const us=(d:string)=>{const m=String(d||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[2]}/${m[3]}/${m[1]}`:today()};
+   let next=listRef.current.slice();const used:string[]=[];const sum:Record<string,{h:number;r:number;p:number}>={};
+   for(const it of data as any[]){
+     const s0=next.find(x=>x.id===it.sid);if(!s0){used.push(it.id);continue}
+     let s={...s0};const p=it.payload||{};const who=String(it.worker||"").trim();
+     const k=who;sum[k]||={h:0,r:0,p:0};
+     if(it.kind==="hours"){
+       let crew=[...(s.crew||[])];let w=crew.find(c=>!c.self&&c.name.trim().toLowerCase()===who.toLowerCase());
+       if(!w){w={id:uid(),name:who,rate:rateOf(it.token)};crew=[...crew,w]}
+       s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined}]};sum[k].h+=Number(p.hours)||0;
+     }else if(it.kind==="receipt"){
+       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,by:who}].sort(byDate)};sum[k].r++;
+     }else if(it.kind==="photo"){
+       if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||uid(),path:p.path,date:us(p.date),by:who,note:p.note||undefined}]};sum[k].p++;
+     }
+     next=next.map(x=>x.id===s.id?{...s,updatedAt:new Date().toISOString()}:x);used.push(it.id);
+   }
+   persist(next);
+   await supabase.from("worker_inbox").update({applied_at:new Date().toISOString()}).in("id",used);
+   const txt=Object.entries(sum).map(([w,v])=>`👷 ${w}: ${[v.h?`${v.h} год`:"",v.r?`чеків ${v.r}`:"",v.p?`фото ${v.p}`:""].filter(Boolean).join(", ")}`).join("; ");
+   if(txt)setMsg(txt+" — додано в розрахунки. Перевір суми чеків.");
+ }
+ useEffect(()=>{if(ready&&user)void pullWorkerInbox()
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[ready,user]);
 
  // ---- прийнятий естімейт → розрахунок в Оплатах ----
  type Pending={token:string;q:QuoteSnapshot&{chosenTier?:number;chosenOptions?:number[]};acceptedAt:string};
@@ -770,6 +805,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    <PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>
 
    <CrewPanel st={cur} all={list} onPatch={update}/>
+   <WorkerLinks user={user} st={cur}/>
+   <StatementPhotos st={cur} onPatch={update}/>
    {planView}
 
    <section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>
