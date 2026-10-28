@@ -10,6 +10,7 @@ import ClientPicker from "@/components/ClientPicker";
 import type {Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
+import {invoiceLink} from "@/lib/invoiceLink";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
@@ -724,6 +725,12 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    </section>
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"0 4px 10px"}}><input type="checkbox" style={{width:"auto"}} checked={withPhotos} onChange={e=>setWithPhotos(e.target.checked)}/>Додати фото чеків у PDF</label>}
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
+   {user&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={async()=>{
+     try{const link=await invoiceLink(user,cur);
+       const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+       if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Посилання на рахунок: "+link);return}catch{}}
+       try{await navigator.clipboard.writeText(link);setMsg("Посилання на рахунок скопійовано: "+link)}catch{setMsg("Посилання на рахунок: "+link)}
+     }catch(e){setMsg("Не вдалося: "+(e instanceof Error?e.message:String(e)))}}}>🔗 Рахунок клієнту (посилання, завжди свіжі цифри)</button></div>}
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={receiptsPdf}>📥 Скачати всі чеки проєкту (PDF)</button></div>}
    {inputs}
  </>;

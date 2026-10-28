@@ -20,7 +20,7 @@ export default function AwaitingReplies({user,clients,calcs,onOpenCalc}:{user:Us
     if(!user)return;
     const since=new Date(Date.now()-60*DAY).toISOString();
     supabase.from("shared_quotes").select("token,status,created_at,viewed_at,updated_at,data").eq("user_id",user.id).in("status",["sent","viewed"]).gte("created_at",since).order("created_at",{ascending:false}).limit(100)
-      .then(({data}:{data:Row[]|null})=>setRows((data||[]).filter(r=>r.data?.kind!=="bundle")));
+      .then(({data}:{data:Row[]|null})=>setRows((data||[]).filter(r=>r.data?.kind!=="bundle"&&r.data?.kind!=="invoice")));
   },[user]);
   const list=useMemo(()=>rows.filter(r=>!hidden.includes(r.token+r.status)),[rows,hidden]);
   if(!user||!list.length)return null;

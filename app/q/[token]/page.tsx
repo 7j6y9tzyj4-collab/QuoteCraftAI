@@ -7,6 +7,8 @@ import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import ViewPing from "./ViewPing";
 import OptionsAccept from "./OptionsAccept";
+import InvoiceView,{type InvoiceData} from "./InvoiceView";
+import {statementTotals,type Statement} from "@/lib/statement";
 import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
 
@@ -19,9 +21,9 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
   const d=(data?.data||{}) as any;
   const company=d.company||"K&V House Renovation";
-  const what=d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
+  const what=d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
   const title=`${what} | ${company}`;
-  const description=d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
+  const description=d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
   return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
 }
 
@@ -36,6 +38,21 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   }
   const settings=await ownerSettings(data.user_id);
   const zelle=settings?.zelle||"";
+  if((data.data as any)?.kind==="invoice"){
+    const inv=data.data as any;
+    const {data:row}=await supabaseAdmin.from("user_statements").select("statements").eq("user_id",data.user_id).maybeSingle();
+    const st=((row?.statements||[]) as Statement[]).find(x=>x.id===inv.sid);
+    if(!st)return <main className="shared"><div className="sharedCard" style={{textAlign:"center"}}><h1>Invoice not found</h1><p>Please contact us for an updated invoice.</p></div></main>;
+    const paths=st.receipts.map(r=>r.photoPath).filter(Boolean) as string[];
+    const signed=new Map<string,string>();
+    if(paths.length){const {data:su}=await supabaseAdmin.storage.from("receipts").createSignedUrls(paths,3600);for(const x of su||[])if(x.path&&x.signedUrl)signed.set(x.path,x.signedUrl)}
+    const t=statementTotals(st);
+    const d:InvoiceData={company:inv.company,contact:inv.contact,client:st.client,project:st.project,date:new Date().toLocaleDateString("en-US"),
+      labor:st.labor.filter(l=>Number(l.amount)).map(l=>({description:l.description,amount:Number(l.amount)||0})),
+      receipts:[...st.receipts].filter(r=>Number(r.amount)).map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
+      payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||""};
+    return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><InvoiceView d={d}/></div></main>;
+  }
   if((data.data as any)?.kind==="bundle"){
     const b=data.data as any;
     const toks:string[]=(b.tokens||[]).filter((x:string)=>/^[0-9a-f-]{36}$/i.test(x));

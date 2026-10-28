@@ -9,6 +9,7 @@ import PaymentsScreen from "@/components/PaymentsScreen";
 import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
 import AwaitingReplies from "@/components/AwaitingReplies";
+import PaymentsDue from "@/components/PaymentsDue";
 import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
 import {sanityCheck} from "@/lib/sanity";
 import {timeHint} from "@/lib/jobStats";
@@ -157,6 +158,14 @@ export default function QuoteCraftApp(){
  const [calcProject,setCalcProject]=useState("");
  const [calcShareToken,setCalcShareToken]=useState<string>("");
  const [ownerPrefs,setOwnerPrefs]=useState<OwnerPrefs>(EMPTY_PREFS);
+ // Оплати для головної («Чекають оплати») — свіжі щоразу, коли повертаєшся на головну
+ useEffect(()=>{
+   if(!user||(screen!=="home"&&screen!=="clients"))return;
+   let on=true;
+   supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{if(on&&Array.isArray(data?.statements))setPayStatements(data.statements)});
+   return()=>{on=false};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[screen,user?.id]);
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
@@ -1795,6 +1804,7 @@ export default function QuoteCraftApp(){
     <section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section>
     <SiteLeads user={user}/>
     <AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/>
+    <PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/>
     <section className="metrics"><article><span>Estimates</span><b>{calcSaved.length}</b></article><article><span>Quoted value</span><b>{money(calcSaved.reduce((a,c)=>a+(Number(c.total)||0),0))}</b></article></section>
     <section className="panel"><div className="head"><h2>Recent estimates</h2><button onClick={()=>setScreen("saved")}>View all</button></div>{calcSaved.length===0?<p className="empty">Ще немає збережених естімейтів.</p>:calcSaved.slice(0,3).map(c=><button className="estimate" key={c.id} onClick={()=>openCalc(c)}><span><b>{c.client||"Unnamed client"}</b><small>{c.project||"Estimate"}</small></span><strong>{money(c.total)}</strong></button>)}</section>
    </>}
