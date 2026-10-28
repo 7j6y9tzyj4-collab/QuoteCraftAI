@@ -16,6 +16,8 @@ import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
 import HoursCalendar from "@/components/HoursCalendar";
 import MonthEarnings from "@/components/MonthEarnings";
+import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
+import JobsSchedule from "@/components/JobsSchedule";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
@@ -74,6 +76,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  listRef.current=list;
  const [report,setReport]=useState(false);
  const [hoursCal,setHoursCal]=useState(false);
+ const [jobsCal,setJobsCal]=useState(false);
  const [ownMonth,setOwnMonth]=useState(()=>new Date().toLocaleDateString("sv-SE").slice(0,7)); // YYYY-MM
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
@@ -104,6 +107,33 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        .then(({error}:{error:any})=>{if(error)setMsg("Не вдалося зберегти в акаунт: "+error.message)});
    }
  }
+ // ---- 🎤 голосом: години, оплати, чеки без фото ----
+ function applyVoice(acts:VoiceAction[]):string{
+   const us=(d:string)=>{const m=String(d||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[2]}/${m[3]}/${m[1]}`:today()};
+   const me=/^\s*(я|me|i|myself)?\s*$/i;
+   let next=listRef.current.slice();const done:string[]=[];
+   for(const a of acts){
+     const s0=next.find(x=>x.id===a.project_id);if(!s0)continue;
+     let s={...s0};
+     if(a.type==="hours"){
+       let crew=[...(s.crew||[])];
+       let w=me.test(a.worker||"")?crew.find(c=>c.self):crew.find(c=>c.name.trim().toLowerCase()===a.worker.trim().toLowerCase());
+       if(!w){w=me.test(a.worker||"")?{id:uid(),name:"Я",rate:0,self:true}:{id:uid(),name:a.worker.trim(),rate:0};crew=[...crew,w]}
+       s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(a.date),workerId:w.id,hours:Math.round(a.hours*100)/100,note:a.note||undefined}]};
+       done.push(`${a.hours} год → ${s.client}`);
+     }else if(a.type==="payment"){
+       s={...s,payments:[...s.payments,{id:uid(),date:us(a.date),amount:Math.round(a.amount*100)/100,method:a.method||"Zelle"}]};
+       done.push(`оплата ${money(a.amount)} → ${s.client}`);
+     }else{
+       s={...s,receipts:[...s.receipts,{id:uid(),date:us(a.date),store:a.store||"",items:a.items||"",amount:Math.round(a.amount*100)/100}].sort(byDate)};
+       done.push(`чек ${money(a.amount)} → ${s.client}`);
+     }
+     next=next.map(x=>x.id===s.id?{...s,updatedAt:new Date().toISOString()}:x);
+   }
+   persist(next);
+   return done.length?"✓ Записано: "+done.join("; "):"Нічого не записано.";
+ }
+
  // ---- прийнятий естімейт → розрахунок в Оплатах ----
  type Pending={token:string;q:QuoteSnapshot&{chosenTier?:number;chosenOptions?:number[]};acceptedAt:string};
  const [pendingAcc,setPendingAcc]=useState<Pending[]>([]);
@@ -533,6 +563,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const catOf=(r:Receipt)=>r.category||guessOwnCategory(r.items);
  function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}
 
+ if(!cur&&jobsCal)return <JobsSchedule user={user} list={list} onClose={()=>setJobsCal(false)}/>;
  if(!cur&&hoursCal)return <HoursCalendar list={list} onPatch={patchStatement} onClose={()=>setHoursCal(false)}/>;
  if(!cur&&report)return <YearReport list={list} calcs={calcs} onClose={()=>setReport(false)}/>;
  if(!cur){
@@ -554,7 +585,12 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>)}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
+     {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
      {list.length>0&&<MonthEarnings list={list}/>}
+     <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
+       <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
      <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
        <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
        <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
