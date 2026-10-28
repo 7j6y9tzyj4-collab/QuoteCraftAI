@@ -3,7 +3,7 @@ import {useEffect,useRef,useState,type DragEvent} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
-import {imageHash,findDuplicate,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
+import {imageHash,findDuplicate,findManualMatch,hasPhoto,matchStatementByName,baseName,normDate} from "@/lib/receiptBatch";
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import DateInput from "@/components/DateInput";
 import ClientPicker from "@/components/ClientPicker";
@@ -204,7 +204,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    if(!target||!files?.length)return;
    if(openId!==target.id)setOpenId(target.id);
    setBusy(true);setMsg("");
-   const added:Receipt[]=[];const failed:string[]=[];
+   const latest=list.find(s=>s.id===target.id)||target;
+   // робоча копія чеків проєкту: сюди додаємо нові і в неї ж «вклеюємо» фото до чеків, вписаних вручну
+   let receipts:Receipt[]=[...latest.receipts];
+   let addedN=0,mergedN=0;const skipped:string[]=[];const failed:string[]=[];
    for(const f of Array.from(files)){
      try{
        const p=await prepareReceiptFile(f);
@@ -212,8 +215,15 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        const res=await fetch("/api/parse-receipt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo:p.dataUrl})});
        const d=await res.json();
        if(!res.ok)throw new Error(d?.error||"AI error");
-       const rid=uid();
-       const rec:Receipt={id:rid,date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0};
+       const hash=await imageHash(p.dataUrl).catch(()=>"");
+       const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash};
+       // 1) такий чек з фото вже є → не додаємо
+       const dup=findDuplicate(info,receipts);
+       if(dup&&hasPhoto(dup)){skipped.push(`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`);continue}
+       // 2) є такий самий чек, вписаний вручну без фото → прикріплюємо фото до нього
+       const manual=dup||findManualMatch(info,receipts);
+       const rid=manual?manual.id:uid();
+       let photo:{photoPath?:string;photoData?:string}={};
        // обрізаємо по межах чека і зберігаємо фото
        try{
          // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
@@ -225,18 +235,31 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          if(user){
            const path=`${user.id}/${target.id}/${rid}.jpg`;
            const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
-           if(!error){rec.photoPath=path;saved=true}
+           if(!error){photo={photoPath:path};saved=true}
          }
-         if(!saved)rec.photoData=clean?p.dataUrl:await shrinkImage(scan);
+         if(!saved)photo={photoData:clean?p.dataUrl:await shrinkImage(scan)};
        }catch{/* без фото, але з сумою */}
-       added.push(rec);
+       if(manual){
+         // дані з чека точніші за вписані вручну; категорію («Мої витрати») лишаємо
+         receipts=receipts.map(r=>r.id===manual.id?{...r,...info,items:info.items||r.items,store:info.store||r.store,...photo}:r);
+         mergedN++;
+       }else{
+         receipts.push({id:rid,...info,...photo});
+         addedN++;
+       }
        if((d.confidence??1)<0.7)failed.push(`${f.name}: перевір суму`);
      }catch(e){failed.push(`${f.name}: ${e instanceof Error?e.message:String(e)}`)}
    }
-   const latest=list.find(s=>s.id===target.id)||target;
-   persist(list.map(s=>s.id===latest.id?{...latest,receipts:[...latest.receipts,...added].sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()),updatedAt:new Date().toISOString()}:s));
+   if(addedN||mergedN){
+     const now=list.find(s=>s.id===target.id)||latest;
+     receipts.sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime());
+     persist(list.map(s=>s.id===now.id?{...now,receipts,updatedAt:new Date().toISOString()}:s));
+   }
    setBusy(false);
-   setMsg(`Додано чеків: ${added.length}.`+(failed.length?" Увага — "+failed.join("; "):" Перевір суми з чеками."));
+   const parts=[`Додано чеків: ${addedN}.`];
+   if(mergedN)parts.push(`Фото прикріплено до чеків, вписаних вручну: ${mergedN}.`);
+   if(skipped.length)parts.push(`Пропущено — вже є: ${skipped.join("; ")}.`);
+   setMsg(parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):" Перевір суми з чеками."));
    if(fileRef.current)fileRef.current.value="";
    if(camRef.current)camRef.current.value="";
    targetRef.current=null;

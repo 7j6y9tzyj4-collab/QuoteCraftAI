@@ -34,6 +34,26 @@ export function findDuplicate(d:DupCheck,existing:Receipt[]):Receipt|null{
   return null;
 }
 
+// чек без фото (вписаний вручну) з тією ж сумою: той самий магазин або магазин не вписаний,
+// дата в межах 30 днів (вручну часто ставлять день, коли забрав, а не день замовлення)
+export const hasPhoto=(r:Receipt)=>!!(r.photoPath||r.photoData);
+export function findManualMatch(d:DupCheck,existing:Receipt[]):Receipt|null{
+  const st=normStore(d.store),dt=normDate(d.date),amt=Number(d.amount)||0;
+  if(!amt)return null;
+  const day=(x:string)=>{const n=normDate(x);return n?new Date(n+"T12:00:00").getTime():NaN};
+  for(const r of existing){
+    if(hasPhoto(r))continue;
+    if(Math.abs(amt-(Number(r.amount)||0))>0.011)continue;
+    const rs=normStore(r.store);
+    const storeOk=!rs||!st||st===rs||st.includes(rs)||rs.includes(st);
+    if(!storeOk)continue;
+    const a=day(dt),b=day(r.date);
+    if(!isNaN(a)&&!isNaN(b)&&Math.abs(a-b)>30*864e5)continue;
+    return r;
+  }
+  return null;
+}
+
 // «Uzma.pdf», «Uzma receipts 10-10.pdf» → розрахунок з клієнтом Uzma. Кілька однаково схожих або жодного → null.
 const words=(s:string)=>String(s||"").toLowerCase().replace(/\.[a-z0-9]{2,5}$/i,"").split(/[^a-zа-яіїєґ0-9']+/i).filter(w=>w.length>=2);
 const STOP=new Set(["scanned","document","documents","scan","receipt","receipts","pdf","img","image","photo","копія","чеки","чек"]);
