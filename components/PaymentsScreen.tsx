@@ -9,6 +9,7 @@ import DateInput from "@/components/DateInput";
 import ClientPicker from "@/components/ClientPicker";
 import type {Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
+import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
 import ChangeOrders from "@/components/ChangeOrders";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
@@ -16,7 +17,7 @@ import HoursCalendar from "@/components/HoursCalendar";
 import MonthEarnings from "@/components/MonthEarnings";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
-import {newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -83,12 +84,17 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(error){cloudOk.current=false;setReady(true);return}
        cloudOk.current=true;
        const cloud=data?.statements as Statement[]|undefined;
-       if(Array.isArray(cloud)&&cloud.length){setList(cloud);try{localStorage.setItem(SK,JSON.stringify(cloud))}catch{}}
+       if(Array.isArray(cloud)&&cloud.length){
+         const fixed=normalizeCrew(cloud);
+         if(fixed.changed){listRef.current=fixed.list;supabase.from("user_statements").upsert({user_id:user.id,statements:fixed.list,updated_at:new Date().toISOString()},{onConflict:"user_id"}).then(()=>{})}
+         setList(fixed.list);try{localStorage.setItem(SK,JSON.stringify(fixed.list))}catch{}
+       }
        setReady(true);
      });
  },[user]);
 
  function persist(next:Statement[]){
+   next=normalizeCrew(next).list;
    listRef.current=next;
    setList(next);
    try{localStorage.setItem(SK,JSON.stringify(next))}catch{}
@@ -97,6 +103,53 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        .then(({error}:{error:any})=>{if(error)setMsg("Не вдалося зберегти в акаунт: "+error.message)});
    }
  }
+ // ---- прийнятий естімейт → розрахунок в Оплатах ----
+ type Pending={token:string;q:QuoteSnapshot&{chosenTier?:number;chosenOptions?:number[]};acceptedAt:string};
+ const [pendingAcc,setPendingAcc]=useState<Pending[]>([]);
+ const nrm=(x:string)=>String(x||"").trim().toLowerCase();
+ function statementFromQuote(p:Pending):Statement{
+   const q=p.q;const st=newStatement();
+   st.client=q.client||"";st.project=q.project||"";st.quoteToken=p.token;
+   const calc=calcs.find(c=>c.shareToken===p.token);if(calc)st.calcId=calc.id;
+   const tier=q.tiers?.length&&typeof q.chosenTier==="number"?q.tiers[q.chosenTier]:null;
+   const lines=[...(tier?tier.lines:q.lines),...(q.chosenOptions||[]).map(i=>q.optional[i]).filter(Boolean)];
+   st.labor=lines.filter(l=>Number(l.labor)>0).map(l=>({id:uid(),description:l.name,amount:Math.round(Number(l.labor)*100)/100}));
+   const disc=tier?Number(tier.totals.discount)||0:Number(q.totals?.discount)||0;
+   if(disc>0)st.labor.push({id:uid(),description:q.totals?.discountLabel||"Package discount",amount:-Math.round(disc*100)/100});
+   const a=acceptedAmounts(q);
+   if(a.deposit>0)st.schedule=[{id:uid(),label:"Deposit",amount:a.deposit}];
+   return st;
+ }
+ async function checkAccepted(){
+   if(!user)return;
+   const since=new Date(Date.now()-30*86400000).toISOString();
+   const {data}=await supabase.from("shared_quotes").select("token,data,accepted_at").eq("user_id",user.id).eq("status","accepted").gte("accepted_at",since);
+   const rows=((data||[]) as any[]).filter(r=>r.data&&!r.data.kind&&!r.data.stmtCreated&&String(r.data.client||"").trim());
+   if(!rows.length){setPendingAcc([]);return}
+   let list2=listRef.current.slice();let changed=false;const created:string[]=[];const ask:Pending[]=[];const mark:string[]=[];
+   for(const r of rows){
+     const p:Pending={token:r.token,q:r.data,acceptedAt:r.accepted_at};
+     if(list2.some(s=>s.quoteToken===r.token)){mark.push(r.token);continue}
+     const same=list2.find(s=>!s.own&&!s.quoteToken&&nrm(s.client)===nrm(p.q.client)&&nrm(s.project)===nrm(p.q.project));
+     if(same){list2=list2.map(s=>s.id===same.id?{...s,quoteToken:r.token}:s);changed=true;mark.push(r.token);continue}
+     // у клієнта вже є інші розрахунки — питаємо, щоб не задвоїти; немає — створюємо одразу
+     if(list2.some(s=>!s.own&&nrm(s.client)===nrm(p.q.client))){ask.push(p);continue}
+     list2=[statementFromQuote(p),...list2];changed=true;created.push(`${p.q.client} — ${p.q.project||"Estimate"}`);mark.push(r.token);
+   }
+   if(changed)persist(list2);
+   for(const t of mark){const r=rows.find(x=>x.token===t);await supabase.from("shared_quotes").update({data:{...r.data,stmtCreated:true}}).eq("token",t)}
+   setPendingAcc(ask);
+   if(created.length)setMsg("✅ Клієнт прийняв — створено розрахунок: "+created.join("; ")+". Додавай чеки й оплати.");
+ }
+ useEffect(()=>{if(ready&&user)void checkAccepted()
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[ready,user]);
+ async function resolvePending(p:Pending,create:boolean){
+   if(create){const st=statementFromQuote(p);persist([st,...listRef.current]);setOpenId(st.id);setMsg("Створено з прийнятого естімейту. Додавай чеки й оплати.")}
+   await supabase.from("shared_quotes").update({data:{...p.q,stmtCreated:true}}).eq("token",p.token);
+   setPendingAcc(x=>x.filter(y=>y.token!==p.token));
+ }
+
  const cur=list.find(s=>s.id===openId)||null;
  // естімейт з калькулятора → розрахунок (новий або оновлюємо роботу в існуючому)
  useEffect(()=>{
@@ -470,6 +523,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        </div>)}
      </div>}
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
+     {pendingAcc.map(p=><div key={p.token} style={{marginTop:10,padding:12,borderRadius:12,background:"#ecfdf3",border:"1px solid #abefc6"}}>
+       <b>✅ {p.q.client} прийняв(ла) естімейт «{p.q.project||"Estimate"}» — {money(acceptedAmounts(p.q).total)}</b>
+       <small className="muted" style={{display:"block"}}>У клієнта вже є інші розрахунки, тому питаю, щоб не задвоїти.</small>
+       <div className="actions" style={{marginTop:6}}><button className="primary" onClick={()=>resolvePending(p,true)}>＋ Створити розрахунок</button><button className="secondary" onClick={()=>resolvePending(p,false)}>Вже є / не треба</button></div>
+     </div>)}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
      {list.length>0&&<MonthEarnings list={list}/>}
@@ -490,7 +548,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>}
      {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>statusFilter==="all"||(statusFilter==="done")===(statementStatus(s)==="done")).sort((a,b)=>(statementStatus(a)==="done"?1:0)-(statementStatus(b)==="done"?1:0)).map(s=>{const t=statementTotals(s);const st=statementStatus(s);const m=STATUS_META[st];return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}} style={{borderLeft:`6px solid ${m.color}`,background:m.bg,opacity:st==="done"?0.85:1}}>
-         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":"● "}{m.label}{s.status?" ✎":""}</small></span>
+         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":"● "}{m.label}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;

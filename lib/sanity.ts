@@ -2,7 +2,7 @@ import {computeCalcTotals} from "./calcEngine";
 import type {CalcItem,SavedCalc} from "./calcTypes";
 
 // Перевірка «чи не замало»: частка матеріалів у сумі порівняно з твоїми схожими естімейтами.
-const kindOf=(project:string,items:CalcItem[])=>{
+export const kindOf=(project:string,items:{name:string;category?:string}[])=>{
   const t=(project+" "+items.map(i=>i.name+" "+(i.category||"")).join(" ")).toLowerCase();
   if(/bath|shower|tub|toilet|powder|ванн|душ|туалет/.test(t))return "bath";
   if(/kitchen|cabinet|backsplash|кухн/.test(t))return "kitchen";

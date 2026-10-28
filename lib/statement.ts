@@ -101,3 +101,23 @@ export function crewSummary(s:Statement){
   const cost=r2(helpers.reduce((a,r)=>a+r.accrued,0));
   return {rows,hours:sum("hours"),accrued:sum("accrued"),paid:sum("paid"),owed:sum("owed"),cost,helperOwed:r2(helpers.reduce((a,r)=>a+r.owed,0))};
 }
+
+// «Я» у команді проєкту — це власник: якщо ім'я «Я»/«Me», а позначку self забули, ставимо її.
+const ME_RE=/^\s*(я|me|i|myself)\s*$/i;
+export function normalizeCrew(list:Statement[]):{list:Statement[];changed:boolean}{
+  let changed=false;
+  const out=list.map(s=>{
+    if(!s.crew?.some(c=>!c.self&&ME_RE.test(c.name||"")))return s;
+    changed=true;
+    return {...s,crew:s.crew.map(c=>!c.self&&ME_RE.test(c.name||"")?{...c,self:true,rate:0}:c)};
+  });
+  return {list:out,changed};
+}
+
+// $/год по роботі: робота (без чеків) ÷ години (облік команди або поле «Годин роботи»)
+export function jobRate(s:Statement){
+  const labor=r2(s.labor.reduce((a,l)=>a+(Number(l.amount)||0),0));
+  const logged=r2((s.workLog||[]).reduce((a,w)=>a+(Number(w.hours)||0),0));
+  const hours=logged>0?logged:Number(s.hours)||0;
+  return {labor,hours,rate:hours>0?r2(labor/hours):0};
+}

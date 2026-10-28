@@ -11,6 +11,7 @@ import BackupPanel from "@/components/BackupPanel";
 import AwaitingReplies from "@/components/AwaitingReplies";
 import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
 import {sanityCheck} from "@/lib/sanity";
+import {timeHint} from "@/lib/jobStats";
 import ClientPicker from "@/components/ClientPicker";
 import ClientsScreen from "@/components/ClientsScreen";
 import {type Client} from "@/lib/clients";
@@ -278,6 +279,7 @@ export default function QuoteCraftApp(){
  const calcDeposit=Math.round(calcGrandTotal*(Number(calcDepositPct)||0))/100;
  const calcDiscountLabel=calcDiscountType==="percent"?`Package discount (${calcDiscountValue}% of labor)`:"Package discount";
  const calcSanity=useMemo(()=>sanityCheck({id:calcSavedId,project:calcProject,items:calcItems,loc:calcLocationMultiplier},calcSaved),[calcSavedId,calcProject,calcItems,calcLocationMultiplier,calcSaved]);
+ const calcTime=useMemo(()=>timeHint(Math.max(0,calcTotalsValue.labor-calcDiscount),calcProject,calcItems.filter(i=>!i.optional),payStatements),[calcTotalsValue.labor,calcDiscount,calcProject,calcItems,payStatements]);
  const calcMinShort=ownerPrefs.min_job_price>0&&calcGrandTotal>0&&!calcItems.some(i=>i.taskId==="min_job")?Math.round((ownerPrefs.min_job_price-calcGrandTotal)*100)/100:0;
  function addMinJobLine(){
    if(calcMinShort<=0)return;
@@ -1936,6 +1938,7 @@ export default function QuoteCraftApp(){
     </section>
 
     {calcMinShort>0&&<div className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}>📏 Сума {money(calcGrandTotal)} менша за твій мінімум {money(ownerPrefs.min_job_price)}. <button className="secondary" style={{marginTop:8}} onClick={addMinJobLine}>＋ Доплата за малу роботу {money(calcMinShort)}</button></div>}
+    {calcTime&&calcItems.length>0&&<div className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:calcTime.low?"#fff4ed":"#f0fdf4",fontSize:14}}>⏱ Робота {money(Math.max(0,calcTotalsValue.labor-calcDiscount))} — при твоїх середніх {money(calcTime.avg)}/год ({calcTime.count} завершених робіт) це ≈ <b>{calcTime.hours} год</b> (~{calcTime.days} дн. по 9 год). Якщо по факту піде більше — ціна замала.{calcTime.low&&<><br/>⚠️ Схожа робота «{calcTime.low.name}» вийшла лише <b>{money(calcTime.low.rate)}/год</b> ({calcTime.low.hours} год за {money(calcTime.low.labor)}). Якщо ця така ж — перевір, чи вистачає ціни.</>}</div>}
     {calcSanity.map((n,i)=><div key={i} className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:n.level==="warn"?"#fff4ed":"#eff6ff",fontSize:14}}>{n.level==="warn"?"⚠️":"ℹ️"} {n.text}</div>)}
     <div className="actions noPrint" style={{marginBottom:8}}><button className="primary" onClick={()=>saveCalc()}>💾 {calcSavedId?"Зберегти зміни":"Зберегти естімейт"}</button></div>
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
