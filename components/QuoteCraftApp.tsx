@@ -1805,7 +1805,7 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- return <div className="shell">
+ return <div className="shell app">
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><UpdateButton/></header>
   <main>
    {screen==="home"&&<>
