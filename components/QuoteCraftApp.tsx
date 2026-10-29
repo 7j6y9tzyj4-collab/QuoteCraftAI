@@ -11,6 +11,7 @@ import BackupPanel from "@/components/BackupPanel";
 import AwaitingReplies from "@/components/AwaitingReplies";
 import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
+import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
 import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
 import {sanityCheck} from "@/lib/sanity";
@@ -1988,6 +1989,7 @@ export default function QuoteCraftApp(){
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
+  <MailReceiptsSetup user={user}/>
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>

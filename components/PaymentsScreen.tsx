@@ -147,7 +147,50 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const pulling=useRef(false);
  async function pullWorkerInbox(){
    if(!user||pulling.current)return;pulling.current=true;
-   try{await pullWorkerInboxInner()}finally{pulling.current=false}
+   try{await pullWorkerInboxInner();await pullMail()}finally{pulling.current=false}
+ }
+ // ---- 📧 чеки з пошти (mail_receipts): впевнені — одразу в розрахунок, решта — «Розібрати» ----
+ const [mailReview,setMailReview]=useState<any[]>([]);
+ function addMailReceipt(lst:Statement[],row:any,sid:string,why?:string):Statement[]|null{
+   if(sid===OWN_ID&&!lst.some(s=>s.id===OWN_ID))lst=[...lst,newOwnStatement()];
+   const s=lst.find(x=>x.id===sid);if(!s)return null;
+   const p=row.payload||{};
+   if(lst.some(x=>findDuplicate({date:p.date,store:p.store,amount:Number(p.amount)||0,receiptNo:p.receiptNo},x.receipts||[])))return lst;
+   const rc:Receipt={id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath||undefined,receiptNo:p.receiptNo||undefined,src:"mail",why:why??(row.reason||undefined),...(s.own?{category:guessOwnCategory(p.items||"")}:{})};
+   return lst.map(x=>x.id===sid?{...x,receipts:[...x.receipts,rc].sort(byDate),updatedAt:new Date().toISOString()}:x);
+ }
+ async function pullMail(){
+   if(!user)return;
+   const {data,error}=await supabase.from("mail_receipts").select("id,sid,suggest,reason,payload,status,store").eq("user_id",user.id).is("applied_at",null).in("status",["auto","review"]).order("created_at");
+   if(error||!data)return;
+   let next=listRef.current.slice();const done:string[]=[];const lost:any[]=[];
+   for(const r of data.filter((x:any)=>x.status==="auto")){const n2=addMailReceipt(next,r,r.sid);if(n2){next=n2;done.push(r.id)}else lost.push(r)}
+   if(done.length){
+     persist(next);
+     await supabase.from("mail_receipts").update({applied_at:new Date().toISOString(),status:"applied"}).in("id",done);
+     setMsg(`📧 З пошти: ${done.length} ${done.length===1?"чек":"чеки"} розставлено по проєктах — видно «📧 з пошти» біля чека.`);
+   }
+   setMailReview([...lost,...data.filter((x:any)=>x.status==="review")]);
+   window.dispatchEvent(new Event("qc-inbox-applied"));
+ }
+ async function chooseMail(row:any,sid:string){
+   if(sid==="skip"){await supabase.from("mail_receipts").update({applied_at:new Date().toISOString(),status:"skipped"}).eq("id",row.id)}
+   else{
+     const n2=addMailReceipt(listRef.current.slice(),row,sid,sid===row.suggest&&row.reason?row.reason+" · підтвердив":"розставив вручну");
+     if(!n2){setMsg("Проєкт не знайдено.");return}
+     persist(n2);
+     await supabase.from("mail_receipts").update({applied_at:new Date().toISOString(),status:"applied",sid}).eq("id",row.id);
+   }
+   setMailReview(x=>x.filter(r=>r.id!==row.id));
+   window.dispatchEvent(new Event("qc-inbox-applied"));
+ }
+ function moveReceipt(rid:string,from:string,to:string){
+   let next=listRef.current.slice();if(to===OWN_ID&&!next.some(s=>s.id===OWN_ID))next=[...next,newOwnStatement()];
+   const src=next.find(s=>s.id===from);const r=src?.receipts.find(x=>x.id===rid);const dst=next.find(s=>s.id===to);if(!src||!r||!dst)return;
+   const moved:Receipt={...r,why:"перенесено вручну",...(dst.own?{category:r.category||guessOwnCategory(r.items)}:{})};
+   const now=new Date().toISOString();
+   next=next.map(s=>s.id===from?{...s,receipts:s.receipts.filter(x=>x.id!==rid),updatedAt:now}:s.id===to?{...s,receipts:[...s.receipts,moved].sort(byDate),updatedAt:now}:s);
+   persist(next);setMsg(`↪ Чек ${r.store||""} ${money(Number(r.amount)||0)} перенесено в «${dst.client}${dst.project?` — ${dst.project}`:""}».`);
  }
  async function pullWorkerInboxInner(){
    if(!user)return;
@@ -629,6 +672,20 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        </div>)}
      </div>}
      {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
+     {mailReview.length>0&&<div style={{marginTop:10,padding:12,borderRadius:12,background:"#fffaeb",border:"1px solid #fedf89"}}>
+       <b>🧾 Чеки з пошти — куди? · {mailReview.length}</b>
+       <small className="muted" style={{display:"block"}}>Програма не впевнена. Синя кнопка — її підказка.</small>
+       {mailReview.map(r=>{const p=r.payload||{};const targets=[...list.filter(s=>!s.own&&stOf(s)!=="done"),...list.filter(s=>s.own)];if(!targets.some(s=>s.own))targets.push(newOwnStatement());return <div key={r.id} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #fde68a"}}>
+         <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+           {p.photoPath&&<div style={{width:56,flex:"none"}}><ReceiptThumb r={{id:p.id,date:p.date,store:p.store,items:p.items,amount:p.amount,photoPath:p.photoPath}}/></div>}
+           <div style={{flex:1}}><b>{p.store||r.store} · {money(Number(p.amount)||0)}</b><small style={{display:"block"}}>{p.date} · {p.items}</small>{p.job&&<small style={{display:"block",fontWeight:700}}>Job на чеку: {p.job}</small>}{r.reason&&<small className="muted" style={{display:"block"}}>{r.reason}</small>}</div>
+         </div>
+         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+           {targets.map(s=><button key={s.id} className={s.id===r.suggest?"primary":"secondary"} onClick={()=>chooseMail(r,s.id)} style={{padding:"8px 10px",fontSize:13}}>{s.own?"🧰 Мої витрати":`${s.client}${s.project&&list.filter(x=>x.client===s.client).length>1?` — ${s.project.slice(0,24)}`:""}`}</button>)}
+           <button className="secondary" onClick={()=>chooseMail(r,"skip")} style={{padding:"8px 10px",fontSize:13}}>✕ Не рахувати</button>
+         </div>
+       </div>})}
+     </div>}
      {pendingAcc.map(p=><div key={p.token} style={{marginTop:10,padding:12,borderRadius:12,background:"#ecfdf3",border:"1px solid #abefc6"}}>
        <b>✅ {p.q.client} прийняв(ла) естімейт «{p.q.project||"Estimate"}» — {money(acceptedAmounts(p.q).total)}</b>
        <small className="muted" style={{display:"block"}}>У клієнта вже є інші розрахунки, тому питаю, щоб не задвоїти.</small>
@@ -707,6 +764,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
              <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
              {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
              <select value={catOf(r)} onChange={e=>setLine<Receipt>("receipts",r.id,{category:e.target.value})}>{OWN_CATS.map(c=><option key={c}>{c}</option>)}</select>
+             {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
+             <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Це для клієнта…</option>{list.filter(s=>!s.own).map(s=><option key={s.id} value={s.id}>{s.client}{s.project?` — ${s.project}`:""}</option>)}</select>
            </div>
            {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}
          </div>
@@ -804,6 +863,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
          {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
+         {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
+         <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Перенести в інший проєкт…</option>{list.filter(s=>s.id!==cur.id).map(s=><option key={s.id} value={s.id}>{s.own?"🧰 Мої витрати":`${s.client}${s.project?` — ${s.project}`:""}`}</option>)}{!list.some(s=>s.own)&&<option value={OWN_ID}>🧰 Мої витрати</option>}</select>
        </div>
        <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>

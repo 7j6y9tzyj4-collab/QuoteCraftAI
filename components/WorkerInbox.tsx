@@ -18,7 +18,10 @@ export function useWorkerInbox(user:User|null){
     for(const it of (data||[]) as any[]){const w=String(it.worker||"Помічник");by[w]||={h:0,r:0,p:0};
       if(it.kind==="hours")by[w].h+=Number(it.payload?.hours)||0;else if(it.kind==="receipt")by[w].r++;else by[w].p++}
     const text=Object.entries(by).map(([w,v])=>`${w}: ${[v.h?`${v.h} год`:"",v.r?`чеків ${v.r}`:"",v.p?`фото ${v.p}`:""].filter(Boolean).join(", ")}`).join(" · ");
-    setSum({total:(data||[]).length,text,workers:Object.keys(by)});
+    const {data:mail}=await supabase.from("mail_receipts").select("status").eq("user_id",user.id).is("applied_at",null).in("status",["auto","review"]);
+    const mAuto=(mail||[]).filter((m:any)=>m.status==="auto").length,mRev=(mail||[]).filter((m:any)=>m.status==="review").length;
+    const mailText=[mAuto?`📧 нових чеків ${mAuto}`:"",mRev?`🧾 розібрати ${mRev}`:""].filter(Boolean).join(", ");
+    setSum({total:(data||[]).length+mAuto+mRev,text:[text,mailText].filter(Boolean).join(" · "),workers:Object.keys(by)});
   },[user]);
   useEffect(()=>{
     if(!user)return;
@@ -34,8 +37,8 @@ export function useWorkerInbox(user:User|null){
 export function WorkerInboxBanner({sum,onOpen}:{sum:InboxSum;onOpen:()=>void}){
   if(!sum.total)return null;
   return <button onClick={onOpen} className="noPrint" style={{width:"100%",textAlign:"left",display:"flex",gap:12,alignItems:"center",background:"#fffaeb",border:"2px solid #fdb022",borderRadius:16,padding:14,marginBottom:13,color:"#101828"}}>
-    <span style={{fontSize:26}}>👷</span>
-    <span style={{flex:1}}><b style={{display:"block"}}>Нове від помічника</b><small style={{color:"#475467"}}>{sum.text}</small></span>
+    <span style={{fontSize:26}}>{sum.workers.length?"👷":"🧾"}</span>
+    <span style={{flex:1}}><b style={{display:"block"}}>{sum.workers.length?"Нове від помічника":"Нові чеки з пошти"}</b><small style={{color:"#475467"}}>{sum.text}</small></span>
     <b style={{color:"#175cd3",whiteSpace:"nowrap"}}>Додати →</b>
   </button>;
 }

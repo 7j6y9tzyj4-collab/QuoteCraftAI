@@ -6,7 +6,9 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** номер чека (Receipt #, Order #) — для пошуку дублікатів */ receiptNo?:string;
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string;
-  /** хто додав (помічник за посиланням) */ by?:string};
+  /** хто додав (помічник за посиланням) */ by?:string;
+  /** звідки: "mail" — прийшов з пошти */ src?:string;
+  /** чому чек саме тут (назва роботи на чеку / за графіком / AI / вручну) */ why?:string};
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
 export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string};
 export type Payout={id:string;date:string;workerId:string;amount:number};
