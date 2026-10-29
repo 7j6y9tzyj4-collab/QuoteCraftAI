@@ -33,6 +33,7 @@ export default function JobsSchedule({user,list,onClose}:{user:User|null;list:St
     setJobs(next);
     if(!user)return;
     const {error}=await supabase.from("user_settings").upsert({user_id:user.id,schedule:next,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    if(!error)window.dispatchEvent(new Event("qc-schedule-changed"));
     setMsg(error?"Не вдалося зберегти: "+error.message:"");
   }
   const colorOf=(c:string)=>{let h=0;for(const ch of c)h=(h*31+ch.charCodeAt(0))>>>0;return COLORS[h%COLORS.length]};

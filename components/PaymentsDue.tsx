@@ -5,6 +5,7 @@ import {statementTotals,statementStatus,type Statement} from "@/lib/statement";
 import {findClient,smsHref,type Client} from "@/lib/clients";
 import {normDate} from "@/lib/receiptBatch";
 import {invoiceLink,reminderText} from "@/lib/invoiceLink";
+import {useScheduleJobs,upcomingStart} from "@/lib/scheduleStarts";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const DAY=86400000;
@@ -15,15 +16,16 @@ export default function PaymentsDue({user,statements,clients,zelle,onOpen}:{user
   const [busy,setBusy]=useState("");
   const [msg,setMsg]=useState("");
   const [hidden,setHidden]=useState<string[]>(()=>{try{return JSON.parse(localStorage.getItem(HIDE)||"[]")}catch{return []}});
+  const jobs=useScheduleJobs(user);
   const rows=useMemo(()=>statements.filter(s=>!s.own).map(s=>{
     const t=statementTotals(s);
     const dates=[...(s.workLog||[]).map(w=>normDate(w.date)),...s.payments.map(p=>normDate(p.date))].filter(Boolean).sort();
     const last=dates[dates.length-1]||String(s.updatedAt||"").slice(0,10);
     const days=last?Math.floor((Date.now()-new Date(last+"T12:00:00").getTime())/DAY):0;
-    const st=statementStatus(s);
+    const st=statementStatus(s,upcomingStart(s,jobs,statements));
     return {s,t,days,st};
-  }).filter(r=>r.t.balance>0.5&&(r.st==="waiting"||r.st==="done"||r.days>=3)&&!hidden.includes(r.s.id+":"+r.t.balance))
-    .sort((a,b)=>b.t.balance-a.t.balance),[statements,hidden]);
+  }).filter(r=>r.st!=="planned"&&r.t.balance>0.5&&(r.st==="waiting"||r.st==="done"||r.days>=3)&&!hidden.includes(r.s.id+":"+r.t.balance))
+    .sort((a,b)=>b.t.balance-a.t.balance),[statements,hidden,jobs]);
   if(!user||!rows.length)return null;
   const total=rows.reduce((a,r)=>a+r.t.balance,0);
   async function remind(s:Statement,balance:number,copy:boolean){

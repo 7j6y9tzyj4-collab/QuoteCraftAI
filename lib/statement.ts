@@ -10,7 +10,7 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
 export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string};
 export type Payout={id:string;date:string;workerId:string;amount:number};
-export type StatusKey="active"|"waiting"|"done";
+export type StatusKey="planned"|"active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
 export type ScheduleStep={id:string;label:string;amount:number;due?:string};
 export type Statement={
@@ -78,13 +78,15 @@ export function guessOwnCategory(items:string):string{
 
 // ---- статус проєкту: автоматично за залишком, але можна змінити вручну ----
 export const STATUS_META:Record<StatusKey,{label:string;color:string;bg:string}>={
+  planned:{label:"Заплановано",color:"#6941c6",bg:"#f4f3ff"},
   active:{label:"В роботі",color:"#b54708",bg:"#fffaeb"},
   waiting:{label:"Чекаю оплату",color:"#175cd3",bg:"#eff8ff"},
   done:{label:"Завершено",color:"#067647",bg:"#ecfdf3"},
 };
-/** авто: залишок 0 і оплата була — «Завершено», інакше «В роботі»; ручний вибір має пріоритет */
-export function statementStatus(s:Statement):StatusKey{
+/** авто: старт у графіку ще попереду — «Заплановано»; залишок 0 і оплата була — «Завершено», інакше «В роботі»; ручний вибір має пріоритет */
+export function statementStatus(s:Statement,upcomingStart?:string):StatusKey{
   if(s.status&&STATUS_META[s.status])return s.status;
+  if(upcomingStart)return "planned";
   const t=statementTotals(s);
   return t.total>0&&t.paid>0&&t.balance<=0.005?"done":"active";
 }

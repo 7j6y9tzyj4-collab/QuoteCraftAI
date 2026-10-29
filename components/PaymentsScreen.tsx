@@ -22,6 +22,7 @@ import WorkerLinks from "@/components/WorkerLinks";
 import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
 import type {SavedCalc} from "@/lib/calcTypes";
+import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
 import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
@@ -66,7 +67,13 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const [picking,setPicking]=useState(false);
  const [zoneOn,setZoneOn]=useState(false);
  const [withPhotos,setWithPhotos]=useState(true);
- const [statusFilter,setStatusFilter]=useState<"all"|"open"|"done">("all");
+ const [statusFilter,setStatusFilter]=useState<"all"|"active"|"planned"|"done">("all");
+ const schedJobs=useScheduleJobs(user);
+ // «Заплановано»: старт у Графіку робіт ще попереду (Mubeena з понеділка) — окремий колір і вкладка
+ const startOf=(s:Statement)=>upcomingStart(s,schedJobs,listRef.current);
+ const stOf=(s:Statement)=>statementStatus(s,startOf(s));
+ const ORDER:Record<StatusKey,number>={active:0,waiting:1,planned:2,done:3};
+ const inTab=(s:Statement,k:"all"|"active"|"planned"|"done")=>{const st=stOf(s);return k==="all"||(k==="done"?st==="done":k==="planned"?st==="planned":st==="active"||st==="waiting")};
  const [ready,setReady]=useState(false); // список з акаунта вже завантажено
  // пакет чеків: перегляд перед збереженням
  const [batch,setBatch]=useState<Draft[]|null>(null);
@@ -648,11 +655,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
      {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
-       {([["all","Всі"],["open","Не завершені"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>k==="all"||(k==="done")===(statementStatus(s)==="done")).length;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
+       {([["all","Всі"],["active","В роботі"],["planned","Заплановані"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>inTab(s,k)).length;if(k==="planned"&&!n)return null;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
      </div>}
-     {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>statusFilter==="all"||(statusFilter==="done")===(statementStatus(s)==="done")).sort((a,b)=>(statementStatus(a)==="done"?1:0)-(statementStatus(b)==="done"?1:0)).map(s=>{const t=statementTotals(s);const st=statementStatus(s);const m=STATUS_META[st];return(
+     {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>inTab(s,statusFilter)).sort((a,b)=>ORDER[stOf(a)]-ORDER[stOf(b)]).map(s=>{const t=statementTotals(s);const st=stOf(s);const m=STATUS_META[st];const start=startOf(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}} style={{borderLeft:`6px solid ${m.color}`,background:m.bg,opacity:st==="done"?0.85:1}}>
-         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":"● "}{m.label}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
+         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;
@@ -759,7 +766,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
     <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>
-      <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined})].label}</option>
+      <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined},startOf(cur))].label}</option>
       {(Object.keys(STATUS_META) as StatusKey[]).map(k=><option key={k} value={k}>{STATUS_META[k].label}</option>)}
     </select></label>
    </section>
