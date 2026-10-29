@@ -12,6 +12,7 @@
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.1.2",
     "@supabase/supabase-js": "^2.112.0",
+    "@types/web-push": "^3.6.4",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
     "next": "16.2.12",
@@ -19,7 +20,8 @@
     "pdfjs-dist": "5.4.296",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

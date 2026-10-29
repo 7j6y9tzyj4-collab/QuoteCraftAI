@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
 import {loadLink} from "@/lib/workerView";
 import {parseReceiptAI} from "@/lib/parseReceiptAI";
+import {sendPush,statementTitle} from "@/lib/push";
 
 export const runtime="nodejs";
 export const maxDuration=60;
@@ -21,12 +22,15 @@ export async function POST(req:NextRequest){
     if(!link.projects.includes(sid))return NextResponse.json({error:"Немає доступу до цього проєкту."},{status:403});
     const base={token:link.token,user_id:link.user_id,worker:link.worker,sid};
     const id=crypto.randomUUID();
+    // сповіщення власнику на телефон
+    const notify=async(text:string)=>{const t=await statementTitle(link.user_id,sid);await sendPush(link.user_id,{title:`👷 ${link.worker}${t?` · ${t}`:""}`,body:text,url:`/?screen=pay&sid=${encodeURIComponent(sid)}`})};
     if(b.action==="hours"){
       const hours=Math.round((Number(b.hours)||0)*4)/4;
       if(!(hours>0&&hours<=16))return NextResponse.json({error:"Вкажи години від 0.25 до 16."},{status:400});
       const date=/^\d{4}-\d{2}-\d{2}$/.test(String(b.date))?String(b.date):isoToday();
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"hours",payload:{date,hours,note:String(b.note||"").slice(0,200)}});
       if(error)throw error;
+      await notify(`⏱ Записав ${hours} год за ${date.slice(5).replace("-","/")}${b.note?` — ${String(b.note).slice(0,80)}`:""}`);
       return NextResponse.json({ok:true});
     }
     if(b.action==="receipt"||b.action==="photo"){
@@ -38,6 +42,7 @@ export async function POST(req:NextRequest){
       if(b.action==="photo"){
         const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"photo",payload:{id,path,date:isoToday(),note:String(b.note||"").slice(0,200)}});
         if(error)throw error;
+        await notify(`📷 Додав фото роботи${b.note?` — ${String(b.note).slice(0,80)}`:""}`);
         return NextResponse.json({ok:true});
       }
       let r={date:"",store:"",items:"",total:0,receipt_no:"",confidence:0};
@@ -45,6 +50,7 @@ export async function POST(req:NextRequest){
       const payload={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence};
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"receipt",payload});
       if(error)throw error;
+      await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""} — перевір суму`);
       return NextResponse.json({ok:true,receipt:payload});
     }
     return NextResponse.json({error:"Невідома дія"},{status:400});

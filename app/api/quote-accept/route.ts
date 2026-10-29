@@ -1,5 +1,7 @@
 import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
+import {sendPush} from "@/lib/push";
+import {acceptedAmounts} from "@/lib/sharedQuote";
 
 export const runtime="nodejs";
 
@@ -17,7 +19,7 @@ export async function POST(req:NextRequest){
       if(e.status!=="accepted"){const {error}=await supabaseAdmin.from("estimates").update({status:"accepted"}).eq("share_token",token);if(error)throw error}
       return NextResponse.json({accepted_at:new Date().toISOString()});
     }
-    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at,data").eq("token",token).maybeSingle();
+    const {data}=await supabaseAdmin.from("shared_quotes").select("status,accepted_at,data,user_id").eq("token",token).maybeSingle();
     if(!data)return NextResponse.json({error:"Estimate not found"},{status:404});
     if(data.status==="accepted")return NextResponse.json({accepted_at:data.accepted_at});
     const accepted_at=new Date().toISOString();
@@ -37,6 +39,12 @@ export async function POST(req:NextRequest){
     }
     const {error}=await supabaseAdmin.from("shared_quotes").update(upd).eq("token",token);
     if(error)throw error;
+    try{
+      const q={...(data.data as any),...((upd.data as object)||{})};
+      const a=acceptedAmounts(q);
+      const money=(n:number)=>"$"+Math.round(n).toLocaleString("en-US");
+      await sendPush((data as any).user_id,{title:`✅ ${q.client||name} прийняв(ла) естімейт`,body:`${q.project?q.project+" · ":""}${money(a.total)}${a.label?` (${a.label})`:""}${a.deposit?` · завдаток ${money(a.deposit)}`:""}`,url:"/?screen=pay"});
+    }catch{/* сповіщення не головне */}
     return NextResponse.json({accepted_at});
   }catch(e){
     return NextResponse.json({error:e instanceof Error?e.message:"Server error"},{status:500});

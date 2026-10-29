@@ -10,6 +10,8 @@ import SiteLeads from "@/components/SiteLeads";
 import BackupPanel from "@/components/BackupPanel";
 import AwaitingReplies from "@/components/AwaitingReplies";
 import PaymentsDue from "@/components/PaymentsDue";
+import PushSetup,{registerSW} from "@/components/PushSetup";
+import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
 import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
 import {sanityCheck} from "@/lib/sanity";
 import {timeHint} from "@/lib/jobStats";
@@ -169,6 +171,12 @@ export default function QuoteCraftApp(){
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
+ // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
+ const {sum:inbox}=useWorkerInbox(user);
+ useEffect(()=>{void registerSW();
+   try{const q=new URLSearchParams(location.search);if(q.get("screen")==="pay"){const sid=q.get("sid");if(sid)setPayOpenId(sid);setScreen("pay");history.replaceState(null,"","/")}}catch{}
+ },[]);
+ useEffect(()=>{if(screen==="pay"&&inbox.total)window.dispatchEvent(new Event("qc-inbox-new"))},[screen,inbox.total]);
  // ---- клієнти (таблиця user_clients, по рядку на клієнта; локальна копія qc_clients) ----
  const [clients,setClients]=useState<Client[]>([]);
  const [payStatements,setPayStatements]=useState<Statement[]>([]); // список Оплат для історії клієнта
@@ -1802,6 +1810,8 @@ export default function QuoteCraftApp(){
   <main>
    {screen==="home"&&<>
     <section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section>
+    <WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/>
+    <PushSetup user={user} compact/>
     <SiteLeads user={user}/>
     <AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/>
     <a href="/translate" className="estimate" style={{textDecoration:"none",background:"#0b1220",color:"#fff"}}><span><b>🎧 Перекладач UA ⇄ EN</b><small style={{color:"#cbd5e1"}}>Говори з клієнтом — переклад в AirPods за мить</small></span><span style={{alignSelf:"center"}}>›</span></a>
@@ -1977,6 +1987,7 @@ export default function QuoteCraftApp(){
   <span className="eyebrow">ACCOUNT</span>
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
+  <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>
@@ -2012,6 +2023,6 @@ export default function QuoteCraftApp(){
 </div>
 </section>}
   </main>
-  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")}>$<span>Оплати</span></button><button className={screen==="clients"?"active":""} onClick={()=>setScreen("clients")}>👤<span>Клієнти</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
+  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")} style={{position:"relative"}}>${inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>Оплати</span></button><button className={screen==="clients"?"active":""} onClick={()=>setScreen("clients")}>👤<span>Клієнти</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
  </div>
 }

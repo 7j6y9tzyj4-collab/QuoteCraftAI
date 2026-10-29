@@ -137,7 +137,12 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  }
 
  // ---- 👷 що надіслав помічник за посиланням (worker_inbox) → у розрахунки ----
+ const pulling=useRef(false);
  async function pullWorkerInbox(){
+   if(!user||pulling.current)return;pulling.current=true;
+   try{await pullWorkerInboxInner()}finally{pulling.current=false}
+ }
+ async function pullWorkerInboxInner(){
    if(!user)return;
    const {data,error}=await supabase.from("worker_inbox").select("id,token,worker,sid,kind,payload,created_at").eq("user_id",user.id).is("applied_at",null).order("created_at");
    if(error||!data?.length)return;
@@ -162,9 +167,13 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    }
    persist(next);
    await supabase.from("worker_inbox").update({applied_at:new Date().toISOString()}).in("id",used);
+   window.dispatchEvent(new Event("qc-inbox-applied"));
    const txt=Object.entries(sum).map(([w,v])=>`👷 ${w}: ${[v.h?`${v.h} год`:"",v.r?`чеків ${v.r}`:"",v.p?`фото ${v.p}`:""].filter(Boolean).join(", ")}`).join("; ");
    if(txt)setMsg(txt+" — додано в розрахунки. Перевір суми чеків.");
  }
+ useEffect(()=>{if(!ready||!user)return;const on=()=>void pullWorkerInbox();window.addEventListener("qc-inbox-new",on);return()=>window.removeEventListener("qc-inbox-new",on)
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[ready,user]);
  useEffect(()=>{if(ready&&user)void pullWorkerInbox()
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[ready,user]);
