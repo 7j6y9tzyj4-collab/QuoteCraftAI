@@ -21,6 +21,7 @@ import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
 import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
+import MonthReceiptsButton from "@/components/MonthReceiptsButton";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
 import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
@@ -711,6 +712,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
+     <MonthReceiptsButton list={list}/>
      {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
        {([["all","Всі"],["active","В роботі"],["planned","Заплановані"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>inTab(s,k)).length;if(k==="planned"&&!n)return null;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
      </div>}
