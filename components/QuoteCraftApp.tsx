@@ -171,6 +171,7 @@ export default function QuoteCraftApp(){
  },[screen,user?.id]);
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
+ const [prefsOpen,setPrefsOpen]=useState(false); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
@@ -1982,9 +1983,9 @@ export default function QuoteCraftApp(){
    {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small></button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
    {screen==="saved"&&all.length>0&&<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
 
-   {<section hidden={screen!=="prices"} className="panel"><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceHistory saved={calcSaved} old={all} prices={prices}/><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/>
+   {<section hidden={screen!=="prices"} className="panel"><div className="noPrint" style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}><button className={prefsOpen?"primary":"secondary"} onClick={()=>{setPrefsOpen(v=>!v);document.querySelector("main")?.scrollTo({top:0})}} style={{padding:"10px 14px",fontWeight:800}}>{prefsOpen?"← До цін":"⚙ Налаштування"}</button></div>{!prefsOpen&&<><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceHistory saved={calcSaved} old={all} prices={prices}/><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/></>}
 
-<div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #d0d5dd"}}>
+{prefsOpen&&<div>
   <span className="eyebrow">ACCOUNT</span>
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
@@ -2022,7 +2023,7 @@ export default function QuoteCraftApp(){
   >
     Sign out
   </button>
-</div>
+</div>}
 </section>}
   </main>
   <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")} style={{position:"relative"}}>${inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>Оплати</span></button><button className={screen==="clients"?"active":""} onClick={()=>setScreen("clients")}>👤<span>Клієнти</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
