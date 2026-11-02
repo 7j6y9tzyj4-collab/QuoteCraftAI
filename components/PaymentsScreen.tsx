@@ -7,7 +7,7 @@ import {imageHash,findDuplicate,findManualMatch,hasPhoto,matchStatementByName,ba
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import DateInput from "@/components/DateInput";
 import ClientPicker from "@/components/ClientPicker";
-import type {Client} from "@/lib/clients";
+import {findClient,type Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
 import {invoiceLink} from "@/lib/invoiceLink";
@@ -718,7 +718,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>}
      {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>inTab(s,statusFilter)).sort((a,b)=>ORDER[stOf(a)]-ORDER[stOf(b)]).map(s=>{const t=statementTotals(s);const st=stOf(s);const m=STATUS_META[st];const start=startOf(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}} style={{borderLeft:`6px solid ${m.color}`,background:m.bg,opacity:st==="done"?0.85:1}}>
-         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small><small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
+         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small>{findClient(clientBook,s.client)?.address&&<small>📍 {findClient(clientBook,s.client)!.address}</small>}<small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;
