@@ -13,6 +13,7 @@ import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
+import AutoTranslate from "@/components/AutoTranslate";
 import CompanyProfile from "@/components/CompanyProfile";
 import AiUsage from "@/components/AiUsage";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
@@ -1832,7 +1833,7 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- return <div className={`shell app${ui.text==="large"?" large":""}`}>
+ return <div className={`shell app${ui.text==="large"?" large":""}`}><AutoTranslate on={ui.lang==="en"}/>
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
    {screen==="home"&&<>
@@ -2031,7 +2032,7 @@ export default function QuoteCraftApp(){
   <CompanyProfile user={user} onChange={()=>setCompanyTick(t=>t+1)}/>
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
-  <ViewSettings ui={ui} onSave={saveUi}/>
+  <ViewSettings ui={ui} onSave={saveUi} isAdmin={user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"}/>
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <MailReceiptsSetup user={user}/>
   <AiUsage user={user}/>

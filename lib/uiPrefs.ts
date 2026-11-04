@@ -8,7 +8,7 @@ import {supabase} from "./supabase";
 export type HomeBlock="hero"|"inbox"|"push"|"leads"|"awaiting"|"translator"|"due"|"metrics"|"recent";
 export type Tab="home"|"calc"|"saved"|"pay"|"clients"|"prices";
 export type Mode="simple"|"standard"|"full";
-export type UiPrefs={mode:Mode;home:Record<HomeBlock,boolean>;tabs:Tab[];text:"normal"|"large"};
+export type UiPrefs={mode:Mode;home:Record<HomeBlock,boolean>;tabs:Tab[];text:"normal"|"large";lang:"uk"|"en"};
 
 export const HOME_BLOCKS:{k:HomeBlock;label:string}[]=[
   {k:"hero",label:"＋ Новий естімейт (великий блок)"},
@@ -26,12 +26,12 @@ export const TABS:{k:Tab;icon:string;label:string}[]=[
   {k:"pay",icon:"$",label:"Оплати"},{k:"clients",icon:"👤",label:"Клієнти"},{k:"prices",icon:"⚙",label:"Prices"},
 ];
 const all=(v:boolean)=>Object.fromEntries(HOME_BLOCKS.map(b=>[b.k,v])) as Record<HomeBlock,boolean>;
-export const PRESETS:Record<Mode,Omit<UiPrefs,"text">>={
+export const PRESETS:Record<Mode,Omit<UiPrefs,"text"|"lang">>={
   simple:{mode:"simple",home:{...all(false),hero:true,inbox:true,awaiting:true,due:true},tabs:["home","calc","pay","clients","prices"]},
   standard:{mode:"standard",home:all(true),tabs:["home","calc","saved","pay","clients","prices"]},
   full:{mode:"full",home:all(true),tabs:["home","calc","saved","pay","clients","prices"]},
 };
-export const DEFAULT_UI:UiPrefs={...PRESETS.standard,text:"normal"};
+export const DEFAULT_UI:UiPrefs={...PRESETS.standard,text:"normal",lang:"uk"};
 const KEY="qc_ui";
 
 function clean(x:any):UiPrefs{
@@ -40,7 +40,7 @@ function clean(x:any):UiPrefs{
   let tabs=(Array.isArray(x?.tabs)?x.tabs:base.tabs).filter((t:any)=>TABS.some(T=>T.k===t)) as Tab[];
   if(!tabs.includes("prices"))tabs=[...tabs,"prices"]; // там налаштування — прибирати не можна
   if(!tabs.includes("home"))tabs=["home",...tabs];
-  return {mode:base.mode,home,tabs:[...new Set(tabs)],text:x?.text==="large"?"large":"normal"};
+  return {mode:base.mode,home,tabs:[...new Set(tabs)],text:x?.text==="large"?"large":"normal",lang:x?.lang==="en"?"en":"uk"};
 }
 
 export function useUiPrefs(user:User|null){

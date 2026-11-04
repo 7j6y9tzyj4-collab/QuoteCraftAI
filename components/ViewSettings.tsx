@@ -1,16 +1,26 @@
 "use client";
+import {useState} from "react";
 import {HOME_BLOCKS,TABS,PRESETS,type UiPrefs,type Mode,type Tab} from "@/lib/uiPrefs";
 
 // ⚙ Налаштування → 🎨 Вигляд програми
-export default function ViewSettings({ui,onSave}:{ui:UiPrefs;onSave:(u:UiPrefs)=>void}){
+export default function ViewSettings({ui,onSave,isAdmin}:{ui:UiPrefs;onSave:(u:UiPrefs)=>void;isAdmin?:boolean}){
+  const [tb,setTb]=useState("");
+  async function buildTr(){setTb("Перекладаю…");try{for(let k=0;k<40;k++){const r=await fetch("/api/i18n-build",{method:"POST"});const j=await r.json();if(!r.ok)throw new Error(j.error);setTb(`Перекладаю… лишилось ${j.remaining} з ${j.total}`);if(!j.remaining)break}setTb("✓ Переклад оновлено");}catch(e){setTb("Помилка: "+(e instanceof Error?e.message:String(e)))}}
   const pill=(on:boolean):React.CSSProperties=>({padding:"10px 12px",borderRadius:12,fontWeight:800,fontSize:14,background:on?"#101828":"#eef2f7",color:on?"#fff":"#344054",flex:1});
   const modes:{k:Mode;t:string;d:string}[]=[{k:"simple",t:"Простий",d:"тільки головне"},{k:"standard",t:"Стандартний",d:"як зараз"},{k:"full",t:"Повний",d:"усе"}];
   const move=(t:Tab,dir:-1|1)=>{const a=[...ui.tabs];const i=a.indexOf(t);const j=i+dir;if(i<0||j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];onSave({...ui,tabs:a})};
   const toggleTab=(t:Tab)=>{if(t==="prices"||t==="home")return;onSave({...ui,tabs:ui.tabs.includes(t)?ui.tabs.filter(x=>x!==t):[...ui.tabs.filter(x=>x!=="prices"),t,"prices"]})};
   return <div style={{marginTop:20}}>
-    <h2>🎨 Вигляд програми</h2>
+    <h2>🌐 Мова / Language</h2>
+    <div style={{display:"flex",gap:6}}>
+      <button data-notr onClick={()=>{if(ui.lang!=="uk"){onSave({...ui,lang:"uk"});setTimeout(()=>location.reload(),300)}}} style={pill(ui.lang==="uk")}>🇺🇦 Українська</button>
+      <button data-notr onClick={()=>onSave({...ui,lang:"en"})} style={pill(ui.lang==="en")}>🇺🇸 English</button>
+    </div>
+    {isAdmin&&<button className="secondary" onClick={buildTr} disabled={!!tb} style={{marginTop:8,padding:"8px 12px",fontSize:13}}>{tb||"🔄 Оновити англійський переклад (адмін)"}</button>}
+
+    <h2 style={{marginTop:20}}>🎨 Вигляд програми</h2>
     <p className="muted" style={{fontSize:14}}>Режим швидко ставить готовий набір. Далі можна підправити все вручну нижче.</p>
-    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
+    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text,lang:ui.lang})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
 
     <h3 style={{marginTop:16}}>Що показувати на головній</h3>
     <div style={{display:"grid",gap:4}}>{HOME_BLOCKS.map(b=><label key={b.k} style={{display:"flex",gap:10,alignItems:"center",fontSize:15,fontWeight:500,padding:"6px 0"}}>
