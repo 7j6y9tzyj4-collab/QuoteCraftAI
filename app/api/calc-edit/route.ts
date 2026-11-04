@@ -12,6 +12,7 @@ type Task={id:string;name:string;unit:string;category:string};
 const SYSTEM=[
   "You edit a renovation contractor's estimate (Chicago area) according to his instruction (Ukrainian, Russian or English, often dictated).",
   "Return only the operations needed. Do not touch lines he did not mention.",
+  "In every operation set ONLY the fields that change; every other field must be null (do not repeat current values). Never set both labor_per_unit and line_total in one update.",
   "Operations:",
   "- update: change one line by index i. Fields you may set: quantity, labor_per_unit (labor price per unit), line_total (desired total price of the line incl. everything — use when he names a price for the whole line, e.g. 'демонтаж за 400'), material_per_unit, finish_per_unit (finish allowance per unit, e.g. tile price), difficulty (basic|standard|difficult), optional (true = optional add-on, not in total), note (client-facing English note), name (English).",
   "- remove: delete line i.",

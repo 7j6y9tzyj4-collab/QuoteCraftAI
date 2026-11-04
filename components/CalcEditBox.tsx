@@ -72,7 +72,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
           if(o.note!=null)li.note=o.note||undefined;
           if(o.name)li.name=o.name;
           if(o.labor_per_unit!=null)li=setLabor(li,o.labor_per_unit);
-          if(o.line_total!=null&&o.line_total>=0)li=setLineTotal(li,o.line_total);
+          if(o.labor_per_unit==null&&o.line_total!=null&&o.line_total>=0)li=setLineTotal(li,o.line_total);
           next[o.i]=li;
         }else if(o.op==="remove"&&o.i!=null&&next[o.i]){removed.add(o.i)}
         else if(o.op==="add"){
