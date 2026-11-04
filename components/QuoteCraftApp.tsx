@@ -17,6 +17,7 @@ import AutoTranslate from "@/components/AutoTranslate";
 import Onboarding from "@/components/Onboarding";
 import CompanyProfile from "@/components/CompanyProfile";
 import AiUsage from "@/components/AiUsage";
+import FeedbackAdmin from "@/components/FeedbackAdmin";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
@@ -2039,6 +2040,7 @@ export default function QuoteCraftApp(){
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <MailReceiptsSetup user={user}/>
   <AiUsage user={user}/>
+  {user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"&&<FeedbackAdmin/>}
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>

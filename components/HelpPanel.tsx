@@ -8,6 +8,10 @@ export default function HelpPanel({screen}:{screen:string}){
   const [q,setQ]=useState("");
   const [openId,setOpenId]=useState<string|null>(null);
   const [ans,setAns]=useState("");const [busy,setBusy]=useState(false);
+  const [fb,setFb]=useState("");const [fbMsg,setFbMsg]=useState("");
+  async function sendFb(){if(fb.trim().length<3)return;setFbMsg("…");
+    try{const r=await fetch("/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:fb,screen})});const j=await r.json();
+      if(!r.ok)throw new Error(j.error);setFb("");setFbMsg("✓ Дякуємо! Повідомлення надіслано.")}catch(e){setFbMsg(e instanceof Error?e.message:String(e))}}
   const list=useMemo(()=>{
     const n=q.trim().toLowerCase();
     const words=n.split(/\s+/).filter(w=>w.length>2);
@@ -37,6 +41,13 @@ export default function HelpPanel({screen}:{screen:string}){
             {openId===h.id&&<ol style={{margin:0,padding:"0 14px 12px 32px",fontSize:15,lineHeight:1.5}}>{h.steps.map((s,i)=><li key={i}>{s}</li>)}</ol>}
           </div>)}
           {q.trim()&&!list.length&&<small className="muted">Не знайшов у темах — натисніть «Запитати».</small>}
+        </div>
+        <div style={{marginTop:16,padding:12,borderRadius:12,background:"#f6fef9",border:"1px solid #abefc6"}}>
+          <b>💬 Відгук або проблема</b>
+          <small className="muted" style={{display:"block",margin:"2px 0 6px"}}>Щось не працює, незрозуміло або хочете нову функцію — напишіть, ми побачимо одразу.</small>
+          <textarea value={fb} onChange={e=>setFb(e.target.value)} placeholder="Що сталося або що покращити?" style={{minHeight:70}}/>
+          <button className="primary" onClick={sendFb} disabled={fb.trim().length<3} style={{marginTop:6,width:"100%"}}>Надіслати</button>
+          {fbMsg&&<small style={{display:"block",marginTop:6}}>{fbMsg}</small>}
         </div>
       </div>
     </div>}

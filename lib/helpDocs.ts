@@ -2,6 +2,10 @@
 export type HelpTopic={id:string;screen:"home"|"calc"|"saved"|"pay"|"clients"|"prices"|"any";title:string;steps:string[];keys:string};
 
 export const HELP:HelpTopic[]=[
+  {id:"feedback",screen:"any",title:"Як повідомити про проблему або ідею (💬 Відгук)",keys:"відгук проблема помилка баг ідея побажання підтримка feedback",steps:[
+    "Натисніть ❓ вгорі і прокрутіть донизу до «💬 Відгук або проблема».",
+    "Опишіть, що сталося або що покращити (можна коротко).",
+    "Натисніть «Надіслати» — повідомлення одразу приходить розробнику."]},
   // ---- Естімейт ----
   {id:"new-est",screen:"calc",title:"Як зробити новий естімейт",keys:"новий естімейт estimate створити почати",steps:[
     "Home → «＋ New estimate» або вкладка Calculator.",
