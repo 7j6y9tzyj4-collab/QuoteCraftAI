@@ -54,7 +54,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
       const lines=items.map((li,i)=>{const c=computeCalcLine(li,L,includeFinish);const q=Number(li.quantity)||1;
         return {i,name:li.name,taskId:li.taskId,unit:li.unit,qty:q,difficulty:li.difficulty,laborPerUnit:Math.round(c.labor/q*100)/100,materialPerUnit:Number(li.materialRate)||0,finishPerUnit:Number(li.finishRate)||0,lineTotal:Math.round(c.lineTotal*100)/100,optional:!!li.optional,note:li.note||""}});
       const t=computeCalcTotals(items.filter(i=>!i.optional),L,includeFinish);
-      const res=await fetch("/api/calc-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({instruction:ins,lines,project,
+      const res=await fetch("/api/calc-edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lang:document.documentElement.lang,instruction:ins,lines,project,
         tasks:tasks.map(x=>({id:x.id,name:x.name,unit:x.unit,category:x.category})),discount:{type:discountType,value:discountValue},deposit_pct:depositPct,totals:{labor:Math.round(t.labor),total:Math.round(t.lineTotal)}})});
       const j=await res.json();if(!res.ok)throw new Error(j?.error||"AI error");
       const ops:Op[]=j.ops||[];
@@ -108,7 +108,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
     try{
       const lines=items.map(li=>{const c=computeCalcLine(li,L,includeFinish);return {name:li.name,qty:Number(li.quantity)||0,unit:li.unit,difficulty:li.difficulty,labor:Math.round(c.labor),materials:Math.round(c.materials+c.supplies),finish:Math.round(c.finish),total:Math.round(c.lineTotal),optional:!!li.optional,note:li.note||"",customerSupplies:!!li.finishOwn&&!Number(li.finishRate)}});
       const t=computeCalcTotals(items.filter(i=>!i.optional),L,includeFinish);
-      const r=await fetch("/api/calc-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project,lines,notes,measurements:measurements||"",totals:{labor:Math.round(t.labor),total:Math.round(t.lineTotal)}})});
+      const r=await fetch("/api/calc-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lang:document.documentElement.lang,project,lines,notes,measurements:measurements||"",totals:{labor:Math.round(t.labor),total:Math.round(t.lineTotal)}})});
       const j=await r.json();if(!r.ok)throw new Error(j?.error||"AI error");
       setReview(j.items||[]);
     }catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}

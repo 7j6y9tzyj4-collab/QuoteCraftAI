@@ -55,7 +55,7 @@ export async function POST(req:NextRequest){
     },required:["op","i","quantity","labor_per_unit","line_total","material_per_unit","finish_per_unit","difficulty","optional","note","name","task_id","description","unit","stated_price","stated_price_type","discount_type","value","scope","text"]};
     const c=await client.chat.completions.create({
       model:process.env.OPENAI_MODEL||"gpt-4.1-mini",temperature:0,
-      messages:[{role:"system",content:SYSTEM},{role:"user",content:JSON.stringify({instruction,estimate:ctx})}],
+      messages:[{role:"system",content:b?.lang==="en"?SYSTEM.replace(/\(Ukrainian\)/g,"(English)").replace(/in Ukrainian/g,"in English"):SYSTEM},{role:"user",content:JSON.stringify({instruction,estimate:ctx})}],
       response_format:{type:"json_schema",json_schema:{name:"edit",strict:true,schema:{type:"object",additionalProperties:false,
         properties:{ops:{type:"array",items:opSchema},summary:{type:"string"},question:{type:"string"}},required:["ops","summary","question"]}}}
     });
