@@ -69,10 +69,10 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
           if(o.material_per_unit!=null)li.materialRate=Math.max(0,o.material_per_unit);
           if(o.finish_per_unit!=null){li.finishRate=Math.max(0,o.finish_per_unit);li.finishOwn=true}
           if(o.optional!=null)li.optional=o.optional||undefined;
-          if(o.note!=null)li.note=o.note||undefined;
+          if(o.note)li.note=o.note;
           if(o.name)li.name=o.name;
           if(o.labor_per_unit!=null)li=setLabor(li,o.labor_per_unit);
-          if(o.labor_per_unit==null&&o.line_total!=null&&o.line_total>=0)li=setLineTotal(li,o.line_total);
+          if(o.labor_per_unit==null&&o.line_total!=null&&o.line_total>=0&&Math.abs(o.line_total-computeCalcLine(next[o.i],L,includeFinish).lineTotal)>0.5)li=setLineTotal(li,o.line_total);
           next[o.i]=li;
         }else if(o.op==="remove"&&o.i!=null&&next[o.i]){removed.add(o.i)}
         else if(o.op==="add"){
@@ -87,7 +87,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
         else if(o.op==="discount"){dT=o.discount_type||dT;dV=Math.max(0,Number(o.value)||0)}
         else if(o.op==="deposit_pct"&&o.value!=null){dep=Math.min(100,Math.max(0,o.value))}
         else if(o.op==="notes_append"&&o.text){nts=[nts.trim(),o.text.trim()].filter(Boolean).join("\n\n")}
-        else if(o.op==="target_total"&&o.value){target=o}
+        else if(o.op==="target_total"&&(o.value||o.line_total||o.stated_price)){target={...o,value:o.value||o.line_total||o.stated_price}}
       }
       next=next.filter((_,i)=>!removed.has(i));
       if(target){
