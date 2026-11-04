@@ -1960,7 +1960,7 @@ export default function QuoteCraftApp(){
      {calcDeposit>0&&<div><span>Required deposit ({calcDepositPct}%)</span><b>{money(calcDeposit)}</b></div>}
      {calcOptionalTotal>0&&<div><span>Опційні позиції (не в сумі)</span><span>+{money(calcOptionalTotal)}</span></div>}
     </section>
-    <CalcEditBox items={calcItems} tasks={calcTasks} loc={calcLocationMultiplier} includeFinish={calcIncludeFinish} project={calcProject} discountType={calcDiscountType} discountValue={calcDiscountValue} depositPct={calcDepositPct} notes={calcNotes} applyTask={applyCalcTask}
+    <CalcEditBox items={calcItems} tasks={calcTasks} loc={calcLocationMultiplier} includeFinish={calcIncludeFinish} project={calcProject} discountType={calcDiscountType} discountValue={calcDiscountValue} depositPct={calcDepositPct} notes={calcNotes} measurements={calcMeasurementNotes} applyTask={applyCalcTask}
       onChange={x=>{setCalcItems(x.items);setCalcDiscountType(x.discountType);setCalcDiscountValue(x.discountValue);setCalcDepositPct(x.depositPct);setCalcNotes(x.notes)}}/>
 
     {calcMinShort>0&&<div className="noPrint" style={{margin:"0 0 10px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}>📏 Сума {money(calcGrandTotal)} менша за твій мінімум {money(ownerPrefs.min_job_price)}. <button className="secondary" style={{marginTop:8}} onClick={addMinJobLine}>＋ Доплата за малу роботу {money(calcMinShort)}</button></div>}

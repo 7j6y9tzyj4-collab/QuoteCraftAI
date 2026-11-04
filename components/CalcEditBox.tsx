@@ -12,8 +12,8 @@ type Snap={items:CalcItem[];discountType:"percent"|"amount";discountValue:number
 const r4=(n:number)=>Math.round(n*10000)/10000;
 const dm=(li:CalcItem)=>(li.difficultyMultipliers&&li.difficultyMultipliers[li.difficulty])||1;
 
-export default function CalcEditBox({items,tasks,loc,includeFinish,project,discountType,discountValue,depositPct,notes,applyTask,onChange}:{
-  items:CalcItem[];tasks:CalcTask[];loc:number;includeFinish:boolean;project:string;
+export default function CalcEditBox({items,tasks,loc,includeFinish,project,discountType,discountValue,depositPct,notes,measurements,applyTask,onChange}:{
+  items:CalcItem[];tasks:CalcTask[];loc:number;includeFinish:boolean;project:string;measurements?:string;
   discountType:"percent"|"amount";discountValue:number;depositPct:number;notes:string;
   applyTask:(item:CalcItem,task:CalcTask)=>CalcItem;
   onChange:(s:Snap)=>void;
@@ -22,6 +22,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
   const [busy,setBusy]=useState("");
   const [msg,setMsg]=useState("");
   const [undo,setUndo]=useState<Snap|null>(null);
+  const [review,setReview]=useState<{level:string;text:string;fix:string;done?:boolean}[]|null>(null);
   const rec=useRef<MediaRecorder|null>(null);const chunks=useRef<Blob[]>([]);
   const L=Number(loc)||1;
 
@@ -101,6 +102,18 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
     }catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}
   }
 
+  // 🔍 перевірка «очима досвідченого контрактора»
+  async function check(){
+    setBusy("rv");setMsg("");setReview(null);
+    try{
+      const lines=items.map(li=>{const c=computeCalcLine(li,L,includeFinish);return {name:li.name,qty:Number(li.quantity)||0,unit:li.unit,difficulty:li.difficulty,labor:Math.round(c.labor),materials:Math.round(c.materials+c.supplies),finish:Math.round(c.finish),total:Math.round(c.lineTotal),optional:!!li.optional,note:li.note||"",customerSupplies:!!li.finishOwn&&!Number(li.finishRate)}});
+      const t=computeCalcTotals(items.filter(i=>!i.optional),L,includeFinish);
+      const r=await fetch("/api/calc-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project,lines,notes,measurements:measurements||"",totals:{labor:Math.round(t.labor),total:Math.round(t.lineTotal)}})});
+      const j=await r.json();if(!r.ok)throw new Error(j?.error||"AI error");
+      setReview(j.items||[]);
+    }catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}
+  }
+
   async function mic(){
     if(rec.current){rec.current.stop();return}
     try{
@@ -133,6 +146,16 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
       <button className={busy==="rec"?"primary":"secondary"} onClick={mic} disabled={busy==="ai"||busy==="tr"} style={busy==="rec"?{background:"#d92d20"}:undefined}>{busy==="rec"?"⏹ Стоп":busy==="tr"?"Розпізнаю…":"🎙 Голосом"}</button>
       <button className="primary" onClick={()=>run(text)} disabled={!text.trim()||!!busy}>{busy==="ai"?"Змінюю…":"Застосувати"}</button>
     </div>
+    <button className="secondary" onClick={check} disabled={!!busy} style={{width:"100%",marginTop:8,background:"#fff",border:"1px solid #b2ccff",fontWeight:800}}>{busy==="rv"?"Перевіряю…":"🔍 Перевірити естімейт — що забув або занизив"}</button>
+    {review&&<div style={{marginTop:10}}>
+      {!review.length&&<p style={{fontSize:14,color:"#067647",margin:0}}>✓ Явних пропусків не знайшов.</p>}
+      {review.map((r,k)=><div key={k} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 0",borderTop:"1px solid #dbe4ff",opacity:r.done?.5:1}}>
+        <span>{r.level==="high"?"⚠️":"💡"}</span>
+        <span style={{flex:1,fontSize:14}}>{r.text}</span>
+        {r.fix&&!r.done&&<button className="secondary" disabled={!!busy} onClick={async()=>{setReview(v=>v&&v.map((x,i)=>i===k?{...x,done:true}:x));await run(r.fix)}} style={{padding:"6px 10px",fontSize:13,whiteSpace:"nowrap"}} title={r.fix}>＋ Додати</button>}
+        {r.done&&<span style={{fontSize:13,color:"#067647"}}>✓</span>}
+      </div>)}
+    </div>}
     {msg&&<p style={{fontSize:14,margin:"8px 0 0",whiteSpace:"pre-line",color:msg.startsWith("✓")?"#067647":"#344054"}}>{msg}</p>}
     {undo&&<button className="secondary" onClick={()=>{onChange(undo);setUndo(null);setMsg("↩ Повернув як було.")}} style={{marginTop:8,padding:"8px 12px"}}>↩ Скасувати зміну</button>}
   </section>;
