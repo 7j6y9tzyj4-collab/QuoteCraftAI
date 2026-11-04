@@ -20,7 +20,7 @@ export default function ViewSettings({ui,onSave,isAdmin}:{ui:UiPrefs;onSave:(u:U
 
     <h2 style={{marginTop:20}}>🎨 Вигляд програми</h2>
     <p className="muted" style={{fontSize:14}}>Режим швидко ставить готовий набір. Далі можна підправити все вручну нижче.</p>
-    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text,lang:ui.lang})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
+    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text,lang:ui.lang,onboarded:ui.onboarded})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
 
     <h3 style={{marginTop:16}}>Що показувати на головній</h3>
     <div style={{display:"grid",gap:4}}>{HOME_BLOCKS.map(b=><label key={b.k} style={{display:"flex",gap:10,alignItems:"center",fontSize:15,fontWeight:500,padding:"6px 0"}}>

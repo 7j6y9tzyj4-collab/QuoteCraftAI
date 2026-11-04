@@ -14,6 +14,7 @@ import PushSetup,{registerSW} from "@/components/PushSetup";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
 import AutoTranslate from "@/components/AutoTranslate";
+import Onboarding from "@/components/Onboarding";
 import CompanyProfile from "@/components/CompanyProfile";
 import AiUsage from "@/components/AiUsage";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
@@ -192,7 +193,8 @@ export default function QuoteCraftApp(){
      return orig(input,init)};
  },[]);
  const [,setCompanyTick]=useState(0); // профіль компанії → кеш lib/company (для PDF, посилань, повідомлень)
- useEffect(()=>{if(!user)return;supabase.from("user_settings").select("company").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{setCompany(cleanCompany(data?.company));setCompanyTick(t=>t+1)})},[user]); // Prices → ⚙ Налаштування зверху
+ const [needSetup,setNeedSetup]=useState(false); // 🚀 новий майстер: профіль ще не заповнено
+ useEffect(()=>{if(!user)return;supabase.from("user_settings").select("company").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{const c=cleanCompany(data?.company);setCompany(c);setCompanyTick(t=>t+1);setNeedSetup(!c.name.trim())})},[user]); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
@@ -1747,7 +1749,7 @@ export default function QuoteCraftApp(){
  }
 
  if(!user){
-   return <div className="shell">
+   return <div className="shell"><AutoTranslate on={ui.lang==="en"}/>
      <header>
        <div>
          <strong>QuoteCraft AI</strong>
@@ -1758,6 +1760,7 @@ export default function QuoteCraftApp(){
 
      <main>
        <section className="panel">
+         <div data-notr style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:6}}><button className={ui.lang==="en"?"primary":"secondary"} style={{padding:"6px 10px"}} onClick={()=>saveUi({...ui,lang:"en"})}>🇺🇸 EN</button><button className={ui.lang==="uk"?"primary":"secondary"} style={{padding:"6px 10px"}} onClick={()=>{if(ui.lang!=="uk"){saveUi({...ui,lang:"uk"});setTimeout(()=>location.reload(),300)}}}>🇺🇦 UA</button></div>
          <span className="eyebrow">ACCOUNT</span>
          <h1>Увійди у свій естіматор</h1>
          <p className="muted">
@@ -1833,7 +1836,7 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- return <div className={`shell app${ui.text==="large"?" large":""}`}><AutoTranslate on={ui.lang==="en"}/>
+ return <div className={`shell app${ui.text==="large"?" large":""}`}><AutoTranslate on={ui.lang==="en"}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
    {screen==="home"&&<>
