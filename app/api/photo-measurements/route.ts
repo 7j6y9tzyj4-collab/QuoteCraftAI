@@ -1,8 +1,10 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 import {normalizeSurvey} from "@/lib/photoMeasurements";
 export const runtime="nodejs";
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"photo-measurements",0.02);if(!_ai.ok)return _ai.res;
  try{
   if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"Аналіз фото не налаштований."},{status:503});
   const body=await req.json();

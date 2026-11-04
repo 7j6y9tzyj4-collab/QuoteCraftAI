@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,6 +10,7 @@ export const runtime = "nodejs";
 // unreliable (Safari on iOS and macOS). The client records audio with
 // MediaRecorder and uploads it here; Whisper handles Ukrainian reliably.
 export async function POST(req: NextRequest) {
+  const _ai=await aiGuard(req,"transcribe",0.006);if(!_ai.ok)return _ai.res;
   try {
     if(!process.env.OPENAI_API_KEY){
       return NextResponse.json({error:"Голосове розпізнавання ще не налаштоване на сервері."},{status:503});

@@ -1,4 +1,5 @@
 import OpenAI,{toFile} from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 export const runtime="nodejs";
 export const maxDuration=120;
@@ -7,6 +8,7 @@ export const maxDuration=120;
 const IMG=/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/;
 function toBuf(d:string){const i=d.indexOf(",");return {buf:Buffer.from(d.slice(i+1),"base64"),mime:d.slice(5,d.indexOf(";"))}}
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"render",0.12);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 import {HELP} from "@/lib/helpDocs";
 
@@ -7,6 +8,7 @@ export const runtime="nodejs";
 // ❓ «Запитати»: відповідь тільки з довідки програми, короткими кроками, мовою питання.
 const DOCS=HELP.map(h=>`## ${h.title} [screen: ${h.screen}]\n${h.steps.map((s,i)=>`${i+1}. ${s}`).join("\n")}`).join("\n\n");
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"help-ask",0.002);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();const q=String(b?.q||"").slice(0,500).trim();const screen=String(b?.screen||"");

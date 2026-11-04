@@ -1,4 +1,5 @@
 "use client";
+import {companyName} from "@/lib/company";
 import {useMemo,useState} from "react";
 import type {Statement} from "@/lib/statement";
 import {statementTotals,OWN_CATS,guessOwnCategory} from "@/lib/statement";
@@ -60,7 +61,7 @@ export default function YearReport({list,calcs,onClose}:{list:Statement[];calcs:
     const q=(v:unknown)=>`"${String(v??"").replace(/"/g,'""')}"`;
     const f=(n:number)=>r2(n).toFixed(2);
     const L:string[]=[];
-    L.push(q(`K&V House Renovation — річний звіт ${year}`),"");
+    L.push(q(`${companyName()} — річний звіт ${year}`),"");
     L.push(["Клієнт","Проєкт","Отримано","Чеки (матеріали клієнта)","Заробіток","Залишок зараз"].map(q).join(","));
     for(const x of R.rows)L.push([q(x.s.client),q(x.s.project),f(x.paid),f(x.receipts),f(x.earned),f(x.balance)].join(","));
     L.push([q("Разом"),q(""),f(R.income),f(R.reimb),f(R.earned),q("")].join(","),"");

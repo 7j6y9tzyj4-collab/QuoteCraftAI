@@ -13,6 +13,8 @@ import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
+import CompanyProfile from "@/components/CompanyProfile";
+import AiUsage from "@/components/AiUsage";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
@@ -35,7 +37,8 @@ import {defaults} from "@/lib/defaults";
 import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 import type {CalcTask,CalcItem,CalcDifficulty,CalcAIItem,CalcDraft,SavedCalc} from "@/lib/calcTypes";
-import {buildCalcPdf,buildShoppingPdf,pdfFileName,COMPANY_NAME,COMPANY_CONTACT} from "@/lib/calcPdf";
+import {buildCalcPdf,buildShoppingPdf,pdfFileName} from "@/lib/calcPdf";
+import {companyName,companyContact,ownerFirst,setCompany,cleanCompany} from "@/lib/company";
 import {buildShoppingList} from "@/lib/shoppingList";
 import {calcDefaults} from "@/lib/calcPricing";
 import {legacyIdMap} from "@/lib/catalog";
@@ -177,7 +180,18 @@ export default function QuoteCraftApp(){
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [prefsOpen,setPrefsOpen]=useState(false);
  const [shareMsg,setShareMsg]=useState<{link:string;text:string;busy:boolean}|null>(null); // 💬 повідомлення клієнту до посилання
- const {ui,save:saveUi}=useUiPrefs(user); // Prices → ⚙ Налаштування зверху
+ const {ui,save:saveUi}=useUiPrefs(user);
+ useEffect(()=>{ // токен до всіх запитів /api/* — для обліку AI і лімітів
+   const w=window as any;if(w.__qcFetch)return;w.__qcFetch=true;const orig=window.fetch.bind(window);
+   window.fetch=async(input:RequestInfo|URL,init?:RequestInit)=>{
+     try{const url=typeof input==="string"?input:input instanceof URL?input.href:input.url;
+       if(/^\/api\//.test(url)||url.startsWith(location.origin+"/api/")){const h=new Headers(init?.headers||(input instanceof Request?input.headers:undefined));
+         if(!h.has("authorization")){const {data:{session}}=await supabase.auth.getSession();if(session)h.set("authorization",`Bearer ${session.access_token}`)}
+         return orig(input,{...init,headers:h})}}catch{}
+     return orig(input,init)};
+ },[]);
+ const [,setCompanyTick]=useState(0); // профіль компанії → кеш lib/company (для PDF, посилань, повідомлень)
+ useEffect(()=>{if(!user)return;supabase.from("user_settings").select("company").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{setCompany(cleanCompany(data?.company));setCompanyTick(t=>t+1)})},[user]); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
@@ -742,7 +756,7 @@ export default function QuoteCraftApp(){
        const act=calcItems.filter(i=>!i.optional);
        const r=await fetch("/api/client-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:calcClient,project:calcProject,
          scope:act.map(i=>i.name),optional:calcItems.filter(i=>i.optional).map(i=>i.name),total:Math.round(calcGrandTotal),deposit:Math.round(calcDeposit),
-         tiers:data.tiers?.map(t=>({name:t.name,total:Math.round(t.totals.total)}))||[],owner:"Vasyl",company:COMPANY_NAME,updated,link})});
+         tiers:data.tiers?.map(t=>({name:t.name,total:Math.round(t.totals.total)}))||[],owner:ownerFirst(),company:companyName(),updated,link})});
        const j=await r.json();setShareMsg({link,text:String(j.text||link),busy:false});
      }catch{setShareMsg({link,text:link,busy:false})}
    }catch(e){
@@ -784,7 +798,7 @@ export default function QuoteCraftApp(){
      tokens.push(token);
    }
    storeCalcList(next);
-   const bdata={v:1,kind:"bundle",company:COMPANY_NAME,contact:COMPANY_CONTACT,client:c.name,tokens};
+   const bdata={v:1,kind:"bundle",company:companyName(),contact:companyContact(),client:c.name,tokens};
    let bt=c.bundleToken||"";
    if(bt){const {data:row}=await supabase.from("shared_quotes").update({data:bdata,updated_at:new Date().toISOString()}).eq("token",bt).select("token").maybeSingle();if(!row)bt=""}
    if(!bt){
@@ -1822,7 +1836,7 @@ export default function QuoteCraftApp(){
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
    {screen==="home"&&<>
-    {ui.home.hero&&<><section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
+    {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
     {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/></>}
     {ui.home.push&&<><PushSetup user={user} compact/></>}
     {ui.home.leads&&<><SiteLeads user={user}/></>}
@@ -2014,11 +2028,13 @@ export default function QuoteCraftApp(){
 
 {prefsOpen&&<div>
   <span className="eyebrow">ACCOUNT</span>
+  <CompanyProfile user={user} onChange={()=>setCompanyTick(t=>t+1)}/>
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
   <ViewSettings ui={ui} onSave={saveUi}/>
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <MailReceiptsSetup user={user}/>
+  <AiUsage user={user}/>
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>

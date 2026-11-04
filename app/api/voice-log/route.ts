@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 
 export const runtime="nodejs";
@@ -6,6 +7,7 @@ export const runtime="nodejs";
 // «Uzma камін, 8 годин сьогодні» / «чек Menards 63 долари на камін» / «Kalin заплатив 2200 зелле» → записи в Оплати.
 type Proj={id:string;label:string;crew:string[]};
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"voice-log",0.004);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();

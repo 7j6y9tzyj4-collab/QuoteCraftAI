@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 
 export const runtime="nodejs";
@@ -7,6 +8,7 @@ export const runtime="nodejs";
 type Proj={id:string;label:string;context:string};
 type Rec={key:string;date:string;store:string;items:string;amount:number};
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"receipt-assign",0.005);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();

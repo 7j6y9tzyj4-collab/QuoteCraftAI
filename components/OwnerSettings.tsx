@@ -38,7 +38,7 @@ export default function OwnerSettings({user,onChange}:{user:User|null;onChange?:
   return <div style={{marginTop:20}}>
     <h2>💵 Завдаток через Zelle</h2>
     <p className="muted" style={{fontSize:14}}>Після «Accept» клієнт побачить суму завдатку і куди скинути на Zelle. Порожнє поле — не показується.</p>
-    <label>Zelle (телефон або email)<input value={p.zelle} onChange={e=>set({zelle:e.target.value})} placeholder="(773) 957-7709"/></label>
+    <label>Zelle (телефон або email)<input value={p.zelle} onChange={e=>set({zelle:e.target.value})} placeholder="(555) 123-4567"/></label>
 
     <h2 style={{marginTop:20}}>📏 Мінімальна ціна роботи</h2>
     <p className="muted" style={{fontSize:14}}>Якщо естімейт менший — калькулятор попередить і запропонує додати доплату за малу роботу. 0 — вимкнено.</p>

@@ -10,7 +10,7 @@ export type WorkerProject={sid:string;client:string;project:string;address:strin
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
   materials:{name:string;qty:number;unit:string;note:string}[];
   days:WorkerDay[];hours:number;receipts:number;photos:number};
-export type WorkerView={worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;owed:number};
+export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;owed:number};
 
 const n=(s:string)=>String(s||"").trim().toLowerCase();
 
@@ -57,5 +57,6 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
       photos:(s.photos||[]).length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="photo").length});
   }
   const r2=(x:number)=>Math.round(x*100)/100;
-  return {worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),owed:r2(earned-paid)};
+  const {data:set}=await supabaseAdmin.from("user_settings").select("company").eq("user_id",uid).maybeSingle();
+  return {company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),owed:r2(earned-paid)};
 }

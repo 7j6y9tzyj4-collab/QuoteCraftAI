@@ -1,6 +1,6 @@
 import type {Statement} from "./statement";
 import {statementTotals} from "./statement";
-import {COMPANY_NAME,COMPANY_CONTACT,setupPdfFonts} from "./calcPdf";
+import {companyName,companyContact,setupPdfFonts,pdfLogo} from "./calcPdf";
 
 const money=(n:number)=>(n<0?"-":"")+"$"+Math.abs(Math.round(n*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -16,8 +16,9 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
   let y=M;
 
   doc.setFont(font,"bold");doc.setFontSize(11);doc.setTextColor(16,24,40);
-  doc.text(COMPANY_NAME,W-M,y,{align:"right"});
-  doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(100);doc.text(COMPANY_CONTACT,W-M,y+13,{align:"right"});
+  pdfLogo(doc,W-M,y);
+  doc.text(companyName(),W-M,y,{align:"right"});
+  doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(100);doc.text(companyContact(),W-M,y+13,{align:"right"});
   doc.setTextColor(0);doc.setFont(font,"bold");doc.setFontSize(18);
   doc.text("Payment Statement",M,y);y+=22;
   doc.setFont(font,"normal");doc.setFontSize(10);doc.setTextColor(80);

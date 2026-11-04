@@ -1,10 +1,12 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 export const runtime="nodejs";
 export const maxDuration=120;
 
 // Кімната з огляду: фото + розміри + нотатки → план робіт українською (що є, що зробити, список з кількостями).
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"room-plan",0.02);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json();

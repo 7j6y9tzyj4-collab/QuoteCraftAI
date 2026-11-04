@@ -1,6 +1,6 @@
 import {computeCalcLine} from "./calcEngine";
 import type {CalcItem,CalcTotals} from "./calcTypes";
-import {COMPANY_NAME,COMPANY_CONTACT} from "./calcPdf";
+import {companyName,companyContact} from "./company";
 import {tierSummary,type Tiers} from "./tiers";
 
 // Знімок естімейту з калькулятора для сторінки клієнта (/q/<token>).
@@ -36,7 +36,7 @@ export function buildQuoteSnapshot(input:{client:string;project:string;items:Cal
   };
   const t=input.totals;
   return {
-    v:1,company:COMPANY_NAME,contact:COMPANY_CONTACT,
+    v:1,company:companyName(),contact:companyContact(),
     client:input.client,project:input.project,
     date:new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"}),
     lines:input.items.filter(i=>!i.optional).map(line),

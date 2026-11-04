@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 import {applyBathroomMeasurements} from "@/lib/bathroomGeometry";
 import {applyCustomerSupplied} from "@/lib/customerSupplied";
@@ -179,6 +180,7 @@ function applyVerifiedMeasurements(result: any, text: string) {
 
 
 export async function POST(request:NextRequest){
+  const _ai=await aiGuard(request,"parse-estimate",0.01);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY){
       return NextResponse.json(

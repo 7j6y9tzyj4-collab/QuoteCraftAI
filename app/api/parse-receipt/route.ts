@@ -1,10 +1,12 @@
 import {parseReceiptAI} from "@/lib/parseReceiptAI";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 
 export const runtime="nodejs";
 
 // Фото чека (Home Depot, Menards, Floor & Decor…) → дата, магазин, короткий перелік, сума з податком.
 export async function POST(request:NextRequest){
+  const _ai=await aiGuard(request,"parse-receipt",0.008);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY){
       return NextResponse.json({error:"OPENAI_API_KEY is not configured in Vercel."},{status:503});

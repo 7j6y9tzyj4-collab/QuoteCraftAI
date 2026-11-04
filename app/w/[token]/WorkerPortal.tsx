@@ -140,7 +140,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
   const p=v.projects[i];
   return <div style={{maxWidth:560,margin:"0 auto",padding:"8px 4px 40px"}}>
     <div style={{...card,background:"#101828",color:"#fff"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><small style={{opacity:.7}}>K&V House Renovation</small><span style={{display:"flex",gap:4}}>{(["uk","en"] as Lang[]).map(l=><button key={l} onClick={()=>pick(l)} style={{padding:"4px 10px",borderRadius:999,border:"none",fontWeight:800,background:lang===l?"#fff":"#344054",color:lang===l?"#101828":"#fff"}}>{l==="uk"?"UA":"EN"}</button>)}</span></div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><small style={{opacity:.7}}>{v.company}</small><span style={{display:"flex",gap:4}}>{(["uk","en"] as Lang[]).map(l=><button key={l} onClick={()=>pick(l)} style={{padding:"4px 10px",borderRadius:999,border:"none",fontWeight:800,background:lang===l?"#fff":"#344054",color:lang===l?"#101828":"#fff"}}>{l==="uk"?"UA":"EN"}</button>)}</span></div>
       <h1 style={{margin:"2px 0 8px"}}>👷 {v.worker}</h1>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,fontSize:13}}>
         <div><div style={{opacity:.7}}>{L.hours}</div><b style={{fontSize:20}}>{v.hours}</b></div>

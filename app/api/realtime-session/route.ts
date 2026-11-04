@@ -1,5 +1,6 @@
 import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
+import {aiGuard,isAdmin} from "@/lib/aiGuard";
 
 export const runtime="nodejs";
 
@@ -48,6 +49,9 @@ export async function POST(req:NextRequest){
     const jwt=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
     const {data:u}=await supabaseAdmin.auth.getUser(jwt);
     if(!u?.user)return NextResponse.json({error:"Увійди в QuoteCraft на цьому телефоні."},{status:401});
+    if(!isAdmin(u.user.id)){const {data:set}=await supabaseAdmin.from("user_settings").select("allow_translator").eq("user_id",u.user.id).maybeSingle();
+      if(!(set as any)?.allow_translator)return NextResponse.json({error:"Живий перекладач не ввімкнений для вашого акаунта."},{status:403})}
+    const _ai=await aiGuard(req,"translator",0.3,u.user.id);if(!_ai.ok)return _ai.res;
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const b=await req.json().catch(()=>({}));
     const r=await mint(u.user.id,b);

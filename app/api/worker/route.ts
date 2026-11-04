@@ -3,6 +3,7 @@ import {supabaseAdmin} from "@/lib/supabaseAdmin";
 import {loadLink} from "@/lib/workerView";
 import {parseReceiptAI} from "@/lib/parseReceiptAI";
 import {sendPush,statementTitle} from "@/lib/push";
+import {aiGuard} from "@/lib/aiGuard";
 
 export const runtime="nodejs";
 export const maxDuration=60;
@@ -46,7 +47,7 @@ export async function POST(req:NextRequest){
         return NextResponse.json({ok:true});
       }
       let r={date:"",store:"",items:"",total:0,receipt_no:"",confidence:0};
-      try{if(process.env.OPENAI_API_KEY)r=await parseReceiptAI(photo)}catch{/* збережемо фото без суми */}
+      try{if(process.env.OPENAI_API_KEY&&(await aiGuard(req,"worker-receipt",0.008,link.user_id)).ok)r=await parseReceiptAI(photo)}catch{/* збережемо фото без суми */}
       const payload={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence};
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"receipt",payload});
       if(error)throw error;

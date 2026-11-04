@@ -20,7 +20,7 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   if(!/^[0-9a-f-]{36}$/i.test(token))return {title:"Estimate"};
   const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
   const d=(data?.data||{}) as any;
-  const company=d.company||"K&V House Renovation";
+  const company=d.company||"Estimate";
   const what=d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
   const title=`${what} | ${company}`;
   const description=d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
@@ -38,6 +38,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   }
   const settings=await ownerSettings(data.user_id);
   const zelle=settings?.zelle||"";
+  const logo=String(settings?.company?.logo||"");
   if((data.data as any)?.kind==="invoice"){
     const inv=data.data as any;
     const {data:row}=await supabaseAdmin.from("user_statements").select("statements").eq("user_id",data.user_id).maybeSingle();
@@ -50,7 +51,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
     const d:InvoiceData={company:inv.company,contact:inv.contact,client:st.client,project:st.project,date:new Date().toLocaleDateString("en-US"),
       labor:st.labor.filter(l=>Number(l.amount)).map(l=>({description:l.description,amount:Number(l.amount)||0})),
       receipts:[...st.receipts].filter(r=>Number(r.amount)).map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
-      payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||""};
+      payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||"",logo};
     return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><InvoiceView d={d}/></div></main>;
   }
   if((data.data as any)?.kind==="bundle"){
@@ -63,7 +64,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
       <main className="shared"><ViewPing token={token}/>
         <div className="sharedCard">
           <div className="sharedHead"><div>
-            <span className="sharedEyebrow">{b.company}</span>
+            {logo&&<img src={logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{b.company}</span>
             <h1>Your estimates</h1>
             {b.client&&<p>Prepared for: <strong>{b.client}</strong></p>}
             {b.contact&&<p>{b.contact}</p>}
@@ -89,7 +90,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
         <div className="sharedCard">
           <div className="sharedHead">
             <div>
-              <span className="sharedEyebrow">{c.company}</span>
+              {logo&&<img src={logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{c.company}</span>
               <h1>Change Order #{c.no}{c.title?` — ${c.title}`:""}</h1>
               {c.client&&<p>Client: <strong>{c.client}</strong></p>}
               {c.project&&<p>Project: {c.project}</p>}
@@ -118,7 +119,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
       <div className="sharedCard">
         <div className="sharedHead">
           <div>
-            <span className="sharedEyebrow">{q.company}</span>
+            {logo&&<img src={logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{q.company}</span>
             <h1>{q.project||"Estimate"}</h1>
             {q.client&&<p>Prepared for: <strong>{q.client}</strong></p>}
             <p>Date: {q.date}</p>

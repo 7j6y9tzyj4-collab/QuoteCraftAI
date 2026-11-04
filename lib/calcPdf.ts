@@ -22,8 +22,14 @@ export type CalcPdfInput={
   measurementNotes?:string;
 };
 
-export const COMPANY_NAME="K&V House Renovation";
-export const COMPANY_CONTACT="(773) 957-7709 · koiatvasyl@gmail.com";
+import {companyName,companyContact,getCompany} from "./company";
+export {companyName,companyContact};
+/** логотип компанії зліва від назви у шапці PDF (якщо є) */
+export function pdfLogo(doc:any,right:number,y:number){
+  const logo=getCompany().logo;if(!logo)return;
+  try{const p=doc.getImageProperties(logo);const h=34,w=Math.min(120,p.width*h/p.height);
+    const nameW=doc.getTextWidth(companyName());doc.addImage(logo,right-nameW-w-10,y-22,w,h)}catch{/* битий логотип — без нього */}
+}
 
 const money=(n:number)=>"$"+(Math.round(n*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const unitLabel=(u:string)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"lin ft",room:"room"} as Record<string,string>)[u]||u;
@@ -72,8 +78,9 @@ export async function buildCalcPdf(input:CalcPdfInput):Promise<Blob>{
 
   // Шапка: назва компанії праворуч, назва проєкту ліворуч
   doc.setFont(font,"bold");doc.setFontSize(11);doc.setTextColor(16,24,40);
-  doc.text(COMPANY_NAME,W-M,y,{align:"right"});
-  if(COMPANY_CONTACT){doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(100);doc.text(COMPANY_CONTACT,W-M,y+13,{align:"right"});}
+  pdfLogo(doc,W-M,y);
+  doc.text(companyName(),W-M,y,{align:"right"});
+  if(companyContact()){doc.setFont(font,"normal");doc.setFontSize(9);doc.setTextColor(100);doc.text(companyContact(),W-M,y+13,{align:"right"});}
   doc.setTextColor(0);
   doc.setFont(font,"bold");doc.setFontSize(18);
   doc.text(input.project||"Estimate",M,y);y+=22;

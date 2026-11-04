@@ -4,7 +4,7 @@ import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import type {Statement} from "@/lib/statement";
 import {changeTotal,newChangeOrder,DEFAULT_CHANGE_NOTES,type ChangeOrder,type ChangeSnapshot} from "@/lib/changeOrder";
-import {COMPANY_NAME,COMPANY_CONTACT} from "@/lib/calcPdf";
+import {companyName,companyContact} from "@/lib/company";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const CYR=/[а-яіїєґё]/i;
@@ -81,7 +81,7 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
     if(!user){setMsg("Увійди в акаунт, щоб надіслати посилання.");return}
     const total=changeTotal(co);
     if(!co.lines.some(l=>l.description.trim()&&l.amount)){setMsg("Додай опис і суму доплати.");return}
-    const data:ChangeSnapshot={v:1,kind:"change",company:COMPANY_NAME,contact:COMPANY_CONTACT,client:st.client,project:st.project,
+    const data:ChangeSnapshot={v:1,kind:"change",company:companyName(),contact:companyContact(),client:st.client,project:st.project,
       date:new Date().toLocaleDateString("en-US"),no:co.no,title:co.title,lines:co.lines.filter(l=>l.description.trim()||l.amount).map(l=>({description:l.description,amount:Number(l.amount)||0})),total,notes:co.notes||""};
     try{
       let token=co.token||"";

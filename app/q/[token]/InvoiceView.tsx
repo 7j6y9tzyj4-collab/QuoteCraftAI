@@ -1,6 +1,6 @@
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 
-export type InvoiceData={company:string;contact:string;client:string;project:string;date:string;
+export type InvoiceData={logo?:string;company:string;contact:string;client:string;project:string;date:string;
   labor:{description:string;amount:number}[];receipts:{date:string;store:string;items:string;amount:number;photo?:string}[];
   payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number};zelle:string;notes:string};
 
@@ -9,7 +9,7 @@ export default function InvoiceView({d}:{d:InvoiceData}){
   const t=d.totals;
   return <>
     <div className="sharedHead"><div>
-      <span className="sharedEyebrow">{d.company}</span>
+      {d.logo&&<img src={d.logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{d.company}</span>
       <h1>Invoice — {d.project||"Project"}</h1>
       {d.client&&<p>Client: <strong>{d.client}</strong></p>}
       <p>Updated: {d.date}</p>

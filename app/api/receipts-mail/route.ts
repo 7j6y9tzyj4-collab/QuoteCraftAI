@@ -3,6 +3,7 @@ import {supabaseAdmin} from "@/lib/supabaseAdmin";
 import {parseReceiptAI,parseReceiptText} from "@/lib/parseReceiptAI";
 import {assignMailReceipt} from "@/lib/mailAssign";
 import {sendPush} from "@/lib/push";
+import {aiGuard} from "@/lib/aiGuard";
 import {OWN_ID} from "@/lib/statement";
 
 export const runtime="nodejs";
@@ -32,6 +33,7 @@ export async function POST(req:NextRequest){
     const store=STORES.find(([re])=>re.test(from))?.[1]||"";
     if(!store||SKIP.test(subject))return NextResponse.json({ok:true,skipped:"not a receipt"});
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY missing"},{status:503});
+    if(!dry){const _ai=await aiGuard(req,"receipts-mail",0.012,userId);if(!_ai.ok)return _ai.res}
 
     // 1) картинка чека в листі (Floor & Decor, Home Depot e-receipt)
     const img=[...html.matchAll(/<img[^>]+>/gi)].map(m=>m[0]).find(t=>/alt=["'][^"']*receipt/i.test(t)||/src=["'][^"']*receipt[^"']*\.(jpe?g|png)/i.test(t));

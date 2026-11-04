@@ -1,9 +1,11 @@
 import OpenAI from "openai";
+import {aiGuard} from "@/lib/aiGuard";
 import {NextRequest,NextResponse} from "next/server";
 export const runtime="nodejs";
 
 // Переклад коротких текстів (доплати, примітки) з української/російської на англійську для клієнта.
 export async function POST(req:NextRequest){
+  const _ai=await aiGuard(req,"translate",0.002);if(!_ai.ok)return _ai.res;
   try{
     if(!process.env.OPENAI_API_KEY)return NextResponse.json({error:"OPENAI_API_KEY is not configured."},{status:503});
     const body=await req.json();

@@ -1,4 +1,5 @@
 "use client";
+import {signature} from "@/lib/company";
 import {useEffect,useMemo,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
@@ -40,8 +41,8 @@ export default function AwaitingReplies({user,clients,calcs,onOpenCalc}:{user:Us
       const sentDays=days(r.updated_at||r.created_at),viewDays=days(r.viewed_at);
       const viewed=r.status==="viewed";
       const text=viewed
-        ?`Hi ${first}, did you have a chance to look over the ${isChange?"change order":"estimate"} for ${what}? I'm happy to answer any questions or adjust anything. ${link}\n— Vasyl, K&V House Renovation`
-        :`Hi ${first}, just checking that you received the ${isChange?"change order":"estimate"} for ${what}: ${link}\nLet me know if you have any questions!\n— Vasyl, K&V House Renovation`;
+        ?`Hi ${first}, did you have a chance to look over the ${isChange?"change order":"estimate"} for ${what}? I'm happy to answer any questions or adjust anything. ${link}\n${signature()}`
+        :`Hi ${first}, just checking that you received the ${isChange?"change order":"estimate"} for ${what}: ${link}\nLet me know if you have any questions!\n${signature()}`;
       const late=viewed?viewDays>=3:sentDays>=2;
       const calc=calcs.find(x=>x.shareToken===r.token);
       return <div key={r.token} style={{padding:"10px 0",borderTop:"1px solid #eaecf0"}}>

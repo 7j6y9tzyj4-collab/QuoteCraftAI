@@ -2,7 +2,7 @@ import {loadLink,workerView} from "@/lib/workerView";
 import WorkerPortal from "./WorkerPortal";
 
 export const dynamic="force-dynamic";
-export const metadata={title:"K&V — робочий кабінет",robots:{index:false}};
+export const metadata={title:"Робочий кабінет",robots:{index:false}};
 
 // Сторінка помічника: свої проєкти, години, чеки, фото. Без цін клієнта.
 export default async function WorkerPage({params}:{params:Promise<{token:string}>}){
