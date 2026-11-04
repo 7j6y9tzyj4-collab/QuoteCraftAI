@@ -14,12 +14,22 @@ function build(d:Record<string,string>){
     else{dict[k]=v;if(k.length>=6)prefixes.push([k,v])}}
   tmpls.sort((a,b)=>b.re.source.length-a.re.source.length);prefixes.sort((a,b)=>b[0].length-a[0].length);ready=true;
 }
+// дати з toLocaleDateString("uk-UA"): місяці й дні тижня
+const MONTHS:[RegExp,string][]=[["січ","January"],["лют","February"],["берез","March"],["квіт","April"],["трав","May"],["черв","June"],["лип","July"],["серп","August"],["верес","September"],["жовт","October"],["лист","November"],["груд","December"]]
+  .map(([u,e])=>[new RegExp(`(^|[^А-Яа-яІіЇїЄєҐґ])${u}[а-яіїєґ]*\\.?`,"gi"),e] as [RegExp,string]);
+const DAYS:[RegExp,string][]=[["пн","Mon"],["вт","Tue"],["ср","Wed"],["чт","Thu"],["пт","Fri"],["сб","Sat"],["нд","Sun"]].map(([u,e])=>[new RegExp(`(^|[^А-Яа-яІіЇїЄєҐґ])${u}(?![А-Яа-яІіЇїЄєҐґ])\\.?`,"g"),e] as [RegExp,string]);
+function dates(t:string){
+  if(!/(січ|лют|берез|квіт|трав|черв|лип|серп|верес|жовт|листопад|груд|\bр\.|пн|вт|ср|чт|пт|сб|нд)/i.test(t))return null;
+  let x=t.replace(/\s*р\.(?=\s|$|,)/g,"");for(const [re,e] of MONTHS)x=x.replace(re,(_,a)=>a+e);for(const [re,e] of DAYS)x=x.replace(re,(_,a)=>a+e);
+  return CY.test(x)?null:x;
+}
 export function tr(text:string):string|null{
   if(!ready||!text||!CY.test(text))return null;
   const lead=text.match(/^\s*/)![0],trail=text.match(/\s*$/)![0];const core=text.trim().replace(/\s+/g," ");
   const e=dict[core];if(e)return lead+e+trail;
   for(const t of tmpls){const m=t.re.exec(core);if(m)return lead+t.en.replace(/\{(\d+)\}/g,(_,i)=>{const x=m[Number(i)+1]??"";return tr(x)?.trim()??x})+trail}
   for(const [k,v] of prefixes)if(core.startsWith(k)&&k.length<core.length){const rest=core.slice(k.length);return lead+v+(tr(rest)??rest)+trail}
+  const dt=dates(core);if(dt)return lead+dt+trail;
   return null;
 }
 const SKIP=new Set(["SCRIPT","STYLE","TEXTAREA","INPUT","NOSCRIPT"]);
