@@ -26,6 +26,7 @@ import {surveyToPrompt,type Survey} from "@/lib/survey";
 import TiersPanel,{TierToggles} from "@/components/TiersPanel";
 import {tierSummary,type Tiers} from "@/lib/tiers";
 import UpdateButton from "@/components/UpdateButton";
+import HelpPanel from "@/components/HelpPanel";
 import PriceHistory from "@/components/PriceHistory";
 import {validPrice,bounds,categoryOf} from "@/lib/priceCatalog";
 import {estimateTotals,itemTotal,itemMaterialRate,itemFinishRate} from "@/lib/estimateTotals";
@@ -1812,7 +1813,7 @@ export default function QuoteCraftApp(){
  }
 
  return <div className={`shell app${ui.text==="large"?" large":""}`}>
-  <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><UpdateButton/></header>
+  <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
    {screen==="home"&&<>
     {ui.home.hero&&<><section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
