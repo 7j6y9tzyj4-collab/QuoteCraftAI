@@ -77,3 +77,5 @@ body:has(.shell.app){overflow:hidden}
 .shell.app>main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:28px}
 .shell.app>nav{position:relative;left:auto;right:auto;bottom:auto;flex:none;padding-bottom:max(7px,env(safe-area-inset-bottom))}
 @media print{html,body,body:has(.shell.app){height:auto;overflow:visible}.shell.app{height:auto;display:block;overflow:visible}.shell.app>main{overflow:visible}}
+/* ⚙ Вигляд → великий текст */
+.shell.app.large>main>*,.shell.app.large>nav,.shell.app.large>header{zoom:1.12}

@@ -1,0 +1,36 @@
+"use client";
+import {HOME_BLOCKS,TABS,PRESETS,type UiPrefs,type Mode,type Tab} from "@/lib/uiPrefs";
+
+// ⚙ Налаштування → 🎨 Вигляд програми
+export default function ViewSettings({ui,onSave}:{ui:UiPrefs;onSave:(u:UiPrefs)=>void}){
+  const pill=(on:boolean):React.CSSProperties=>({padding:"10px 12px",borderRadius:12,fontWeight:800,fontSize:14,background:on?"#101828":"#eef2f7",color:on?"#fff":"#344054",flex:1});
+  const modes:{k:Mode;t:string;d:string}[]=[{k:"simple",t:"Простий",d:"тільки головне"},{k:"standard",t:"Стандартний",d:"як зараз"},{k:"full",t:"Повний",d:"усе"}];
+  const move=(t:Tab,dir:-1|1)=>{const a=[...ui.tabs];const i=a.indexOf(t);const j=i+dir;if(i<0||j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];onSave({...ui,tabs:a})};
+  const toggleTab=(t:Tab)=>{if(t==="prices"||t==="home")return;onSave({...ui,tabs:ui.tabs.includes(t)?ui.tabs.filter(x=>x!==t):[...ui.tabs.filter(x=>x!=="prices"),t,"prices"]})};
+  return <div style={{marginTop:20}}>
+    <h2>🎨 Вигляд програми</h2>
+    <p className="muted" style={{fontSize:14}}>Режим швидко ставить готовий набір. Далі можна підправити все вручну нижче.</p>
+    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
+
+    <h3 style={{marginTop:16}}>Що показувати на головній</h3>
+    <div style={{display:"grid",gap:4}}>{HOME_BLOCKS.map(b=><label key={b.k} style={{display:"flex",gap:10,alignItems:"center",fontSize:15,fontWeight:500,padding:"6px 0"}}>
+      <input type="checkbox" checked={!!ui.home[b.k]} onChange={e=>onSave({...ui,home:{...ui.home,[b.k]:e.target.checked}})} style={{width:22,height:22,flex:"none"}}/>{b.label}</label>)}</div>
+
+    <h3 style={{marginTop:16}}>Нижнє меню</h3>
+    <p className="muted" style={{fontSize:13,margin:"0 0 6px"}}>Галочка — показувати; стрілки — порядок. Home і Prices (тут налаштування) лишаються завжди.</p>
+    <div style={{display:"grid",gap:6}}>
+      {[...ui.tabs,...TABS.map(t=>t.k).filter(k=>!ui.tabs.includes(k))].map(k=>{const t=TABS.find(x=>x.k===k)!;const on=ui.tabs.includes(k);const fixed=k==="prices"||k==="home";
+        return <div key={k} style={{display:"flex",gap:8,alignItems:"center",padding:"6px 10px",borderRadius:12,background:on?"#f8fafc":"#fff",border:"1px solid #eaecf0",opacity:on?1:.6}}>
+          <input type="checkbox" checked={on} disabled={fixed} onChange={()=>toggleTab(k)} style={{width:22,height:22,flex:"none"}}/>
+          <span style={{flex:1,fontWeight:700}}>{t.icon} {t.label}</span>
+          {on&&<><button className="secondary" onClick={()=>move(k,-1)} style={{padding:"4px 10px"}}>↑</button><button className="secondary" onClick={()=>move(k,1)} style={{padding:"4px 10px"}}>↓</button></>}
+        </div>})}
+    </div>
+
+    <h3 style={{marginTop:16}}>Розмір тексту</h3>
+    <div style={{display:"flex",gap:6}}>
+      <button onClick={()=>onSave({...ui,text:"normal"})} style={pill(ui.text==="normal")}>Звичайний</button>
+      <button onClick={()=>onSave({...ui,text:"large"})} style={{...pill(ui.text==="large"),fontSize:17}}>Великий</button>
+    </div>
+  </div>;
+}

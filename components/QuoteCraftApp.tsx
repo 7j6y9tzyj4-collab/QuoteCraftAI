@@ -12,6 +12,8 @@ import AwaitingReplies from "@/components/AwaitingReplies";
 import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
 import CalcEditBox from "@/components/CalcEditBox";
+import ViewSettings from "@/components/ViewSettings";
+import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
 import OwnerSettings,{EMPTY_PREFS,type OwnerPrefs} from "@/components/OwnerSettings";
@@ -172,7 +174,8 @@ export default function QuoteCraftApp(){
  },[screen,user?.id]);
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
- const [prefsOpen,setPrefsOpen]=useState(false); // Prices → ⚙ Налаштування зверху
+ const [prefsOpen,setPrefsOpen]=useState(false);
+ const {ui,save:saveUi}=useUiPrefs(user); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
@@ -1808,19 +1811,19 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- return <div className="shell app">
+ return <div className={`shell app${ui.text==="large"?" large":""}`}>
   <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><UpdateButton/></header>
   <main>
    {screen==="home"&&<>
-    <section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section>
-    <WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/>
-    <PushSetup user={user} compact/>
-    <SiteLeads user={user}/>
-    <AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/>
-    <a href="/translate" className="estimate" style={{textDecoration:"none",background:"#0b1220",color:"#fff"}}><span><b>🎧 Перекладач UA ⇄ EN</b><small style={{color:"#cbd5e1"}}>Говори з клієнтом — переклад в AirPods за мить</small></span><span style={{alignSelf:"center"}}>›</span></a>
-    <PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/>
-    <section className="metrics"><article><span>Estimates</span><b>{calcSaved.length}</b></article><article><span>Quoted value</span><b>{money(calcSaved.reduce((a,c)=>a+(Number(c.total)||0),0))}</b></article></section>
-    <section className="panel"><div className="head"><h2>Recent estimates</h2><button onClick={()=>setScreen("saved")}>View all</button></div>{calcSaved.length===0?<p className="empty">Ще немає збережених естімейтів.</p>:calcSaved.slice(0,3).map(c=><button className="estimate" key={c.id} onClick={()=>openCalc(c)}><span><b>{c.client||"Unnamed client"}</b><small>{c.project||"Estimate"}</small></span><strong>{money(c.total)}</strong></button>)}</section>
+    {ui.home.hero&&<><section className="hero"><span>K&amp;V ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
+    {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/></>}
+    {ui.home.push&&<><PushSetup user={user} compact/></>}
+    {ui.home.leads&&<><SiteLeads user={user}/></>}
+    {ui.home.awaiting&&<><AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/></>}
+    {ui.home.translator&&<><a href="/translate" className="estimate" style={{textDecoration:"none",background:"#0b1220",color:"#fff"}}><span><b>🎧 Перекладач UA ⇄ EN</b><small style={{color:"#cbd5e1"}}>Говори з клієнтом — переклад в AirPods за мить</small></span><span style={{alignSelf:"center"}}>›</span></a></>}
+    {ui.home.due&&<><PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/></>}
+    {ui.home.metrics&&<><section className="metrics"><article><span>Estimates</span><b>{calcSaved.length}</b></article><article><span>Quoted value</span><b>{money(calcSaved.reduce((a,c)=>a+(Number(c.total)||0),0))}</b></article></section></>}
+    {ui.home.recent&&<><section className="panel"><div className="head"><h2>Recent estimates</h2><button onClick={()=>setScreen("saved")}>View all</button></div>{calcSaved.length===0?<p className="empty">Ще немає збережених естімейтів.</p>:calcSaved.slice(0,3).map(c=><button className="estimate" key={c.id} onClick={()=>openCalc(c)}><span><b>{c.client||"Unnamed client"}</b><small>{c.project||"Estimate"}</small></span><strong>{money(c.total)}</strong></button>)}</section></>}
    </>}
 
    {screen==="new"&&<>
@@ -1992,6 +1995,7 @@ export default function QuoteCraftApp(){
   <span className="eyebrow">ACCOUNT</span>
   <BackupPanel user={user}/>
   <OwnerSettings user={user} onChange={setOwnerPrefs}/>
+  <ViewSettings ui={ui} onSave={saveUi}/>
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <MailReceiptsSetup user={user}/>
   <h2>Пароль для Face ID</h2>
@@ -2029,6 +2033,6 @@ export default function QuoteCraftApp(){
 </div>}
 </section>}
   </main>
-  <nav className="noPrint"><button className={screen==="home"?"active":""} onClick={()=>setScreen("home")}>⌂<span>Home</span></button><button className={screen==="calc"?"active":""} onClick={()=>setScreen("calc")}>🧮<span>Calculator</span></button><button className={screen==="saved"?"active":""} onClick={()=>setScreen("saved")}>▣<span>Estimates</span></button><button className={screen==="pay"?"active":""} onClick={()=>setScreen("pay")} style={{position:"relative"}}>${inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>Оплати</span></button><button className={screen==="clients"?"active":""} onClick={()=>setScreen("clients")}>👤<span>Клієнти</span></button><button className={screen==="prices"?"active":""} onClick={()=>setScreen("prices")}>⚙<span>Prices</span></button></nav>
+  <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>
  </div>
 }
