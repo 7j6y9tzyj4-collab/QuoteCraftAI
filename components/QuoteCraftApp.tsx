@@ -176,6 +176,7 @@ export default function QuoteCraftApp(){
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [prefsOpen,setPrefsOpen]=useState(false);
+ const [shareMsg,setShareMsg]=useState<{link:string;text:string;busy:boolean}|null>(null); // 💬 повідомлення клієнту до посилання
  const {ui,save:saveUi}=useUiPrefs(user); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
@@ -734,11 +735,16 @@ export default function QuoteCraftApp(){
      }
      setCalcShareToken(token);
      const link=`${window.location.origin}/q/${token}`;
-     const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
-     if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){
-       try{await nav.share({text:link});setCalcMessage("Посилання готове — вибери, куди надіслати: "+link);return}catch{}
-     }
-     try{await navigator.clipboard.writeText(link);setCalcMessage("Посилання скопійовано: "+link)}catch{setCalcMessage("Посилання: "+link)}
+     // 💬 готуємо супровідне повідомлення; надсилання — окремим натисканням (iPhone дозволяє «Поділитися» лише одразу після тапу)
+     const updated=!!calcShareToken&&token===calcShareToken&&!!calcQuote;
+     setShareMsg({link,text:"",busy:true});setCalcMessage("");
+     try{
+       const act=calcItems.filter(i=>!i.optional);
+       const r=await fetch("/api/client-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client:calcClient,project:calcProject,
+         scope:act.map(i=>i.name),optional:calcItems.filter(i=>i.optional).map(i=>i.name),total:Math.round(calcGrandTotal),deposit:Math.round(calcDeposit),
+         tiers:data.tiers?.map(t=>({name:t.name,total:Math.round(t.totals.total)}))||[],owner:"Vasyl",company:COMPANY_NAME,updated,link})});
+       const j=await r.json();setShareMsg({link,text:String(j.text||link),busy:false});
+     }catch{setShareMsg({link,text:link,busy:false})}
    }catch(e){
      const m=e instanceof Error?e.message:String((e as any)?.message||e);
      setCalcMessage(/shared_quotes/.test(m)?"Спершу створи таблицю shared_quotes у Supabase (SQL від Claude).":"Не вдалося зробити посилання: "+m);
@@ -1974,6 +1980,20 @@ export default function QuoteCraftApp(){
     <div className="actions noPrint"><button onClick={downloadCalcPdf} disabled={calcPdfBusy}>{calcPdfBusy?"Готую PDF…":"Завантажити PDF"}</button><button className="secondary" onClick={shareCalcPdf} disabled={calcPdfBusy}>Надіслати PDF</button><button className="secondary" onClick={downloadShoppingPdf} disabled={calcPdfBusy}>Список закупівлі</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={printCalcEstimate}>Друк</button><button className="secondary" onClick={copyCalcAsText}>Copy as text</button></div>
     <div className="actions noPrint" style={{marginTop:8}}><button className="secondary" onClick={shareCalcLink} disabled={calcPdfBusy}>🔗 {calcShareToken?"Оновити посилання клієнту":"Посилання клієнту"}</button><button className="secondary" onClick={sendCalcToPayments}>💵 В Оплати</button></div>
+    {shareMsg&&<section className="panel noPrint" style={{borderColor:"#abefc6",background:"#f6fef9"}}>
+      <b>💬 Повідомлення клієнту</b>
+      <small className="muted" style={{display:"block",margin:"2px 0 8px"}}>Перевір і за потреби виправ текст. Посилання — в кінці.</small>
+      {shareMsg.busy?<p className="muted">Пишу повідомлення…</p>:<textarea value={shareMsg.text} onChange={e=>setShareMsg({...shareMsg,text:e.target.value})} style={{minHeight:170,fontSize:15}}/>}
+      <div className="actions" style={{marginTop:8,flexWrap:"wrap"}}>
+        <button className="primary" disabled={shareMsg.busy} onClick={async()=>{const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+          if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:shareMsg.text});setShareMsg(null);setCalcMessage("Надіслано ✓");return}catch{return}}
+          try{await navigator.clipboard.writeText(shareMsg.text);setCalcMessage("Повідомлення з посиланням скопійовано — встав у SMS.")}catch{setCalcMessage(shareMsg.text)}}}>📤 Надіслати з текстом</button>
+        <button className="secondary" disabled={shareMsg.busy} onClick={async()=>{const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+          if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:shareMsg.link});setShareMsg(null);return}catch{return}}
+          try{await navigator.clipboard.writeText(shareMsg.link);setCalcMessage("Посилання скопійовано: "+shareMsg.link)}catch{setCalcMessage(shareMsg.link)}}}>🔗 Тільки посилання</button>
+        <button className="secondary" onClick={()=>setShareMsg(null)}>✕</button>
+      </div>
+    </section>}
     {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}{calcQuote.chosenOptions?.length?` · додав опції: ${calcQuote.chosenOptions.map(i=>calcItems.filter(x=>x.optional)[i]?.name).filter(Boolean).join(", ")}`:""}</b>:calcQuote.status==="viewed"?<><b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b> <button type="button" className="secondary" style={{padding:"2px 8px",fontSize:12}} onClick={async()=>{const {error}=await supabase.from("shared_quotes").update({status:"sent",viewed_at:null}).eq("token",calcShareToken);if(!error)setCalcQuote(q=>q?{...q,status:"sent",viewed_at:null}:q)}}>це був я</button></>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
