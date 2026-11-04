@@ -31,7 +31,8 @@ export async function POST(req:NextRequest){
       }));
       const rows=res.flat();
       if(rows.length)await supabaseAdmin.from("i18n").upsert(rows.map(r=>({...r,updated_at:new Date().toISOString()})),{onConflict:"key"});
+      return NextResponse.json({total:all.length,remaining:missing.length-rows.length,failed:batch.length-rows.length});
     }
-    return NextResponse.json({total:all.length,remaining:Math.max(0,missing.length-batch.length)});
+    return NextResponse.json({total:all.length,remaining:0});
   }catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Server error"},{status:500})}
 }
