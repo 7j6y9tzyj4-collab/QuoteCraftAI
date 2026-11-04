@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
-import {isAdmin,userFromReq} from "@/lib/aiGuard";
+import {isAdmin,userFromReq,DEFAULT_AI_LIMIT} from "@/lib/aiGuard";
 
 export const runtime="nodejs";
 // 🤖 GET — моє використання AI за місяць (+ для адміна: усі користувачі). POST (адмін) — ліміт / перекладач для користувача.
@@ -9,7 +9,7 @@ export async function GET(req:NextRequest){
   const uid=await userFromReq(req);if(!uid)return NextResponse.json({error:"auth"},{status:401});
   const {data:me}=await supabaseAdmin.from("ai_usage").select("calls,cost,by_feature").eq("user_id",uid).eq("month",month()).maybeSingle();
   const {data:set}=await supabaseAdmin.from("user_settings").select("ai_limit").eq("user_id",uid).maybeSingle();
-  const out:any={month:month(),me:me||{calls:0,cost:0,by_feature:{}},limit:(set as any)?.ai_limit??null,admin:isAdmin(uid)};
+  const out:any={month:month(),me:me||{calls:0,cost:0,by_feature:{}},limit:isAdmin(uid)?null:((set as any)?.ai_limit??DEFAULT_AI_LIMIT),admin:isAdmin(uid)};
   if(isAdmin(uid)){
     const {data:users}=await supabaseAdmin.auth.admin.listUsers({perPage:200});
     const {data:use}=await supabaseAdmin.from("ai_usage").select("user_id,calls,cost").eq("month",month());

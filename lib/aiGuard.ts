@@ -5,6 +5,8 @@ import {supabaseAdmin} from "./supabaseAdmin";
 // user_settings.ai_limit — $ на місяць (null = без ліміту). Адмін (власник програми) — без ліміту.
 export const ADMIN_IDS=(process.env.ADMIN_USER_IDS||"239d3941-68b8-4f7d-b058-f1a87f861143").split(",").map(s=>s.trim()).filter(Boolean);
 export const isAdmin=(id?:string|null)=>!!id&&ADMIN_IDS.includes(id);
+// Ліміт за замовчуванням для нових користувачів (якщо адмін не поставив свій).
+export const DEFAULT_AI_LIMIT=Number(process.env.DEFAULT_AI_LIMIT||5);
 const month=()=>new Date().toISOString().slice(0,7);
 
 export async function userFromReq(req:NextRequest):Promise<string|null>{
@@ -22,7 +24,7 @@ export async function aiGuard(req:NextRequest,feature:string,cost:number,userId?
         supabaseAdmin.from("user_settings").select("ai_limit").eq("user_id",uid).maybeSingle(),
         supabaseAdmin.from("ai_usage").select("cost").eq("user_id",uid).eq("month",month()).maybeSingle(),
       ]);
-      const limit=(set as any)?.ai_limit;const used=Number((use as any)?.cost)||0;
+      const limit=(set as any)?.ai_limit??DEFAULT_AI_LIMIT;const used=Number((use as any)?.cost)||0;
       if(limit!=null&&Number(limit)>=0&&used>=Number(limit))
         return {ok:false,res:NextResponse.json({error:"Ліміт AI на цей місяць вичерпано. Зверніться до адміністратора програми."},{status:429})};
     }

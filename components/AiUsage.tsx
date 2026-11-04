@@ -23,10 +23,11 @@ export default function AiUsage({user}:{user:User|null}){
         <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:14,wordBreak:"break-all"}}>{u.company||u.email}{u.admin?" (ви)":""}</b><span style={{whiteSpace:"nowrap"}}>{u.calls} · <b>{usd(u.cost)}</b></span></div>
         {u.company&&<small className="muted">{u.email}</small>}
         {!u.admin&&<div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
-          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13}}>Ліміт $/міс<input type="number" min={0} step={1} defaultValue={u.limit??""} placeholder="без ліміту" style={{width:110,padding:8}} onBlur={e=>{const v=e.target.value;if(String(u.limit??"")!==v)void setUser(u.id,{limit:v===""?null:Number(v)})}}/></label>
+          <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13}}>Ліміт $/міс<input type="number" min={0} step={1} defaultValue={u.limit??""} placeholder="5 (стандарт)" style={{width:110,padding:8}} onBlur={e=>{const v=e.target.value;if(String(u.limit??"")!==v)void setUser(u.id,{limit:v===""?null:Number(v)})}}/></label>
           <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13}}><input type="checkbox" checked={u.translator} onChange={e=>void setUser(u.id,{translator:e.target.checked})} style={{width:20,height:20}}/>🎧 перекладач</label>
         </div>}
       </div>)}
+      <small className="muted" style={{display:"block",marginBottom:6}}>Порожнє поле = стандартні $5/міс. Щоб зняти ліміт — впишіть 1000.</small>
       {d.anon&&<small className="muted">Без входу (сторінки помічника тощо): {d.anon.calls} · {usd(d.anon.cost)}</small>}
       {msg&&<p className="muted" style={{fontSize:13}}>{msg}</p>}
     </div>}
