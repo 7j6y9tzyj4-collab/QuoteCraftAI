@@ -4,6 +4,7 @@ import {loadLink} from "@/lib/workerView";
 import {parseReceiptAI} from "@/lib/parseReceiptAI";
 import {sendPush,statementTitle} from "@/lib/push";
 import {aiGuard} from "@/lib/aiGuard";
+import {splitShop,shopList,shopAdd,shopToggle,shopDel,shopClearDone} from "@/lib/shop";
 
 export const runtime="nodejs";
 export const maxDuration=60;
@@ -25,6 +26,20 @@ export async function POST(req:NextRequest){
     const id=crypto.randomUUID();
     // сповіщення власнику на телефон
     const notify=async(text:string)=>{const t=await statementTitle(link.user_id,sid);await sendPush(link.user_id,{title:`👷 ${link.worker}${t?` · ${t}`:""}`,body:text,url:`/?screen=pay&sid=${encodeURIComponent(sid)}`})};
+    if(String(b.action||"").startsWith("shop_")){
+      const u=link.user_id;
+      if(b.action==="shop_add"){
+        const text=String(b.text||"").slice(0,1500);
+        const ok=text.length<25||(await aiGuard(req,"shop-list",0.001,u)).ok;
+        const items=ok?await splitShop(text):text.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+        await shopAdd(u,sid,items,link.worker);
+        if(items.length)await notify(`🛒 Треба купити: ${items.slice(0,6).join(", ")}${items.length>6?` … (+${items.length-6})`:""}`);
+      }
+      else if(b.action==="shop_toggle")await shopToggle(u,String(b.id),!!b.done);
+      else if(b.action==="shop_del")await shopDel(u,String(b.id));
+      else if(b.action==="shop_clear")await shopClearDone(u,sid);
+      return NextResponse.json({items:await shopList(u,sid)});
+    }
     if(b.action==="hours"){
       const hours=Math.round((Number(b.hours)||0)*4)/4;
       if(!(hours>0&&hours<=16))return NextResponse.json({error:"Вкажи години від 0.25 до 16."},{status:400});

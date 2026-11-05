@@ -19,6 +19,7 @@ import MonthEarnings from "@/components/MonthEarnings";
 import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
 import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
+import ShopList from "@/components/ShopList";
 import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
 import MonthReceiptsButton from "@/components/MonthReceiptsButton";
@@ -887,6 +888,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    <CrewPanel st={cur} all={list} onPatch={update}/>
    <WorkerLinks user={user} st={cur}/>
+   <section className="panel"><ShopList key={cur.id} call={async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j}}/></section>
    <StatementPhotos st={cur} onPatch={update}/>
    {planView}
 

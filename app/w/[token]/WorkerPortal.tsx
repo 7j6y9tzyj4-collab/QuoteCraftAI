@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from "react";
 import {useRouter} from "next/navigation";
 import type {WorkerView,WorkerProject} from "@/lib/workerView";
 import {prepareJobPhoto} from "@/lib/jobPhotos";
+import ShopList from "@/components/ShopList";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const today=()=>new Date().toLocaleDateString("sv-SE");
@@ -12,12 +13,12 @@ const T={
   uk:{call:"📞 Клієнт",hoursH:"⏱ Скільки працював",other:"інше число годин",note:"що робив (необов'язково)",save:(h:string)=>`✓ Записати ${h} год`,saving:"Записую…",saved:(h:number,d:string)=>`✓ Записано ${h} год за ${d}`,
     h:"год",total:"Разом на цьому об'єкті",pending:"⏳ — ще не переглянуто",media:"📷 Чеки й фото",rec:"🧾 Фото чека",reading:"Читаю чек…",photo:"🏗 Фото роботи",sending:"Надсилаю…",
     counts:(r:number,p:number)=>`Чеків по об'єкту: ${r} · фото: ${p}. Чек фотографуй рівно, щоб було видно суму.`,sent:"✓ Надіслано: ",recNo:"чек (сума не прочиталась — Василь перевірить)",ph:"фото",
-    scope:"📋 Що робимо",opts:"Опції (тільки якщо клієнт погодив): ",buy:"🛒 Що купити",buyHint:"Купив — одразу сфотографуй чек тут.",
+    scope:"📋 Що робимо",opts:"Опції (тільки якщо клієнт погодив): ",buy:"📦 Матеріали з естімейту",buyHint:"Купив — одразу сфотографуй чек тут.",
     hours:"Годин",earned:(r:number)=>`Заробив · $${r}/год`,owed:"Ще винні",paid:"Вже виплачено: ",none:"Поки немає проєктів.",tr:"Перекладаю…",units:{each:"шт",sqft:"sq ft",linear_ft:"lin ft",hour:"год",room:"кімн."} as Record<string,string>,loc:"uk-UA"},
   en:{call:"📞 Client",hoursH:"⏱ Hours worked",other:"other number of hours",note:"what you did (optional)",save:(h:string)=>`✓ Save ${h} h`,saving:"Saving…",saved:(h:number,d:string)=>`✓ Saved ${h} h for ${d}`,
     h:"h",total:"Total on this job",pending:"⏳ — not reviewed yet",media:"📷 Receipts & photos",rec:"🧾 Receipt photo",reading:"Reading receipt…",photo:"🏗 Work photo",sending:"Sending…",
     counts:(r:number,p:number)=>`Receipts on this job: ${r} · photos: ${p}. Shoot the receipt straight so the total is readable.`,sent:"✓ Sent: ",recNo:"receipt (total not read — will be checked)",ph:"photo",
-    scope:"📋 Scope of work",opts:"Options (only if the client approved): ",buy:"🛒 Shopping list",buyHint:"Bought something — take a photo of the receipt here.",
+    scope:"📋 Scope of work",opts:"Options (only if the client approved): ",buy:"📦 Materials from the estimate",buyHint:"Bought something — take a photo of the receipt here.",
     hours:"Hours",earned:(r:number)=>`Earned · $${r}/h`,owed:"Owed to you",paid:"Already paid: ",none:"No projects yet.",tr:"Translating…",units:{each:"pcs",sqft:"sq ft",linear_ft:"lin ft",hour:"h",room:"room"} as Record<string,string>,loc:"en-US"},
 };
 // переклад обсягу робіт / матеріалів на українську (кеш у браузері)
@@ -118,6 +119,7 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
     </div>
+    <ShopList key={p.sid} lang={lang} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     {msg&&<div style={{...card,background:msg.startsWith("✓")?"#ecfdf3":"#fef3f2",color:msg.startsWith("✓")?"#067647":"#b42318"}}>{msg}</div>}
 
     {p.scope.length>0&&<details style={card}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>
