@@ -12,10 +12,23 @@ export async function GET(req:NextRequest){
   const out:any={month:month(),me:me||{calls:0,cost:0,by_feature:{}},limit:isAdmin(uid)?null:((set as any)?.ai_limit??DEFAULT_AI_LIMIT),admin:isAdmin(uid)};
   if(isAdmin(uid)){
     const {data:users}=await supabaseAdmin.auth.admin.listUsers({perPage:200});
-    const {data:use}=await supabaseAdmin.from("ai_usage").select("user_id,calls,cost").eq("month",month());
+    const {data:use}=await supabaseAdmin.from("ai_usage").select("user_id,calls,cost,by_feature").eq("month",month());
+    // 📊 Статистика активності (тільки кількості — без змісту естімейтів, клієнтів і цін)
+    const [{data:est},{data:sq},{data:cl},{data:st},{data:wl},{data:ps}]=await Promise.all([
+      supabaseAdmin.from("user_calc_estimates").select("user_id,updated_at").limit(20000),
+      supabaseAdmin.from("shared_quotes").select("user_id,viewed_at,accepted_at,created_at").limit(20000),
+      supabaseAdmin.from("user_clients").select("user_id").limit(20000),
+      supabaseAdmin.from("user_statements").select("user_id,statements"),
+      supabaseAdmin.from("worker_links").select("user_id").limit(5000),
+      supabaseAdmin.from("push_subs").select("user_id").limit(5000),
+    ]);
+    const cnt=(rows:any[]|null,id:string,f?:(r:any)=>boolean)=>(rows||[]).filter(r=>r.user_id===id&&(!f||f(r))).length;
+    const lastAct=(id:string)=>[...(est||[]).filter((r:any)=>r.user_id===id).map((r:any)=>r.updated_at),...(sq||[]).filter((r:any)=>r.user_id===id).map((r:any)=>r.created_at)].sort().pop()||null;
+    const stats=(id:string)=>({estimates:cnt(est,id),sent:cnt(sq,id),viewed:cnt(sq,id,r=>!!r.viewed_at||!!r.accepted_at),accepted:cnt(sq,id,r=>!!r.accepted_at),
+      clients:cnt(cl,id),projects:((st||[]).find((r:any)=>r.user_id===id) as any)?.statements?.length||0,helpers:cnt(wl,id),push:cnt(ps,id)>0,lastAct:lastAct(id)});
     const {data:sets}=await supabaseAdmin.from("user_settings").select("user_id,ai_limit,allow_translator,company");
     out.users=(users?.users||[]).map(u=>{const x=(use||[]).find((r:any)=>r.user_id===u.id) as any;const s=(sets||[]).find((r:any)=>r.user_id===u.id) as any;
-      return {id:u.id,email:u.email,last:u.last_sign_in_at,company:s?.company?.name||"",calls:x?.calls||0,cost:Number(x?.cost)||0,limit:s?.ai_limit??null,translator:!!s?.allow_translator,admin:isAdmin(u.id),created:u.created_at,blocked:!!((u as any).banned_until&&new Date((u as any).banned_until).getTime()>Date.now())}})
+      return {id:u.id,email:u.email,last:u.last_sign_in_at,company:s?.company?.name||"",calls:x?.calls||0,cost:Number(x?.cost)||0,limit:s?.ai_limit??null,translator:!!s?.allow_translator,admin:isAdmin(u.id),created:u.created_at,features:x?.by_feature||{},stats:stats(u.id),blocked:!!((u as any).banned_until&&new Date((u as any).banned_until).getTime()>Date.now())}})
       .sort((a:any,b:any)=>b.cost-a.cost);
     const anon=(use||[]).find((r:any)=>!r.user_id) as any;out.anon=anon?{calls:anon.calls,cost:Number(anon.cost)}:null;
   }

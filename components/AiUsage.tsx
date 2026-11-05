@@ -4,7 +4,7 @@ import type {User} from "@supabase/supabase-js";
 
 // ⚙ Налаштування → 🤖 Використання AI: мій місяць; для адміна — усі користувачі, ліміт і перекладач.
 const usd=(n:number)=>"$"+(Number(n)||0).toFixed(2);
-const NAMES:Record<string,string>={"parse-calculator-estimate":"естімейти","calc-edit":"✏️ зміни","calc-review":"🔍 перевірки","client-message":"💬 повідомлення","help-ask":"❓ довідка","transcribe":"🎙 голос","parse-receipt":"чеки (фото)","receipts-mail":"чеки з пошти","worker-receipt":"чеки помічника","photo-measurements":"розміри з фото","receipt-assign":"розклад чеків","voice-log":"голосові записи","translate":"переклад","translator":"🎧 перекладач","render":"візуалізація","room-plan":"план кімнати","parse-estimate":"старі AI-естімейти"};
+const NAMES:Record<string,string>={"parse-calculator-estimate":"естімейти","calc-edit":"✏️ зміни","calc-review":"🔍 перевірки","client-message":"💬 повідомлення","help-ask":"❓ довідка","transcribe":"🎙 голос","parse-receipt":"чеки (фото)","receipts-mail":"чеки з пошти","worker-receipt":"чеки помічника","photo-measurements":"розміри з фото","receipt-assign":"розклад чеків","voice-log":"голосові записи","translate":"переклад","translator":"🎧 перекладач","render":"візуалізація","room-plan":"план кімнати","parse-estimate":"старі AI-естімейти","shop-list":"🛒 покупки"};
 export default function AiUsage({user}:{user:User|null}){
   const [d,setD]=useState<any>(null);const [msg,setMsg]=useState("");
   async function load(){const r=await fetch("/api/ai-usage");if(r.ok)setD(await r.json())}
@@ -22,6 +22,12 @@ export default function AiUsage({user}:{user:User|null}){
       {d.users.map((u:any)=><div key={u.id} style={{padding:10,borderRadius:12,border:"1px solid #eaecf0",marginBottom:6}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8}}><b style={{fontSize:14,wordBreak:"break-all"}}>{u.blocked?"🚫 ":""}{u.company||u.email}{u.admin?" (ви)":""}</b><span style={{whiteSpace:"nowrap"}}>{u.calls} · <b>{usd(u.cost)}</b></span></div>
         {u.company&&<small className="muted">{u.email}</small>}
+        {!u.admin&&u.stats&&<div style={{display:"flex",flexWrap:"wrap",gap:"4px 12px",fontSize:13,margin:"6px 0 2px"}}>
+          <span>🧮 естімейтів <b>{u.stats.estimates}</b></span><span>📤 відправив <b>{u.stats.sent}</b></span><span>👀 відкрили <b>{u.stats.viewed}</b></span><span>✅ Accept <b>{u.stats.accepted}</b></span>
+          <span>👤 клієнтів <b>{u.stats.clients}</b></span><span>💵 проєктів <b>{u.stats.projects}</b></span>{u.stats.helpers>0&&<span>👷 помічників <b>{u.stats.helpers}</b></span>}<span>{u.stats.push?"🔔 сповіщення увімкнені":"🔕 без сповіщень"}</span>
+        </div>}
+        {!u.admin&&Object.keys(u.features||{}).length>0&&<small className="muted" style={{display:"block"}}>AI: {Object.entries(u.features).sort((a:any,b:any)=>b[1]-a[1]).map(([k,v]:any)=>`${NAMES[k]||k} ${v}`).join(" · ")}</small>}
+        {!u.admin&&u.stats?.lastAct&&<small className="muted" style={{display:"block"}}>остання дія {new Date(u.stats.lastAct).toLocaleDateString()}</small>}
         {!u.admin&&u.created&&<small className="muted" style={{display:"block"}}>з {new Date(u.created).toLocaleDateString()}{u.last?` · останній вхід ${new Date(u.last).toLocaleDateString()}`:""}{u.blocked?" · заблоковано":""}</small>}
         {!u.admin&&<div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
           <label style={{display:"flex",gap:6,alignItems:"center",fontSize:13}}>Ліміт $/міс<input type="number" min={0} step={1} defaultValue={u.limit??""} placeholder="5 (стандарт)" style={{width:110,padding:8}} onBlur={e=>{const v=e.target.value;if(String(u.limit??"")!==v)void setUser(u.id,{limit:v===""?null:Number(v)})}}/></label>
