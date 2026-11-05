@@ -15,7 +15,7 @@ export async function GET(req:NextRequest){
     const {data:use}=await supabaseAdmin.from("ai_usage").select("user_id,calls,cost").eq("month",month());
     const {data:sets}=await supabaseAdmin.from("user_settings").select("user_id,ai_limit,allow_translator,company");
     out.users=(users?.users||[]).map(u=>{const x=(use||[]).find((r:any)=>r.user_id===u.id) as any;const s=(sets||[]).find((r:any)=>r.user_id===u.id) as any;
-      return {id:u.id,email:u.email,last:u.last_sign_in_at,company:s?.company?.name||"",calls:x?.calls||0,cost:Number(x?.cost)||0,limit:s?.ai_limit??null,translator:!!s?.allow_translator,admin:isAdmin(u.id)}})
+      return {id:u.id,email:u.email,last:u.last_sign_in_at,company:s?.company?.name||"",calls:x?.calls||0,cost:Number(x?.cost)||0,limit:s?.ai_limit??null,translator:!!s?.allow_translator,admin:isAdmin(u.id),created:u.created_at,blocked:!!((u as any).banned_until&&new Date((u as any).banned_until).getTime()>Date.now())}})
       .sort((a:any,b:any)=>b.cost-a.cost);
     const anon=(use||[]).find((r:any)=>!r.user_id) as any;out.anon=anon?{calls:anon.calls,cost:Number(anon.cost)}:null;
   }
@@ -24,6 +24,11 @@ export async function GET(req:NextRequest){
 export async function POST(req:NextRequest){
   const uid=await userFromReq(req);if(!isAdmin(uid))return NextResponse.json({error:"admin only"},{status:403});
   const b=await req.json();const id=String(b?.user_id||"");if(!/^[0-9a-f-]{36}$/i.test(id))return NextResponse.json({error:"bad id"},{status:400});
+  if("blocked" in b&&!isAdmin(id)){
+    const {error}=await supabaseAdmin.auth.admin.updateUserById(id,{ban_duration:b.blocked?"876000h":"none"} as any);
+    if(error)return NextResponse.json({error:error.message},{status:500});
+    if(Object.keys(b).length===2)return NextResponse.json({ok:true});
+  }
   const upd:any={user_id:id,updated_at:new Date().toISOString()};
   if("limit" in b)upd.ai_limit=b.limit===null||b.limit===""?null:Math.max(0,Number(b.limit)||0);
   if("translator" in b)upd.allow_translator=!!b.translator;

@@ -1239,7 +1239,7 @@ export default function QuoteCraftApp(){
 
    setAuthLoading(true);
 
-   const {error}=await supabase.auth.signUp({
+   const {data:su,error}=await supabase.auth.signUp({
      email:email.trim(),
      password
    });
@@ -1251,7 +1251,10 @@ export default function QuoteCraftApp(){
      return;
    }
 
-   setMessage("Акаунт створено. Перевір email для підтвердження.");
+   if(su?.session){
+     fetch("/api/welcome",{method:"POST",headers:{Authorization:"Bearer "+su.session.access_token}}).catch(()=>{});
+     setMessage("Акаунт створено ✓");
+   }else setMessage("Акаунт створено. Перевір email для підтвердження.");
  };
 
  const signIn=async()=>{
@@ -1270,7 +1273,7 @@ export default function QuoteCraftApp(){
    setAuthLoading(false);
 
    if(error){
-     setMessage(error.message);
+     setMessage(/banned/i.test(error.message)?"Доступ до програми закрито. Зверніться до адміністратора.":error.message);
      return;
    }
 
