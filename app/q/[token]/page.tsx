@@ -8,6 +8,8 @@ import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import ViewPing from "./ViewPing";
 import OptionsAccept from "./OptionsAccept";
 import InvoiceView,{type InvoiceData} from "./InvoiceView";
+import SignoffView from "./SignoffView";
+import {shopList} from "@/lib/shop";
 import {statementTotals,type Statement} from "@/lib/statement";
 import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
@@ -21,9 +23,9 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
   const d=(data?.data||{}) as any;
   const company=d.company||"Estimate";
-  const what=d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
+  const what=d.kind==="signoff"?`Work completion — ${d.project||"Project"}`:d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
   const title=`${what} | ${company}`;
-  const description=d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
+  const description=d.kind==="signoff"?"Please review and confirm the completed work.":d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
   return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
 }
 
@@ -39,6 +41,12 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
   const settings=await ownerSettings(data.user_id);
   const zelle=settings?.zelle||"";
   const logo=String(settings?.company?.logo||"");
+  if((data.data as any)?.kind==="signoff"){
+    const so=data.data as any;const accepted=data.status==="accepted";
+    const items=accepted&&Array.isArray(so.items)?so.items:(await shopList(data.user_id,String(so.sid),"punch")).map(i=>({text:i.text,done:i.done}));
+    return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><SignoffView token={token} d={{company:so.company||"",contact:so.contact||"",logo,client:so.client||"",project:so.project||"",items,
+      signed:accepted?{name:data.accepted_name||"",at:String(so.signedAt||data.accepted_at||""),sig:String(so.sig||"")}:null}}/></div></main>;
+  }
   if((data.data as any)?.kind==="invoice"){
     const inv=data.data as any;
     const {data:row}=await supabaseAdmin.from("user_statements").select("statements").eq("user_id",data.user_id).maybeSingle();

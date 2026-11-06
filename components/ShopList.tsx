@@ -5,18 +5,22 @@ import {useEffect,useRef,useState} from "react";
 // Один компонент і для власника (Оплати), і для помічника (його посилання) — різниться тільки call().
 type Item={id:string;text:string;done:boolean;by:string|null;created_at:string};
 type Lang="uk"|"en";
+const P={
+  uk:{h:"✅ Доробки (punch list)",ph:"Що доробити? Напр.: підфарбувати кут у ванній, замінити кришку розетки, силікон біля ванни",empty:"Доробок немає. Пройдись з клієнтом по об'єкту й надиктуй дрібниці, які лишились.",clear:"Прибрати зроблене",bought:"зроблено"},
+  en:{h:"✅ Punch list",ph:"What to fix? e.g. touch up paint in bathroom corner, replace outlet cover, caulk around tub",empty:"No punch items. Walk the job with the client and dictate what's left.",clear:"Remove done",bought:"done"},
+};
 const L={
   uk:{h:"🛒 Список покупок",ph:"Що купити? Напр.: 2 мішки тинсету, затирка сіра, 3 листи драйволу",add:"＋ Додати",mic:"🎙 Сказати",stop:"⏹ Готово",rec:"🎙 Говори… натисни «Готово», коли закінчиш",tr:"Розпізнаю…",adding:"Додаю…",
       empty:"Список порожній. Надиктуй або впиши, що треба купити.",clear:"Прибрати куплене",short:"Запис надто короткий.",nomic:"Нема доступу до мікрофона.",bought:"куплено"},
   en:{h:"🛒 Shopping list",ph:"What to buy? e.g. 2 bags thinset, grey grout, 3 sheets of drywall",add:"＋ Add",mic:"🎙 Speak",stop:"⏹ Done",rec:"🎙 Speak… tap Done when finished",tr:"Recognizing…",adding:"Adding…",
       empty:"The list is empty. Dictate or type what to buy.",clear:"Remove bought",short:"Recording too short.",nomic:"No microphone access.",bought:"bought"},
 };
-export default function ShopList({call,lang="uk",style}:{call:(body:any)=>Promise<{items:Item[]}>;lang?:Lang;style?:React.CSSProperties}){
-  const t=L[lang];
+export default function ShopList({call,lang="uk",style,kind="shop",hideEmpty=false}:{call:(body:any)=>Promise<{items:Item[]}>;lang?:Lang;style?:React.CSSProperties;kind?:"shop"|"punch";hideEmpty?:boolean}){
+  const t=kind==="punch"?{...L[lang],...P[lang]}:L[lang];
   const [items,setItems]=useState<Item[]|null>(null);
   const [text,setText]=useState("");const [busy,setBusy]=useState("");const [msg,setMsg]=useState("");
   const rec=useRef<MediaRecorder|null>(null);const chunks=useRef<Blob[]>([]);
-  const run=async(body:any)=>{try{const r=await call(body);setItems(r.items||[]);return true}catch(e){setMsg(e instanceof Error?e.message:String(e));return false}};
+  const run=async(body:any)=>{try{const r=await call({...body,kind});setItems(r.items||[]);return true}catch(e){setMsg(e instanceof Error?e.message:String(e));return false}};
   useEffect(()=>{void run({action:"list"})},[]);// eslint-disable-line react-hooks/exhaustive-deps
   async function add(s:string){
     if(!s.trim())return;setBusy("add");setMsg("");
@@ -47,10 +51,11 @@ export default function ShopList({call,lang="uk",style}:{call:(body:any)=>Promis
   const btn:React.CSSProperties={padding:"12px 10px",borderRadius:12,fontWeight:800,fontSize:15,border:"none"};
   const open=(items||[]).filter(i=>!i.done),done=(items||[]).filter(i=>i.done);
   const row=(i:Item)=><div key={i.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:"1px solid #eaecf0"}}>
-    <input type="checkbox" checked={i.done} onChange={e=>void run({action:"toggle",id:i.id,done:e.target.checked})} style={{width:24,height:24,flex:"none"}}/>
+    <input type="checkbox" checked={i.done} onChange={e=>void run({action:"toggle",id:i.id,done:e.target.checked,text:i.text})} style={{width:24,height:24,flex:"none"}}/>
     <span data-notr style={{flex:1,fontSize:16,textDecoration:i.done?"line-through":"none",color:i.done?"#98a2b3":"#101828"}}>{i.text}{i.by&&i.by!=="owner"?<small style={{color:"#98a2b3"}}> · {i.by}</small>:null}</span>
     <button onClick={()=>void run({action:"del",id:i.id})} aria-label="×" style={{border:"none",background:"none",fontSize:20,color:"#98a2b3",padding:"0 4px"}}>×</button>
   </div>;
+  if(hideEmpty&&(!items||!items.length))return null;
   return <div style={style}>
     <h3 style={{marginTop:0}}>{t.h}{open.length?` · ${open.length}`:""}</h3>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>

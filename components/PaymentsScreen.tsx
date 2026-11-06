@@ -20,12 +20,15 @@ import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
 import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
 import ShopList from "@/components/ShopList";
+import ProfitCard from "@/components/ProfitCard";
+import ReviewAsk from "@/components/ReviewAsk";
+import SignoffBox from "@/components/SignoffBox";
 import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
 import MonthReceiptsButton from "@/components/MonthReceiptsButton";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
-import {normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -719,7 +722,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>}
      {clients.length===0?<p className="empty">Ще немає розрахунків.</p>:[...clients].filter(s=>inTab(s,statusFilter)).sort((a,b)=>ORDER[stOf(a)]-ORDER[stOf(b)]).map(s=>{const t=statementTotals(s);const st=stOf(s);const m=STATUS_META[st];const start=startOf(s);return(
        <button key={s.id} className="estimate" onClick={()=>{setOpenId(s.id);setMsg("")}} style={{borderLeft:`6px solid ${m.color}`,background:m.bg,opacity:st==="done"?0.85:1}}>
-         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small>{findClient(clientBook,s.client)?.address&&<small>📍 {findClient(clientBook,s.client)!.address}</small>}<small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small></span>
+         <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small>{findClient(clientBook,s.client)?.address&&<small>📍 {findClient(clientBook,s.client)!.address}</small>}<small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small>{(()=>{const p=profitOf(s);return p.cost>0&&p.margin!==null?<small style={{color:p.low?"#b42318":"#067647",fontWeight:700}}>💰 прибуток {money(p.profit)} · {p.margin}%{p.low?" ⚠":""}</small>:null})()}{st==="done"&&!s.reviewAsked?<small style={{color:"#b54708",fontWeight:700}}>⭐ попроси відгук у Google</small>:null}</span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
    </section>{inputs}</>;
@@ -792,6 +795,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const plan=linked?planFromCalc(linked):null;
  const matDiff=plan&&plan.materials>0?Math.round((t.materials/plan.materials-1)*1000)/10:null;
  const crewSm=crewSummary(cur);
+ const shopCall=async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j};
  const earned=Math.round((t.paid-t.materials-crewSm.cost)*100)/100;
  const hours=crewSm.hours>0?crewSm.hours:(Number(cur.hours)||0);
  const pf=(label:string,planV:number|null,fact:number,warn=false,note?:string)=><div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,padding:"6px 0",borderBottom:"1px solid #f2f4f7",fontSize:14}}>
@@ -832,6 +836,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
       {(Object.keys(STATUS_META) as StatusKey[]).map(k=><option key={k} value={k}>{STATUS_META[k].label}</option>)}
     </select></label>
    </section>
+
+   <ProfitCard st={cur}/>
 
    <section className="panel">
      <div className="head"><h2>Робота</h2><button className="add" onClick={()=>update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}>＋ Рядок</button></div>
@@ -888,7 +894,9 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    <CrewPanel st={cur} all={list} onPatch={update}/>
    <WorkerLinks user={user} st={cur}/>
-   <section className="panel"><ShopList key={cur.id} call={async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j}}/></section>
+   <section className="panel"><ShopList key={cur.id} call={shopCall}/></section>
+   <section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>
+   <ReviewAsk st={cur} phone={findClient(clientBook,cur.client)?.phone} done={stOf(cur)==="done"} onPatch={update}/>
    <StatementPhotos st={cur} onPatch={update}/>
    {planView}
 

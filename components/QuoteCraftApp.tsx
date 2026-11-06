@@ -18,6 +18,7 @@ import Onboarding from "@/components/Onboarding";
 import CompanyProfile from "@/components/CompanyProfile";
 import AiUsage from "@/components/AiUsage";
 import FeedbackAdmin from "@/components/FeedbackAdmin";
+import LessonsPanel from "@/components/LessonsPanel";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
@@ -557,7 +558,7 @@ export default function QuoteCraftApp(){
     setCalcItems(items);
     setCalcMeasurementNotes(measurementNotes||"");
     const custom=items.filter(i=>!i.taskId).length;
-    setCalcMessage(custom?`${custom} робіт не знайдено в бібліотеці цін — оберіть завдання вручну.`:"AI розібрав опис. Перевір позиції, кількість і складність.");
+    setCalcMessage(custom?`${custom} робіт не знайдено в бібліотеці цін — оберіть завдання вручну.`:"AI розібрав опис. Перевір позиції, кількість і складність."+(Number(data?.lessonsUsed)>0?` 🧠 Враховано твої правила (${data.lessonsUsed}).`:""));
   }catch(error){
     setCalcMessage(error instanceof Error?error.message:"AI error.");
   }finally{
@@ -2042,6 +2043,7 @@ export default function QuoteCraftApp(){
   <ViewSettings ui={ui} onSave={saveUi} isAdmin={user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"}/>
   <div style={{marginTop:20}}><PushSetup user={user}/></div>
   <MailReceiptsSetup user={user}/>
+  <LessonsPanel user={user}/>
   <AiUsage user={user}/>
   {user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"&&<FeedbackAdmin/>}
   <h2>Пароль для Face ID</h2>

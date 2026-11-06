@@ -21,6 +21,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
   const [text,setText]=useState("");
   const [busy,setBusy]=useState("");
   const [msg,setMsg]=useState("");
+  const [learned,setLearned]=useState<{id:string;text:string;count:number}|null>(null);
   const [undo,setUndo]=useState<Snap|null>(null);
   const [review,setReview]=useState<{level:string;text:string;fix:string;done?:boolean}[]|null>(null);
   const rec=useRef<MediaRecorder|null>(null);const chunks=useRef<Blob[]>([]);
@@ -98,7 +99,7 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
       }
       setUndo(before);
       onChange({items:next,discountType:dT,discountValue:dV,depositPct:dep,notes:nts});
-      setMsg("✓ "+(j.summary||"Змінено."));setText("");
+      setMsg("✓ "+(j.summary||"Змінено."));setText("");setLearned(j.learned||null);
     }catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}
   }
 
@@ -157,6 +158,8 @@ export default function CalcEditBox({items,tasks,loc,includeFinish,project,disco
       </div>)}
     </div>}
     {msg&&<p style={{fontSize:14,margin:"8px 0 0",whiteSpace:"pre-line",color:msg.startsWith("✓")?"#067647":"#344054"}}>{msg}</p>}
+    {learned&&<div style={{fontSize:14,margin:"8px 0 0",padding:"8px 10px",borderRadius:10,background:"#f4f3ff",color:"#5925dc"}}>🧠 {learned.count>1?`Твоя звичка (вже ${learned.count} рази)`:"Запам'ятав на майбутнє"}: <span data-notr>«{learned.text}»</span>
+      <button onClick={async()=>{await fetch("/api/lessons",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",id:learned.id})});setLearned(null)}} style={{border:"none",background:"none",color:"#5925dc",textDecoration:"underline",fontSize:13,marginLeft:6}}>не запам'ятовувати</button></div>}
     {undo&&<button className="secondary" onClick={()=>{onChange(undo);setUndo(null);setMsg("↩ Повернув як було.")}} style={{marginTop:8,padding:"8px 12px"}}>↩ Скасувати зміну</button>}
   </section>;
 }

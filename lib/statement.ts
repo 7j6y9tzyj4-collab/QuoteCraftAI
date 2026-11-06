@@ -46,6 +46,8 @@ export type Statement={
   payouts?:Payout[];
   /** фото роботи (від мене або помічника за посиланням) */
   photos?:{id:string;path:string;date:string;by?:string;note?:string}[];
+  /** коли попросив клієнта про відгук у Google */
+  reviewAsked?:string;
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";
@@ -127,4 +129,13 @@ export function jobRate(s:Statement){
   const logged=r2((s.workLog||[]).reduce((a,w)=>a+(Number(w.hours)||0),0));
   const hours=logged>0?logged:Number(s.hours)||0;
   return {labor,hours,rate:hours>0?r2(labor/hours):0};
+}
+
+// 💰 Прибуток по проєкту: робота за контрактом − праця помічників (чеки клієнт оплачує окремо, тому не впливають).
+export function profitOf(s:Statement){
+  const t=statementTotals(s);const crew=crewSummary(s);
+  const labor=t.labor,cost=crew.cost,profit=r2(labor-cost);
+  const margin=labor>0?Math.round(profit/labor*100):null;
+  const helperHours=r2(crew.rows.filter(r=>!r.self).reduce((a,r)=>a+r.hours,0));
+  return {labor,cost,profit,margin,helperHours,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.materials-cost)};
 }

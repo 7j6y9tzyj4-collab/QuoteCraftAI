@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import {aiGuard} from "@/lib/aiGuard";
+import {getLessons,lessonsPrompt} from "@/lib/lessons";
 import {NextRequest,NextResponse} from "next/server";
 
 export const runtime="nodejs";
@@ -24,9 +25,10 @@ export async function POST(req:NextRequest){
     const data={project:String(b?.project||"").slice(0,200),lines:(Array.isArray(b?.lines)?b.lines:[]).slice(0,80),notes:String(b?.notes||"").slice(0,3000),measurements:String(b?.measurements||"").slice(0,2000),totals:b?.totals||null};
     if(!data.lines.length)return NextResponse.json({items:[]});
     const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
+    const rulesText=lessonsPrompt(await getLessons(_ai.userId,30),"review");
     const c=await client.chat.completions.create({
       model:process.env.OPENAI_REVIEW_MODEL||process.env.OPENAI_MODEL||"gpt-4.1-mini",temperature:0,
-      messages:[{role:"system",content:en?SYSTEM.replace(/in Ukrainian/g,"in English").replace(/short Ukrainian instruction/g,"short English instruction"):SYSTEM},{role:"user",content:JSON.stringify(data)}],
+      messages:[{role:"system",content:en?SYSTEM.replace(/in Ukrainian/g,"in English").replace(/short Ukrainian instruction/g,"short English instruction"):SYSTEM},...(rulesText?[{role:"system" as const,content:rulesText}]:[]),{role:"user",content:JSON.stringify(data)}],
       response_format:{type:"json_schema",json_schema:{name:"review",strict:true,schema:{type:"object",additionalProperties:false,properties:{
         items:{type:"array",items:{type:"object",additionalProperties:false,properties:{level:{type:"string",enum:["high","medium"]},text:{type:"string"},fix:{type:"string"}},required:["level","text","fix"]}}
       },required:["items"]}}}

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import {aiGuard} from "@/lib/aiGuard";
+import {getLessons,lessonsPrompt} from "@/lib/lessons";
 import {NextRequest,NextResponse} from "next/server";
 import {applyBathroomMeasurements,calculateBathroomAreas} from "@/lib/bathroomGeometry";
 import {applyCustomerSupplied} from "@/lib/customerSupplied";
@@ -253,6 +254,7 @@ export async function POST(request:NextRequest){
 
     const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
     const model=process.env.OPENAI_MODEL||"gpt-4.1-mini";
+    const rules=await getLessons(_ai.userId,30);const rulesText=lessonsPrompt(rules,"generate");
 
     const completion=await client.chat.completions.create({
       model,
@@ -299,6 +301,7 @@ export async function POST(request:NextRequest){
             "полиці means shelves; тумбочки means base cabinets — keep them as separate line items when both are mentioned, do not merge them."
           ].join(" ")
         },
+        ...(rulesText?[{role:"system" as const,content:rulesText}]:[]),
         {
           role:"user",
           content:JSON.stringify({
@@ -357,7 +360,7 @@ export async function POST(request:NextRequest){
     remapCustomByName(verified,tasks);
     dropDuplicateAreas(verified);
     keepOnlyStatedPrices(verified,text);
-    return NextResponse.json(verified);
+    return NextResponse.json({...verified,lessonsUsed:rules.length});
   }catch(error){
     console.error(error);
     const message=error instanceof Error?error.message:"Unknown server error";

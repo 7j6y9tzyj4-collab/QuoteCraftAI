@@ -119,6 +119,7 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
     </div>
+    <ShopList key={"p"+p.sid} kind="punch" hideEmpty lang={lang} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     <ShopList key={p.sid} lang={lang} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     {msg&&<div style={{...card,background:msg.startsWith("✓")?"#ecfdf3":"#fef3f2",color:msg.startsWith("✓")?"#067647":"#b42318"}}>{msg}</div>}
 

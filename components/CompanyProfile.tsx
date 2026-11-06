@@ -46,6 +46,8 @@ export default function CompanyProfile({user,onChange}:{user:User|null;onChange?
       {f("email","Email","you@company.com","email")}
       {f("license","Ліцензія / Insurance (необов'язково)","License #12345")}
       {f("website","Сайт (необов'язково)","www.company.com")}
+      <label className="wide">⭐ Посилання на відгук у Google<input value={c.review} placeholder="https://g.page/r/…/review" onChange={e=>set({review:e.target.value.trim()})}/>
+        <small className="muted">Google Business Profile → «Ask for reviews» / «Попросити відгуки» → скопіюйте посилання. Програма підставить його в SMS клієнту після завершення роботи.</small></label>
       <label className="wide">Адреса (необов'язково)<input value={c.address} placeholder="City, State" onChange={e=>set({address:e.target.value})}/></label>
     </div>
     <div style={{display:"flex",gap:12,alignItems:"center",marginTop:10}}>
