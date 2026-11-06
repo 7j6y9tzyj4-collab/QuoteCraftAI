@@ -42,7 +42,9 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
   };
 
   section("Labor",["Description","Amount"],s.labor.filter(l=>l.description||l.amount).map(l=>[l.description,money(Number(l.amount)||0)]),"Total labor",t.labor,{});
-  if(s.receipts.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
+  if(t.fixed){
+    if(t.matOver>0&&s.receipts.length)section(`Materials — store receipts (estimate ${money(t.matPlan)}, over by ${money(t.matOver)})`,["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total receipts",t.receipts,{0:{cellWidth:66},1:{cellWidth:80}});
+  }else if(s.receipts.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
   if(s.schedule?.length){
     let left=t.paid;
     const rows=s.schedule.map(st=>{const a=Number(st.amount)||0;const got=Math.max(0,Math.min(left,a));left-=got;return [st.label||"Payment",st.due||"",got>=a-0.009?"Paid":got>0?`Paid ${money(got)}`:"Due",money(a)]});
@@ -56,7 +58,8 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
     doc.text(label,W-M-260,y);doc.text(value,W-M,y,{align:"right"});y+=big?20:15;
   };
   line("Labor",money(t.labor));
-  if(t.materials)line("Materials",money(t.materials));
+  if(t.fixed){line("Materials (per estimate)",money(t.matPlan));if(t.matOver>0)line("Additional materials (over estimate)",money(t.matOver))}
+  else if(t.materials)line("Materials",money(t.materials));
   line("Total",money(t.total),true);
   if(t.paid)line("Payments received","-"+money(t.paid));
   doc.setDrawColor(16,24,40);doc.setLineWidth(1);doc.line(W-M-260,y-9,W-M,y-9);y+=4;
@@ -121,7 +124,7 @@ export async function buildReceiptsPdf(s:Statement,photos:ReceiptPhoto[]):Promis
     doc.text(`${r.date}   ${r.store||"Receipt"}`,M,y);doc.text(money(Number(r.amount)||0),W-M,y,{align:"right"});y+=14;
   }
   doc.setDrawColor(16,24,40);doc.line(M,y-6,W-M,y-6);y+=8;
-  doc.setFont(font,"bold");doc.text(`Total materials (${s.receipts.length} receipts)`,M,y);doc.text(money(t.materials),W-M,y,{align:"right"});
+  doc.setFont(font,"bold");doc.text(`Total materials (${s.receipts.length} receipts)`,M,y);doc.text(money(t.receipts),W-M,y,{align:"right"});
   return doc.output("blob");
 }
 export function receiptsFileName(s:Statement){

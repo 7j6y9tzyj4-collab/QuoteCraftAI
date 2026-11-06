@@ -46,6 +46,10 @@ export type Statement={
   payouts?:Payout[];
   /** фото роботи (від мене або помічника за посиланням) */
   photos?:{id:string;path:string;date:string;by?:string;note?:string}[];
+  /** матеріали в рахунку: "receipts" — клієнт платить рівно за чеками (за замовчуванням);
+   *  "estimate" — фіксовано за естімейтом (matPlan): більше — доплата клієнту, менше — різниця моя */
+  matMode?:"receipts"|"estimate";
+  matPlan?:number;
   /** коли попросив клієнта про відгук у Google */
   reviewAsked?:string;
 };
@@ -61,10 +65,13 @@ export const newStatement=():Statement=>({
 const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
 export function statementTotals(s:Statement){
   const labor=r2(s.labor.reduce((a,l)=>a+(Number(l.amount)||0),0));
-  const materials=r2(s.receipts.reduce((a,r)=>a+(Number(r.amount)||0),0));
+  // receipts — реально витрачено за чеками; materials — скільки матеріалів у рахунку клієнту
+  const receipts=r2(s.receipts.reduce((a,r)=>a+(Number(r.amount)||0),0));
+  const plan=r2(Number(s.matPlan)||0);const fixed=s.matMode==="estimate"&&plan>0&&!s.own;
+  const materials=fixed?Math.max(plan,receipts):receipts;
   const total=r2(labor+materials);
   const paid=r2(s.payments.reduce((a,p)=>a+(Number(p.amount)||0),0));
-  return {labor,materials,total,paid,balance:r2(total-paid)};
+  return {labor,materials,receipts,fixed,matPlan:fixed?plan:0,matOver:fixed?r2(Math.max(0,receipts-plan)):0,matKeep:fixed?r2(Math.max(0,plan-receipts)):0,total,paid,balance:r2(total-paid)};
 }
 
 // ---- Мої витрати (інструменти й матеріали для себе) ----
@@ -134,8 +141,8 @@ export function jobRate(s:Statement){
 // 💰 Прибуток по проєкту: робота за контрактом − праця помічників (чеки клієнт оплачує окремо, тому не впливають).
 export function profitOf(s:Statement){
   const t=statementTotals(s);const crew=crewSummary(s);
-  const labor=t.labor,cost=crew.cost,profit=r2(labor-cost);
-  const margin=labor>0?Math.round(profit/labor*100):null;
+  const labor=t.labor,cost=crew.cost,profit=r2(labor+t.matKeep-cost);
+  const base=labor+t.matKeep;const margin=base>0?Math.round(profit/base*100):null;
   const helperHours=r2(crew.rows.filter(r=>!r.self).reduce((a,r)=>a+r.hours,0));
-  return {labor,cost,profit,margin,helperHours,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.materials-cost)};
+  return {labor,cost,profit,margin,helperHours,matKeep:t.matKeep,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
 }

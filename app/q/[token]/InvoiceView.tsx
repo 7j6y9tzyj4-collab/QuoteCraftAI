@@ -2,7 +2,7 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 
 export type InvoiceData={logo?:string;company:string;contact:string;client:string;project:string;date:string;
   labor:{description:string;amount:number}[];receipts:{date:string;store:string;items:string;amount:number;photo?:string}[];
-  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number};zelle:string;notes:string};
+  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number;fixed?:boolean;matPlan?:number;matOver?:number};zelle:string;notes:string};
 
 // Рахунок для клієнта: робота + матеріали за чеками − оплати = залишок. Цифри завжди свіжі з Оплат.
 export default function InvoiceView({d}:{d:InvoiceData}){
@@ -17,13 +17,14 @@ export default function InvoiceView({d}:{d:InvoiceData}){
     </div></div>
     <h3>Work</h3>
     <table className="sharedTable"><tbody>{d.labor.map((l,i)=><tr key={i}><td>{l.description}</td><td style={{textAlign:"right"}}>{l.amount<0?"−":""}{money(Math.abs(l.amount))}</td></tr>)}</tbody></table>
-    {d.receipts.length>0&&<><h3 style={{marginTop:20}}>Materials (store receipts)</h3>
+    {d.receipts.length>0&&(!t.fixed||(t.matOver||0)>0)&&<><h3 style={{marginTop:20}}>{t.fixed?"Materials — store receipts (over the estimated amount)":"Materials (store receipts)"}</h3>
       <table className="sharedTable"><tbody>{d.receipts.map((r,i)=><tr key={i}><td><strong>{r.store||"Receipt"}</strong> · {r.date}{r.items&&<div className="sharedNote">{r.items}</div>}{r.photo&&<a href={r.photo} target="_blank" rel="noreferrer" style={{fontSize:13}}>View receipt</a>}</td><td style={{textAlign:"right"}}>{money(r.amount)}</td></tr>)}</tbody></table></>}
     {d.payments.length>0&&<><h3 style={{marginTop:20}}>Payments received</h3>
       <table className="sharedTable"><tbody>{d.payments.map((p,i)=><tr key={i}><td>{p.date} · {p.method}</td><td style={{textAlign:"right"}}>−{money(p.amount)}</td></tr>)}</tbody></table></>}
     <div className="sharedTotals" style={{marginTop:16}}>
       <div><span>Work</span><span>{money(t.labor)}</span></div>
-      <div><span>Materials</span><span>{money(t.materials)}</span></div>
+      {t.fixed?<><div><span>Materials (per estimate)</span><span>{money(t.matPlan||0)}</span></div>{(t.matOver||0)>0&&<div><span>Additional materials (over estimate)</span><span>{money(t.matOver||0)}</span></div>}</>
+        :<div><span>Materials</span><span>{money(t.materials)}</span></div>}
       <div><span>Total</span><span>{money(t.total)}</span></div>
       <div><span>Paid</span><span>−{money(t.paid)}</span></div>
       <div className="grand"><span>{t.balance>=0?"Balance due":"Credit"}</span><span>{money(Math.abs(t.balance))}</span></div>

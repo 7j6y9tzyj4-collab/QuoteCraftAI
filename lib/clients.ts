@@ -31,6 +31,6 @@ export function clientHistory(c:Client,calcs:SavedCalc[],statements:Statement[])
   const sts=statements.filter(s=>!s.own&&normName(s.client)===n).sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""));
   const r2=(v:number)=>Math.round(v*100)/100;
   let paid=0,balance=0,materials=0,labor=0;
-  for(const s of sts){const t=statementTotals(s);paid+=t.paid;balance+=t.balance;materials+=t.materials;labor+=t.labor}
+  for(const s of sts){const t=statementTotals(s);paid+=t.paid;balance+=t.balance;materials+=t.receipts;labor+=t.labor}
   return {ests,sts,paid:r2(paid),balance:r2(balance),materials:r2(materials),labor:r2(labor),earned:r2(paid-materials),quoted:r2(ests.reduce((a,e)=>a+(Number(e.total)||0),0))};
 }

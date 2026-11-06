@@ -21,6 +21,7 @@ import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
 import ShopList from "@/components/ShopList";
 import ProfitCard from "@/components/ProfitCard";
+import MaterialsCompare from "@/components/MaterialsCompare";
 import ReviewAsk from "@/components/ReviewAsk";
 import SignoffBox from "@/components/SignoffBox";
 import StatementPhotos from "@/components/StatementPhotos";
@@ -793,10 +794,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  // ---- план / факт ----
  const linked=findCalcFor(cur,calcs);
  const plan=linked?planFromCalc(linked):null;
- const matDiff=plan&&plan.materials>0?Math.round((t.materials/plan.materials-1)*1000)/10:null;
+ const matDiff=plan&&plan.materials>0?Math.round((t.receipts/plan.materials-1)*1000)/10:null;
  const crewSm=crewSummary(cur);
  const shopCall=async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j};
- const earned=Math.round((t.paid-t.materials-crewSm.cost)*100)/100;
+ const earned=Math.round((t.paid-t.receipts-crewSm.cost)*100)/100;
  const hours=crewSm.hours>0?crewSm.hours:(Number(cur.hours)||0);
  const pf=(label:string,planV:number|null,fact:number,warn=false,note?:string)=><div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,padding:"6px 0",borderBottom:"1px solid #f2f4f7",fontSize:14}}>
    <span>{label}{note&&<small className="muted" style={{display:"block"}}>{note}</small>}</span>
@@ -813,7 +814,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </select>
    </label>
    <div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,marginTop:10,fontSize:12,color:"#667085"}}><span/><span style={{textAlign:"right"}}>за естімейтом</span><span style={{textAlign:"right"}}>факт</span></div>
-   {pf("Матеріали",plan?plan.materials:null,t.materials,matDiff!==null&&matDiff>=15,matDiff!==null?`чеки ${matDiff>=0?"+":""}${matDiff}% від естімейту${matDiff>=15?" ⚠":""}`:undefined)}
+   {pf("Матеріали (чеки)",plan?plan.materials:null,t.receipts,matDiff!==null&&matDiff>=15,matDiff!==null?`чеки ${matDiff>=0?"+":""}${matDiff}% від естімейту${matDiff>=15?" ⚠":""}`:undefined)}
    {pf("Робота",plan?plan.labor:null,t.labor,false,"у розрахунку")}
    {pf("Отримано від клієнта",null,t.paid)}
    {pf(t.balance>=0?"Залишок до оплати":"Переплата",null,Math.abs(t.balance))}
@@ -850,6 +851,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    <ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>
 
+   <MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>
    {batchView}
    <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
@@ -905,7 +907,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
    <section className="total">
      <div><span>Робота</span><span>{money(t.labor)}</span></div>
-     <div><span>Матеріали за чеками</span><span>{money(t.materials)}</span></div>
+     {t.fixed?<><div><span>Матеріали (за естімейтом)</span><span>{money(t.matPlan)}</span></div>{t.matOver>0&&<div><span>+ Матеріали понад естімейт</span><span>{money(t.matOver)}</span></div>}</>
+       :<div><span>Матеріали за чеками</span><span>{money(t.materials)}</span></div>}
      <div><span>Разом</span><b>{money(t.total)}</b></div>
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>
