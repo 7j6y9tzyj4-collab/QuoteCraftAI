@@ -19,6 +19,7 @@ import CompanyProfile from "@/components/CompanyProfile";
 import AiUsage from "@/components/AiUsage";
 import FeedbackAdmin from "@/components/FeedbackAdmin";
 import LessonsPanel from "@/components/LessonsPanel";
+import NavIcon from "@/components/NavIcon";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
@@ -1841,8 +1842,9 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- return <div className={`shell app${ui.text==="large"?" large":""}`}><AutoTranslate on={ui.lang==="en"}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
-  <header><div><strong>QuoteCraft AI</strong><small>Real AI estimate parsing</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
+ const biz=ui.theme==="business";
+ return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
+  <header><div><strong>{biz&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
    {screen==="home"&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
@@ -2081,6 +2083,6 @@ export default function QuoteCraftApp(){
 </div>}
 </section>}
   </main>
-  <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>
+  <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{biz?<NavIcon k={k}/>:t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>
  </div>
 }

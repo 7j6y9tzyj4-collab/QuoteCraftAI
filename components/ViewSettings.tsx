@@ -18,9 +18,15 @@ export default function ViewSettings({ui,onSave,isAdmin}:{ui:UiPrefs;onSave:(u:U
     </div>
     {isAdmin&&<button className="secondary" onClick={buildTr} disabled={!!tb} style={{marginTop:8,padding:"8px 12px",fontSize:13}}>{tb||"🔄 Оновити англійський переклад (адмін)"}</button>}
 
+    <h2 style={{marginTop:20}}>🎨 Стиль</h2>
+    <div style={{display:"flex",gap:6}}>
+      <button onClick={()=>{if(ui.theme!=="classic"){onSave({...ui,theme:"classic"});setTimeout(()=>location.reload(),300)}}} style={pill(ui.theme!=="business")}>Класичний<small style={{display:"block",fontWeight:500,opacity:.8}}>яскравий, з емодзі</small></button>
+      <button onClick={()=>onSave({...ui,theme:"business"})} style={pill(ui.theme==="business")}>Бізнес<small style={{display:"block",fontWeight:500,opacity:.8}}>строгий, як Jobber</small></button>
+    </div>
+
     <h2 style={{marginTop:20}}>🎨 Вигляд програми</h2>
     <p className="muted" style={{fontSize:14}}>Режим швидко ставить готовий набір. Далі можна підправити все вручну нижче.</p>
-    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text,lang:ui.lang,onboarded:ui.onboarded})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
+    <div style={{display:"flex",gap:6}}>{modes.map(m=><button key={m.k} onClick={()=>onSave({...PRESETS[m.k],text:ui.text,lang:ui.lang,onboarded:ui.onboarded,theme:ui.theme})} style={pill(ui.mode===m.k)}>{m.t}<small style={{display:"block",fontWeight:500,opacity:.8}}>{m.d}</small></button>)}</div>
 
     <h3 style={{marginTop:16}}>Що показувати на головній</h3>
     <div style={{display:"grid",gap:4}}>{HOME_BLOCKS.map(b=><label key={b.k} style={{display:"flex",gap:10,alignItems:"center",fontSize:15,fontWeight:500,padding:"6px 0"}}>

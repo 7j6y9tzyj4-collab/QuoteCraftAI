@@ -79,3 +79,38 @@ body:has(.shell.app){overflow:hidden}
 @media print{html,body,body:has(.shell.app){height:auto;overflow:visible}.shell.app{height:auto;display:block;overflow:visible}.shell.app>main{overflow:visible}}
 /* ⚙ Вигляд → великий текст */
 .shell.app.large>main>*,.shell.app.large>nav,.shell.app.large>header{zoom:1.12}
+
+/* ===== 💼 Бізнес-стиль (⚙ → Стиль → Бізнес): строгий, один фірмовий колір, без градієнтів ===== */
+.shell.app.biz{--bg:#f6f7f9;--blue:#0f6e56;--brand:#0f6e56;--brand-soft:#e7f3ef;--line:#e5e7eb;--ink:#111827;--muted:#6b7280;background:var(--bg);font-feature-settings:"tnum" 1;letter-spacing:-.005em}
+.shell.app.biz header{background:#fff;color:#111827;border-bottom:1px solid var(--line);padding:12px 16px}
+.shell.app.biz header small{color:#6b7280}
+.shell.app.biz header strong{font-size:17px;letter-spacing:-.01em}
+.shell.app.biz main{padding:16px}
+.shell.app.biz .hero{background:#fff;color:#111827;border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:10px;padding:20px 18px}
+.shell.app.biz .hero>span,.shell.app.biz .eyebrow{color:var(--brand)}
+.shell.app.biz .hero h1{font-size:24px;line-height:1.2}
+.shell.app.biz .hero p{color:#4b5563}
+.shell.app.biz .panel,.shell.app.biz .metrics article,.shell.app.biz .assistant,.shell.app.biz .estimate{border-radius:10px;box-shadow:0 1px 2px rgba(16,24,40,.04);border-color:var(--line)}
+.shell.app.biz .assistant{background:#fff;border-color:var(--line)}
+.shell.app.biz .assisttitle>span{background:var(--brand-soft);border-radius:8px}
+.shell.app.biz h1{letter-spacing:-.02em}
+.shell.app.biz h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.shell.app.biz h3{font-size:15px;font-weight:700}
+.shell.app.biz .primary{background:var(--brand);color:#fff;border-radius:8px}
+.shell.app.biz .secondary{background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px}
+.shell.app.biz .add{background:var(--brand-soft)!important;color:var(--brand)!important;border-radius:8px}
+.shell.app.biz .head button{color:var(--brand)}
+.shell.app.biz .screenbar button{border:1px solid var(--line);border-radius:8px}
+.shell.app.biz input,.shell.app.biz textarea,.shell.app.biz select{border-radius:8px;border-color:#d1d5db}
+.shell.app.biz input:focus,.shell.app.biz textarea:focus,.shell.app.biz select:focus{outline:2px solid var(--brand-soft);border-color:var(--brand)}
+.shell.app.biz .total{background:#fff;color:#111827;border:1px solid var(--line);border-radius:10px}
+.shell.app.biz .total .grand{border-top-color:var(--line);color:var(--brand)}
+.shell.app.biz .metrics b{font-size:24px;font-weight:700}
+.shell.app.biz .calcCatHeading{color:var(--brand)}
+.shell.app.biz nav{background:#fff;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.shell.app.biz nav button{color:#6b7280;font-size:0;padding-top:6px;position:relative}
+.shell.app.biz nav button svg{width:22px;height:22px;display:block;margin:0 auto 2px}
+.shell.app.biz nav span{font-size:11px;font-weight:600}
+.shell.app.biz nav .active{color:var(--brand)}
+.shell.app.biz nav .active::before{content:"";position:absolute;top:-6px;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--brand)}
+.shell.app.biz .badge{border-radius:6px;letter-spacing:.03em}
