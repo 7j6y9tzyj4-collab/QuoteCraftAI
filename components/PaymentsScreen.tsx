@@ -876,18 +876,18 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
          style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px 130px 1fr 110px 42px",gap:8,marginTop:10,alignItems:"start"}}>
+     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px minmax(0,1fr) 100px 42px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
        <DateInput value={r.date} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
-       <div style={{display:"grid",gap:6}}>
+       <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
+       <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
+       <div style={{display:"grid",gap:6,gridColumn:"1/-1"}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
          {r.by?<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}{isFresh(r)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</small>:r.src!=="mail"&&<small style={{color:"#98a2b3"}}>✍️ додав ти</small>}
          {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
          <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Перенести в інший проєкт…</option>{list.filter(s=>s.id!==cur.id).map(s=><option key={s.id} value={s.id}>{s.own?"🧰 Мої витрати":`${s.client}${s.project?` — ${s.project}`:""}`}</option>)}{!list.some(s=>s.own)&&<option value={OWN_ID}>🧰 Мої витрати</option>}</select>
        </div>
-       <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
-       <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
      </div>)}
    </section>
 
