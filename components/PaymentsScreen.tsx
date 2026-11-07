@@ -876,7 +876,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
          style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"56px minmax(0,1fr) 100px 42px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
+     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"52px minmax(124px,1fr) 84px 36px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
        <DateInput value={r.date} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
        <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
