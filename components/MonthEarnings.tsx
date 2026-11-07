@@ -1,7 +1,7 @@
 "use client";
 import {useMemo,useState} from "react";
 import type {Statement} from "@/lib/statement";
-import {statementTotals} from "@/lib/statement";
+import {statementTotals,statementStatus} from "@/lib/statement";
 import {normDate} from "@/lib/receiptBatch";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -38,7 +38,7 @@ export default function MonthEarnings({list}:{list:Statement[]}){
   },[list,month]);
   const w=useMemo(()=>{
     let earned=0,helpers=0,own=0,myHours=0,unpaid=0;
-    const rows:{name:string;hours:number;share:number;earned:number;helpers:number;cash:boolean}[]=[];
+    const rows:{name:string;hours:number;share:number;earned:number;helpers:number;cash:boolean;rate?:number}[]=[];
     for(const s of list){
       if(s.own){own=r2(own+s.receipts.filter(r=>ym(r.date)===month).reduce((a,r)=>a+(Number(r.amount)||0),0));continue}
       const t=statementTotals(s);const crew=s.crew||[];
@@ -48,17 +48,21 @@ export default function MonthEarnings({list}:{list:Statement[]}){
       if(all>0){
         const inM=log.filter(x=>ym(x.date)===month);const hM=inM.reduce((a,x)=>a+(Number(x.hours)||0),0);
         if(!hM)continue;
-        const share=hM/all;const e=r2(base*share);
+        // проєкт ще в роботі: майбутні години невідомі → рахуємо за моєю ставкою (не більше вартості роботи), після завершення — точно за частками годин
+        const st=statementStatus(s);const finished=st==="done"||st==="waiting";
+        const myRate=Math.max(0,...crew.filter(c=>isMe(c.name,c.self)).map(c=>Number(c.rate)||0));
+        const denom=finished||!(myRate>0)?all:Math.max(all,base/myRate);
+        const share=hM/denom;const e=r2(base*share);
         const hc=r2(inM.filter(x=>!me.has(x.workerId)&&crew.length).reduce((a,x)=>a+(Number(x.hours)||0)*(Number(crew.find(c=>c.id===x.workerId)?.rate)||0),0));
         const mh=r2(inM.filter(x=>me.has(x.workerId)||!crew.length).reduce((a,x)=>a+(Number(x.hours)||0),0));
         earned=r2(earned+e);helpers=r2(helpers+hc);myHours=r2(myHours+mh);if(t.balance>0.5)unpaid=r2(unpaid+t.balance);
-        rows.push({name:`${s.client||"Без імені"}${s.project?` — ${s.project}`:""}`,hours:r2(hM),share:Math.round(share*100),earned:e,helpers:hc,cash:false});
+        rows.push({name:`${s.client||"Без імені"}${s.project?` — ${s.project}`:""}`,hours:r2(hM),share:Math.round(share*100),earned:e,helpers:hc,cash:false,rate:!finished&&denom>all?myRate:0});
       }else{
         // годин не записано — беремо роботу в місяці оплати (частка оплати, що покриває роботу)
         const g=r2(s.payments.filter(p=>ym(p.date)===month).reduce((a,p)=>a+(Number(p.amount)||0),0));
         if(!g||!(t.total>0))continue;
         const e=r2(g*base/t.total);earned=r2(earned+e);
-        rows.push({name:`${s.client||"Без імені"}${s.project?` — ${s.project}`:""}`,hours:0,share:0,earned:e,helpers:0,cash:true});
+        rows.push({name:`${s.client||"Без імені"}${s.project?` — ${s.project}`:""}`,hours:0,share:0,earned:e,helpers:0,cash:true,rate:0});
       }
     }
     const net=r2(earned-helpers-own);
@@ -87,10 +91,10 @@ export default function MonthEarnings({list}:{list:Statement[]}){
       {w.rows.length>0&&<div style={{marginTop:8,display:"grid",gap:6}}>
         {w.rows.map(r=><div key={r.name} style={{fontSize:13,padding:"6px 8px",background:"#fff",borderRadius:10}}>
           <b>{r.name}</b>
-          <div style={{display:"flex",justifyContent:"space-between",color:"#475467"}}><span>{r.cash?"годин не записано — за оплатою":`${r.hours} год · ${r.share}% усіх годин проєкту`}{r.helpers?` · помічники −${money(r.helpers)}`:""}</span><b>{money(r.earned)}</b></div>
+          <div style={{display:"flex",justifyContent:"space-between",color:"#475467"}}><span>{r.cash?"годин не записано — за оплатою":r.rate?`${r.hours} год × ${money(r.rate)} · в роботі`:`${r.hours} год · ${r.share}% вартості роботи`}{r.helpers?` · помічники −${money(r.helpers)}`:""}</span><b>{money(r.earned)}</b></div>
         </div>)}
       </div>}
-      <small className="muted" style={{display:"block",marginTop:6}}>Вартість роботи проєкту ділиться між місяцями пропорційно записаним годинам (твоїм і помічників). Чеки на матеріали не враховуються — їх повертає клієнт. Для податків дивись «💵 Гроші на руках».</small>
+      <small className="muted" style={{display:"block",marginTop:6}}>Завершені проєкти: вартість роботи ділиться між місяцями за записаними годинами. Проєкти в роботі: години × твоя ставка (у «Команда й години»), а коли закінчиш — програма доведе до повної суми. Чеки на матеріали не враховуються — їх повертає клієнт. Для податків дивись «💵 Гроші на руках».</small>
     </>:<>
     <div style={{textAlign:"center",fontSize:30,fontWeight:900,color:v.net<0?"#b42318":"#067647",margin:"6px 0"}}>{money(v.net)}</div>
     <div style={{textAlign:"center",fontSize:13,color:"#475467"}}>на руках{v.myHours>0?` · ${v.myHours} год · ${money(v.perHour)}/год`:""}</div>
