@@ -1,6 +1,8 @@
 "use client";
 import type {Statement,CrewMember,WorkEntry,Payout} from "@/lib/statement";
 import {crewSummary,isFresh} from "@/lib/statement";
+import FoldTitle from "@/components/FoldTitle";
+import {useFold} from "@/lib/useFold";
 import DateInput from "@/components/DateInput";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -10,6 +12,7 @@ const uid=()=>crypto.randomUUID();
 // Команда проєкту: я і помічники, години по днях, нараховано / виплачено / винен.
 export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[];onPatch:(p:Partial<Statement>)=>void}){
   const crew=st.crew||[];const log=st.workLog||[];const pay=st.payouts||[];
+  const [open,toggle]=useFold("crew",false);
   const sm=crewSummary(st);
   // ставка: беремо з інших проєктів, де вже є людина з таким ім'ям
   const knownRate=(name:string)=>{
@@ -30,8 +33,11 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
   const suggest=knownNames.filter(n=>!crew.some(c=>c.name.trim().toLowerCase()===n.toLowerCase()));
   const usedIds=new Set([...log.map(w=>w.workerId),...pay.map(p=>p.workerId)]);
 
+  const totalH=Math.round(sm.rows.reduce((a,r)=>a+r.hours,0)*10)/10;const owedAll=sm.rows.filter(r=>!r.self).reduce((a,r)=>a+r.owed,0);
+  const fresh=log.some(isFresh);
   return <section className="panel">
-    <div className="head"><h2>👷 Команда й години</h2></div>
+    <div className="head"><FoldTitle open={open||fresh} onToggle={toggle} title="👷 Команда й години" summary={`${totalH} год${owedAll>0.5?` · винен помічникам $${Math.round(owedAll)}`:""}`}/></div>
+    {(open||fresh)&&<>
     <small className="muted">Записуй години по людях. Помічнику вказуєш ставку $/год, а додаток рахує, скільки він заробив, скільки вже виплачено і скільки ти винен.</small>
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
       {crew.length===0&&<button className="add" onClick={()=>addPerson("Я",true)}>＋ Я</button>}
@@ -81,6 +87,7 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
         <small className="muted" style={{display:"block",marginTop:4}}>«Разом» по грошах — тільки помічники (без тебе).</small>
         {sm.rows.some(r=>r.owed<-0.005)&&<small style={{display:"block",marginTop:6,color:"#b54708"}}>Виплачено більше, ніж зароблено (помаранчевий мінус).</small>}
       </div>
+    </>}
     </>}
   </section>;
 }

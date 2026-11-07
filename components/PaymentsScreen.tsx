@@ -20,6 +20,8 @@ import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
 import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
 import ShopList from "@/components/ShopList";
+import FoldTitle from "@/components/FoldTitle";
+import {useFold} from "@/lib/useFold";
 import ProfitCard from "@/components/ProfitCard";
 import MaterialsCompare from "@/components/MaterialsCompare";
 import ReviewAsk from "@/components/ReviewAsk";
@@ -61,6 +63,8 @@ function ReceiptThumb({r}:{r:Receipt}){
 export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened}:{user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
+ // ▸/▾ згортання довгих блоків у проєкті (запам'ятовується)
+ const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
  useEffect(()=>{if(openReq){setOpenId(openReq);onOpened?.()}},[openReq,onOpened]);
  const [msg,setMsg]=useState("");
@@ -850,12 +854,14 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    <ProfitCard st={cur}/>
 
    <section className="panel">
-     <div className="head"><h2>Робота</h2><button className="add" onClick={()=>update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}>＋ Рядок</button></div>
+     <div className="head"><FoldTitle open={fWork} onToggle={tWork} title="Робота" summary={`${cur.labor.length} рядк. · ${money(t.labor)}`}/><button className="add" onClick={()=>{setWork(true);update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}}>＋ Рядок</button></div>
+     {fWork&&<>
      {cur.labor.map((l:StatementLine)=><div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 42px",gap:8,marginTop:8}}>
        <input placeholder="Опис (напр. Range hood installation)" value={l.description} onChange={e=>setLine<StatementLine>("labor",l.id,{description:e.target.value})}/>
        <input type="number" step="0.01" value={l.amount} onChange={e=>setLine<StatementLine>("labor",l.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("labor",l.id)}>×</button>
      </div>)}
+     </>}
    </section>
 
    <ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>
@@ -863,12 +869,13 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    <MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>
    {batchView}
    <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
-     <div className="head"><h2>Чеки на матеріали</h2><button className="add" onClick={()=>update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}>＋ Вручну</button></div>
+     <div className="head"><FoldTitle open={fRec} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет чеків (фото / PDF)</button>
        <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
      </div>
+     {fRec&&<>
      <div data-paste-zone style={{position:"relative",marginTop:10,padding:"12px 10px",border:`2px dashed ${zoneOn?"#2563eb":"#cbd5e1"}`,background:zoneOn?"#eff6ff":"transparent",borderRadius:12,color:zoneOn?"#1d4ed8":"#64748b",fontSize:13,textAlign:"center"}}>
        {busy?"Читаю…":dragOn?"Відпусти — прочитаю всі чеки":zoneOn?"Тепер натисни ⌘V":"📋 Вставити сюди: клікни тут і натисни ⌘V, або перетягни файли (пакет PDF / фото)"}
        {/* порожнє редаговане поле поверх рамки — Safari на Mac дає вставити тільки в таке */}
@@ -889,16 +896,19 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Перенести в інший проєкт…</option>{list.filter(s=>s.id!==cur.id).map(s=><option key={s.id} value={s.id}>{s.own?"🧰 Мої витрати":`${s.client}${s.project?` — ${s.project}`:""}`}</option>)}{!list.some(s=>s.own)&&<option value={OWN_ID}>🧰 Мої витрати</option>}</select>
        </div>
      </div>)}
+     </>}
    </section>
 
    <section className="panel">
-     <div className="head"><h2>Оплати клієнта</h2><button className="add" onClick={()=>update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}>＋ Оплата</button></div>
+     <div className="head"><FoldTitle open={fPay} onToggle={tPay} title="Оплати клієнта" summary={`${cur.payments.length} опл. · ${money(t.paid)}`}/><button className="add" onClick={()=>{setPay(true);update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}}>＋ Оплата</button></div>
+     {fPay&&<>
      {cur.payments.map((p:Payment)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"130px 1fr 110px 42px",gap:8,marginTop:8}}>
        <DateInput value={p.date} onChange={v=>setLine<Payment>("payments",p.id,{date:v})}/>
        <select value={p.method} onChange={e=>setLine<Payment>("payments",p.id,{method:e.target.value})}>{METHODS.map(m=><option key={m}>{m}</option>)}</select>
        <input type="number" step="0.01" value={p.amount} onChange={e=>setLine<Payment>("payments",p.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("payments",p.id)}>×</button>
      </div>)}
+     </>}
    </section>
 
    <PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>
