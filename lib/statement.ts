@@ -7,10 +7,13 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string;
   /** хто додав (помічник за посиланням) */ by?:string;
+  /** коли додав помічник (ISO) — для позначки «нове» */ at?:string;
   /** звідки: "mail" — прийшов з пошти */ src?:string;
   /** чому чек саме тут (назва роботи на чеку / за графіком / AI / вручну) */ why?:string};
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
-export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string};
+export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string;/** хто записав (помічник за посиланням); нема — записав власник */by?:string;at?:string};
+/** запис від помічника, доданий за останні 36 год */
+export const isFresh=(x:{by?:string;at?:string})=>!!x.by&&!!x.at&&Date.now()-new Date(x.at).getTime()<36*3600e3;
 export type Payout={id:string;date:string;workerId:string;amount:number};
 export type StatusKey="planned"|"active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
@@ -45,7 +48,7 @@ export type Statement={
   /** виплати помічникам */
   payouts?:Payout[];
   /** фото роботи (від мене або помічника за посиланням) */
-  photos?:{id:string;path:string;date:string;by?:string;note?:string}[];
+  photos?:{id:string;path:string;date:string;by?:string;note?:string;at?:string}[];
   /** матеріали в рахунку: "receipts" — клієнт платить рівно за чеками (за замовчуванням);
    *  "estimate" — фіксовано за естімейтом (matPlan): більше — доплата клієнту, менше — різниця моя */
   matMode?:"receipts"|"estimate";

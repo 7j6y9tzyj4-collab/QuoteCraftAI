@@ -1,6 +1,6 @@
 "use client";
 import type {Statement,CrewMember,WorkEntry,Payout} from "@/lib/statement";
-import {crewSummary} from "@/lib/statement";
+import {crewSummary,isFresh} from "@/lib/statement";
 import DateInput from "@/components/DateInput";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -48,12 +48,13 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
     {crew.length>0&&<>
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Години</h3>
         <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:crew[0].id,hours:0}]})}>＋ Години</button></div>
-      {log.map(w=><div key={w.id} style={{display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
+      {log.map(w=><div key={w.id} style={{...(isFresh(w)?{background:"#fffaeb",borderRadius:10,padding:6}:{}),display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
         <DateInput value={w.date} onChange={v=>setLog(w.id,{date:v})}/>
         <select value={w.workerId} onChange={e=>setLog(w.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
         <input type="number" min="0" step="0.5" value={w.hours||""} placeholder="год" onChange={e=>setLog(w.id,{hours:Math.max(0,Number(e.target.value)||0)})}/>
         <button className="remove" onClick={()=>onPatch({workLog:log.filter(x=>x.id!==w.id)})}>×</button>
         <input style={{gridColumn:"1/4"}} placeholder="Що робили (необов'язково)" value={w.note||""} onChange={e=>setLog(w.id,{note:e.target.value})}/>
+        <small style={{gridColumn:"1/5",marginTop:-2,color:w.by?"#7a5af8":"#98a2b3",fontWeight:w.by?700:400}}>{w.by?<>👷 записав {w.by}{isFresh(w)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</>:"✍️ записав ти"}</small>
       </div>)}
 
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Виплати помічникам</h3>

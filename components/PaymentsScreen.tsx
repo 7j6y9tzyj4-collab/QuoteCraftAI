@@ -29,7 +29,7 @@ import YearReport from "@/components/YearReport";
 import MonthReceiptsButton from "@/components/MonthReceiptsButton";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
-import {profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -213,11 +213,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      if(it.kind==="hours"){
        let crew=[...(s.crew||[])];let w=crew.find(c=>!c.self&&c.name.trim().toLowerCase()===who.toLowerCase());
        if(!w){w={id:uid(),name:who,rate:rateOf(it.token)};crew=[...crew,w]}
-       s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined}]};sum[k].h+=Number(p.hours)||0;
+       s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined,by:who,at:it.created_at}]};sum[k].h+=Number(p.hours)||0;
      }else if(it.kind==="receipt"){
-       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,by:who}].sort(byDate)};sum[k].r++;
+       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
      }else if(it.kind==="photo"){
-       if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||uid(),path:p.path,date:us(p.date),by:who,note:p.note||undefined}]};sum[k].p++;
+       if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||uid(),path:p.path,date:us(p.date),by:who,note:p.note||undefined,at:it.created_at}]};sum[k].p++;
      }
      next=next.map(x=>x.id===s.id?{...s,updatedAt:new Date().toISOString()}:x);used.push(it.id);
    }
@@ -838,6 +838,15 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
     </select></label>
    </section>
 
+   {(()=>{const crewName=(id:string)=>(cur.crew||[]).find(c=>c.id===id)?.name||"";
+     const fh=(cur.workLog||[]).filter(isFresh),fr=cur.receipts.filter(isFresh),fp=(cur.photos||[]).filter(isFresh);
+     if(!fh.length&&!fr.length&&!fp.length)return null;
+     const items=[...fh.map(w=>`⏱ ${w.by||crewName(w.workerId)}: ${w.hours} год за ${w.date}${w.note?` — ${w.note}`:""}`),...fr.map(r=>`🧾 ${r.by}: чек ${r.store||""} ${money(Number(r.amount)||0)}`),...fp.map(p=>`📸 ${p.by}: фото за ${p.date}`)];
+     return <section className="panel" style={{border:"2px solid #fdb022",background:"#fffcf5"}}>
+       <div className="head"><h2>🆕 Нове від помічника</h2></div>
+       {items.map((t,i)=><div key={i} data-notr style={{fontSize:15,padding:"4px 0"}}>{t}</div>)}
+       <small className="muted">Години — у «👷 Команда й години», чеки — у «Чеки на матеріали», фото — у «Фото». Позначка «НОВЕ» тримається добу.</small>
+     </section>})()}
    <ProfitCard st={cur}/>
 
    <section className="panel">
@@ -873,7 +882,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <div style={{display:"grid",gap:6}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
-         {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
+         {r.by?<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}{isFresh(r)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</small>:r.src!=="mail"&&<small style={{color:"#98a2b3"}}>✍️ додав ти</small>}
          {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
          <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Перенести в інший проєкт…</option>{list.filter(s=>s.id!==cur.id).map(s=><option key={s.id} value={s.id}>{s.own?"🧰 Мої витрати":`${s.client}${s.project?` — ${s.project}`:""}`}</option>)}{!list.some(s=>s.own)&&<option value={OWN_ID}>🧰 Мої витрати</option>}</select>
        </div>
