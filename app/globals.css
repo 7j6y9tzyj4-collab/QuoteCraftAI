@@ -199,3 +199,21 @@ body:has(.shell.app){overflow:hidden}
 .apSeg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .apSeg i{font-style:normal;color:var(--muted);font-weight:500;margin-left:4px;font-size:12px}
 .shell.app.apple .foldArrow{display:none!important}
+/* 🍏 AI-естімейт */
+.apCompose h1{margin:4px 2px 4px;font-size:32px!important}
+.apSub{color:var(--muted);margin:0 2px 14px;font-size:15px;line-height:1.4}
+.apFields{padding:12px;display:grid;gap:10px}
+.apFields label{font-size:13px;color:var(--muted);font-weight:500}
+.apMicWrap{display:flex;flex-direction:column;align-items:center;gap:8px;margin:22px 0 18px}
+.apMicWrap small{color:var(--muted);font-size:14px}
+.apMic{width:84px;height:84px;border-radius:50%;border:none;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(0,122,255,.35);transition:transform .15s}
+.apMic:active{transform:scale(.94)}
+.apMic.rec{background:#ff3b30;box-shadow:0 0 0 0 rgba(255,59,48,.5);animation:apPulse 1.4s infinite}
+@keyframes apPulse{0%{box-shadow:0 0 0 0 rgba(255,59,48,.45)}70%{box-shadow:0 0 0 18px rgba(255,59,48,0)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}}
+.apText textarea{width:100%;border:none!important;background:transparent!important;padding:14px;font-size:16px;line-height:1.4;resize:vertical;box-sizing:border-box;outline:none!important}
+.apTextBar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px 12px;border-top:.5px solid var(--line)}
+.apTextBar button{border:none;background:none;color:var(--blue);font-weight:600;font-size:15px;padding:0}
+.apTextBar small{color:var(--muted)}
+.apGo{width:100%;margin-top:14px;padding:16px!important;font-size:17px!important;border-radius:14px!important}
+.apGo:disabled{opacity:.45}
+.apLink{display:block;margin:12px auto 0;border:none;background:none;color:var(--blue);font-size:15px}

@@ -1913,7 +1913,28 @@ export default function QuoteCraftApp(){
     <div className="actions noPrint"><button className="secondary" onClick={printEstimate}>PDF / Print</button><button className="primary" onClick={save}>Save estimate</button></div>
    </>}
 
-   {screen==="calc"&&<>
+   {screen==="calc"&&apple&&calcItems.length===0&&<div className="apCompose noPrint">
+    <div className="screenbar"><button onClick={()=>setScreen("home")}>← Головна</button><b/><span/></div>
+    <h1>Новий естімейт</h1>
+    <p className="apSub">Розкажи, що треба зробити. AI розкладе роботу на рядки з цінами з твого прайсу.</p>
+    <div className="apCard apFields"><ClientPicker value={calcClient} onChange={setCalcClient} clients={clients} onAdd={saveClient}/><label>Проєкт<input value={calcProject} placeholder="напр. Hall bathroom" onChange={e=>setCalcProject(e.target.value)}/></label></div>
+    <div className="apMicWrap">
+     {!calcListening?<button className="apMic" onClick={startCalcVoice} disabled={calcTranscribing||calcThinking} aria-label="Говорити">
+       <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      :<button className="apMic rec" onClick={stopCalcVoice} aria-label="Стоп"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/></svg></button>}
+     <small>{calcListening?"Говори… натисни, щоб закінчити":calcTranscribing?"Розпізнаю голос…":"Натисни й розкажи голосом"}</small>
+    </div>
+    <div className="apCard apText"><textarea value={calcPrompt} onChange={e=>setCalcPrompt(e.target.value)} rows={4} placeholder="Або напиши: ванна 5×8, демонтаж ванни, плитка на стіни душу до стелі, нова підлога 40 sq ft, тумба й унітаз клієнта…"/>
+      <div className="apTextBar"><button onClick={()=>calcPhotoInput.current?.click()} disabled={calcPhotoBusy||calcThinking||calcPhotos.length>=4}>{calcPhotoBusy?"Готую фото…":"Додати фото"}</button><small>{calcPhotos.length?`${calcPhotos.length} фото`:"до 4 фото із замірами"}</small></div>
+      <input ref={calcPhotoInput} type="file" accept="image/*" multiple hidden onChange={e=>{const files=Array.from(e.target.files||[]);e.target.value="";void addCalcPhotos(files)}}/>
+      {calcPhotos.length>0&&<div className="jobPhotos" style={{padding:"0 12px 12px"}}>{calcPhotos.map(p=><figure key={p.id}><img src={p.dataUrl} alt={p.name}/><button type="button" disabled={calcThinking} aria-label={`Видалити ${p.name}`} onClick={()=>setCalcPhotos(v=>v.filter(x=>x.id!==p.id))}>×</button></figure>)}</div>}
+    </div>
+    {calcMessage&&<div className="statusMessage" style={{marginTop:10}}>{calcMessage}</div>}
+    {calcPhotos.length>0&&<PhotoMeasurements key={calcPrompt+calcPhotos.map(p=>p.id).join("|")} text={calcPrompt} photos={calcPhotos.map(p=>p.dataUrl)} disabled={calcThinking||calcListening||calcTranscribing||calcPhotoBusy} onApprove={notes=>void generateCalc(notes)}/>}
+    <button className="primary apGo" onClick={()=>generateCalc()} disabled={calcListening||calcThinking||calcTranscribing||!calcPrompt.trim()}>{calcThinking?"AI рахує…":"Створити естімейт"}</button>
+    <button className="apLink" onClick={addCalcItem}>Скласти вручну, без AI</button>
+   </div>}
+   {screen==="calc"&&!(apple&&calcItems.length===0)&&<>
     <div className="screenbar noPrint"><button onClick={()=>setScreen("home")}>← Back</button><b>Calculator{calcSavedId&&<small className="muted" style={{fontWeight:400,marginLeft:6}}>✓ збережено</small>}</b><button onClick={clearCalc}>{calcSavedId?"Новий":"Clear"}</button></div>
     <section className="assistant noPrint">
       <div className="assisttitle"><span>🧮</span><div><b>Опиши роботу простою мовою</b><small>Українська, English або змішано — порахує labor, materials і supplies</small></div></div>
