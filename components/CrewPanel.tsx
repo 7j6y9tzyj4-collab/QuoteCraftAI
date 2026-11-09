@@ -10,7 +10,7 @@ const today=()=>new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-di
 const uid=()=>crypto.randomUUID();
 
 // Команда проєкту: я і помічники, години по днях, нараховано / виплачено / винен.
-export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[];onPatch:(p:Partial<Statement>)=>void}){
+export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement;all:Statement[];onPatch:(p:Partial<Statement>)=>void;forceOpen?:boolean}){
   const crew=st.crew||[];const log=st.workLog||[];const pay=st.payouts||[];
   const [open,toggle]=useFold("crew",false);
   const sm=crewSummary(st);
@@ -36,8 +36,8 @@ export default function CrewPanel({st,all,onPatch}:{st:Statement;all:Statement[]
   const totalH=Math.round(sm.rows.reduce((a,r)=>a+r.hours,0)*10)/10;const owedAll=sm.rows.filter(r=>!r.self).reduce((a,r)=>a+r.owed,0);
   const fresh=log.some(isFresh);
   return <section className="panel">
-    <div className="head"><FoldTitle open={open||fresh} onToggle={toggle} title="👷 Команда й години" summary={`${totalH} год${owedAll>0.5?` · винен помічникам $${Math.round(owedAll)}`:""}`}/></div>
-    {(open||fresh)&&<>
+    <div className="head"><FoldTitle open={open||fresh||forceOpen} onToggle={toggle} title="👷 Команда й години" summary={`${totalH} год${owedAll>0.5?` · винен помічникам $${Math.round(owedAll)}`:""}`}/></div>
+    {(open||fresh||forceOpen)&&<>
     <small className="muted">Записуй години по людях. Помічнику вказуєш ставку $/год, а додаток рахує, скільки він заробив, скільки вже виплачено і скільки ти винен.</small>
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
       {crew.length===0&&<button className="add" onClick={()=>addPerson("Я",true)}>＋ Я</button>}

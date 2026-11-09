@@ -6,7 +6,7 @@ import FoldTitle from "@/components/FoldTitle";
 import {useFold} from "@/lib/useFold";
 
 // Фото роботи по проєкту (від мене або помічника).
-export default function StatementPhotos({st,onPatch}:{st:Statement;onPatch:(p:Partial<Statement>)=>void}){
+export default function StatementPhotos({st,onPatch,forceOpen=false}:{st:Statement;onPatch:(p:Partial<Statement>)=>void;forceOpen?:boolean}){
   const photos=st.photos||[];
   const [open,toggle]=useFold("photos",false);
   const [urls,setUrls]=useState<Record<string,string>>({});
@@ -15,10 +15,10 @@ export default function StatementPhotos({st,onPatch}:{st:Statement;onPatch:(p:Pa
     supabase.storage.from("receipts").createSignedUrls(paths,3600).then(({data}:{data:any[]|null})=>{const m:Record<string,string>={};for(const x of data||[])if(x.path&&x.signedUrl)m[x.path]=x.signedUrl;setUrls(u=>({...u,...m}))});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[photos.length]);
-  if(!photos.length)return null;
+  if(!photos.length)return forceOpen?<section className="panel"><p className="muted" style={{margin:0}}>Фото ще немає. Помічник може додати їх зі свого посилання.</p></section>:null;
   return <section className="panel">
-    <div className="head"><FoldTitle open={open} onToggle={toggle} title={`🏗 Фото роботи · ${photos.length}`}/></div>
-    {open&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:6,marginTop:8}}>
+    <div className="head"><FoldTitle open={open||forceOpen} onToggle={toggle} title={`🏗 Фото роботи · ${photos.length}`}/></div>
+    {(open||forceOpen)&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:6,marginTop:8}}>
       {[...photos].reverse().map(p=><div key={p.id} style={{position:"relative"}}>
         <a href={urls[p.path]} target="_blank" rel="noreferrer"><img src={urls[p.path]} alt="" style={{width:"100%",aspectRatio:"1",objectFit:"cover",borderRadius:10,background:"#eef2f7"}}/></a>
         <small style={{position:"absolute",left:4,bottom:4,background:"#000a",color:"#fff",borderRadius:6,padding:"0 4px",fontSize:10}}>{p.date}{p.by?` · ${p.by}`:""}</small>

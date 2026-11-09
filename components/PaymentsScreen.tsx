@@ -60,11 +60,12 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
-export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened}:{user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened,apple=false}:{apple?:boolean;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
  // ▸/▾ згортання довгих блоків у проєкті (запам'ятовується)
+ const [ptab,setPtab]=useState<"over"|"rec"|"pay"|"crew"|"photo">("over");
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
  useEffect(()=>{if(openReq){setOpenId(openReq);onOpened?.()}},[openReq,onOpened]);
@@ -837,6 +838,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const plan=linked?planFromCalc(linked):null;
  const matDiff=plan&&plan.materials>0?Math.round((t.receipts/plan.materials-1)*1000)/10:null;
  const crewSm=crewSummary(cur);
+ const show=(k:typeof ptab)=>!apple||ptab===k;
  const shopCall=async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j};
  const earned=Math.round((t.paid-t.receipts-crewSm.cost)*100)/100;
  const hours=crewSm.hours>0?crewSm.hours:(Number(cur.hours)||0);
@@ -869,17 +871,35 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    </div>
  </section>;
  return <>
-   <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← Список</button><b>Розрахунок</b><button onClick={remove} style={{color:"#b42318"}}>Видалити</button></div>
-   <section className="panel grid">
+   <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← {apple?"Проєкти":"Список"}</button><b>{apple?"":"Розрахунок"}</b><button onClick={remove} style={{color:"#b42318"}}>Видалити</button></div>
+   {apple&&(()=>{const p=profitOf(cur);const st=stOf(cur);const m=STATUS_META[st];const pct=t.total>0?Math.min(100,Math.round(t.paid/t.total*100)):0;
+     const tabs:[typeof ptab,string,number|null][]=[["over","Огляд",null],["rec","Чеки",cur.receipts.length],["pay","Оплати",cur.payments.length],["crew","Команда",null],["photo","Фото",(cur.photos||[]).length]];
+     return <div className="apProj">
+       <div className="apProjHead"><h1>{cur.client||"Без імені"}</h1><small>{cur.project}</small><span className="apPill" style={{background:m.bg,color:m.color}}>{m.label}</span></div>
+       <div className="apStats">
+         <div className="apStat"><small>Контракт</small><b>{money(t.total)}</b></div>
+         <div className="apStat"><small>Прибуток</small><b className={p.low?"apWarn":"apGood"}>{money(p.profit)}</b>{p.margin!==null&&<em>{p.margin}% роботи</em>}</div>
+         <div className="apStat"><small>Витрати</small><b>{money(t.receipts+p.cost)}</b><em>чеки {money(t.receipts)}{p.cost>0?` · помічники ${money(p.cost)}`:""}</em></div>
+         <div className="apStat"><small>{t.balance>=0?"Клієнт винен":"Переплата"}</small><b className={t.balance>0.5?"apWarn":"apGood"}>{money(Math.abs(t.balance))}</b><em>оплачено {pct}%</em></div>
+       </div>
+       <div className="apBar apBarBig"><i style={{width:pct+"%"}}/></div>
+       <div className="apQuick">
+         <button onClick={()=>{setPtab("rec");setRec(true);targetRef.current=cur.id;camRef.current?.click()}}>Чек</button>
+         <button onClick={()=>{setPtab("pay");setPay(true);update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}}>Оплата</button>
+         <button onClick={()=>pdf(false)} disabled={busy}>PDF</button>
+       </div>
+       <div className="apSeg">{tabs.map(([k,l,n])=><button key={k} className={ptab===k?"on":""} onClick={()=>setPtab(k)}>{l}{n?<i>{n}</i>:null}</button>)}</div>
+     </div>})()}
+   {show("over")&&<section className="panel grid">
      <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
     <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>
       <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined},startOf(cur))].label}</option>
       {(Object.keys(STATUS_META) as StatusKey[]).map(k=><option key={k} value={k}>{STATUS_META[k].label}</option>)}
     </select></label>
-   </section>
+   </section>}
 
-   {(()=>{const crewName=(id:string)=>(cur.crew||[]).find(c=>c.id===id)?.name||"";
+   {show("over")&&<>{(()=>{const crewName=(id:string)=>(cur.crew||[]).find(c=>c.id===id)?.name||"";
      const fh=(cur.workLog||[]).filter(isFresh),fr=cur.receipts.filter(isFresh),fp=(cur.photos||[]).filter(isFresh);
      if(!fh.length&&!fr.length&&!fp.length)return null;
      const items=[...fh.map(w=>`⏱ ${w.by||crewName(w.workerId)}: ${w.hours} год за ${w.date}${w.note?` — ${w.note}`:""}`),...fr.map(r=>`🧾 ${r.by}: чек ${r.store||""} ${money(Number(r.amount)||0)}`),...fp.map(p=>`📸 ${p.by}: фото за ${p.date}`)];
@@ -887,32 +907,32 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <div className="head"><h2>🆕 Нове від помічника</h2></div>
        {items.map((t,i)=><div key={i} data-notr style={{fontSize:15,padding:"4px 0"}}>{t}</div>)}
        <small className="muted">Години — у «👷 Команда й години», чеки — у «Чеки на матеріали», фото — у «Фото». Позначка «НОВЕ» тримається добу.</small>
-     </section>})()}
-   <ProfitCard st={cur}/>
+     </section>})()}</>}
+   {show("over")&&<ProfitCard st={cur}/>}
 
-   <section className="panel">
-     <div className="head"><FoldTitle open={fWork} onToggle={tWork} title="Робота" summary={`${cur.labor.length} рядк. · ${money(t.labor)}`}/><button className="add" onClick={()=>{setWork(true);update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}}>＋ Рядок</button></div>
-     {fWork&&<>
+   {show("over")&&<section className="panel">
+     <div className="head"><FoldTitle open={fWork||apple} onToggle={tWork} title="Робота" summary={`${cur.labor.length} рядк. · ${money(t.labor)}`}/><button className="add" onClick={()=>{setWork(true);update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}}>＋ Рядок</button></div>
+     {(fWork||apple)&&<>
      {cur.labor.map((l:StatementLine)=><div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 42px",gap:8,marginTop:8}}>
        <input placeholder="Опис (напр. Range hood installation)" value={l.description} onChange={e=>setLine<StatementLine>("labor",l.id,{description:e.target.value})}/>
        <input type="number" step="0.01" value={l.amount} onChange={e=>setLine<StatementLine>("labor",l.id,{amount:Number(e.target.value)||0})}/>
        <button className="remove" onClick={()=>delLine("labor",l.id)}>×</button>
      </div>)}
      </>}
-   </section>
+   </section>}
 
-   <ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>
+   {show("over")&&<ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>}
 
-   <MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>
-   {batchView}
-   <section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
-     <div className="head"><FoldTitle open={fRec} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
+   {show("rec")&&<MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>}
+   {show("rec")&&batchView}
+   {show("rec")&&<section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+     <div className="head"><FoldTitle open={fRec||apple} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет чеків (фото / PDF)</button>
        <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
      </div>
-     {fRec&&<>
+     {(fRec||apple)&&<>
      <div data-paste-zone style={{position:"relative",marginTop:10,padding:"12px 10px",border:`2px dashed ${zoneOn?"#2563eb":"#cbd5e1"}`,background:zoneOn?"#eff6ff":"transparent",borderRadius:12,color:zoneOn?"#1d4ed8":"#64748b",fontSize:13,textAlign:"center"}}>
        {busy?"Читаю…":dragOn?"Відпусти — прочитаю всі чеки":zoneOn?"Тепер натисни ⌘V":"📋 Вставити сюди: клікни тут і натисни ⌘V, або перетягни файли (пакет PDF / фото)"}
        {/* порожнє редаговане поле поверх рамки — Safari на Mac дає вставити тільки в таке */}
@@ -934,11 +954,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        </div>
      </div>)}
      </>}
-   </section>
+   </section>}
 
-   <section className="panel">
-     <div className="head"><FoldTitle open={fPay} onToggle={tPay} title="Оплати клієнта" summary={`${cur.payments.length} опл. · ${money(t.paid)}`}/><button className="add" onClick={()=>{setPay(true);update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}}>＋ Оплата</button></div>
-     {fPay&&<>
+   {show("pay")&&<section className="panel">
+     <div className="head"><FoldTitle open={fPay||apple} onToggle={tPay} title="Оплати клієнта" summary={`${cur.payments.length} опл. · ${money(t.paid)}`}/><button className="add" onClick={()=>{setPay(true);update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}}>＋ Оплата</button></div>
+     {(fPay||apple)&&<>
      {cur.payments.map((p:Payment)=><div key={p.id} style={{display:"grid",gridTemplateColumns:"130px 1fr 110px 42px",gap:8,marginTop:8}}>
        <DateInput value={p.date} onChange={v=>setLine<Payment>("payments",p.id,{date:v})}/>
        <select value={p.method} onChange={e=>setLine<Payment>("payments",p.id,{method:e.target.value})}>{METHODS.map(m=><option key={m}>{m}</option>)}</select>
@@ -946,19 +966,19 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <button className="remove" onClick={()=>delLine("payments",p.id)}>×</button>
      </div>)}
      </>}
-   </section>
+   </section>}
 
-   <PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>
+   {show("pay")&&<PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>}
 
-   <CrewPanel st={cur} all={list} onPatch={update}/>
-   <WorkerLinks user={user} st={cur}/>
-   <section className="panel"><ShopList key={cur.id} call={shopCall}/></section>
-   <section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>
-   <ReviewAsk st={cur} phone={findClient(clientBook,cur.client)?.phone} done={stOf(cur)==="done"} onPatch={update}/>
-   <StatementPhotos st={cur} onPatch={update}/>
-   {planView}
+   {show("crew")&&<CrewPanel st={cur} all={list} onPatch={update} forceOpen={apple}/>}
+   {show("crew")&&<WorkerLinks user={user} st={cur}/>}
+   {show("rec")&&<section className="panel"><ShopList key={cur.id} call={shopCall}/></section>}
+   {show("crew")&&<section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>}
+   {show("over")&&<ReviewAsk st={cur} phone={findClient(clientBook,cur.client)?.phone} done={stOf(cur)==="done"} onPatch={update}/>}
+   {show("photo")&&<StatementPhotos st={cur} onPatch={update} forceOpen={apple}/>}
+   {show("over")&&planView}
 
-   <section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>
+   {show("over")&&<section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>}
 
    {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
    <section className="total">

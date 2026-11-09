@@ -180,3 +180,22 @@ body:has(.shell.app){overflow:hidden}
 .apStat b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(20px,6.4vw,26px)}
 .apAmt small{white-space:nowrap}
 .shell.app.apple header button{background:rgba(118,118,128,.12)!important;color:var(--blue)!important;box-shadow:none!important;border:none!important}
+/* 🍏 Картка проєкту */
+.apProj{margin:2px 0 12px}
+.apProjHead{margin:4px 2px 12px}
+.apProjHead h1{margin:0;font-size:30px!important;line-height:1.1}
+.apProjHead small{display:block;color:var(--muted);font-size:15px;margin-top:3px}
+.apPill{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.apProj .apStats{margin-top:0}
+.apBarBig{height:6px;border-radius:3px;margin:12px 2px 0;max-width:none;background:rgba(118,118,128,.16);overflow:hidden;display:block}
+.apBarBig>i{display:block;height:100%;background:var(--green)}
+.apQuick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.apQuick button{border:none;border-radius:12px;background:var(--card);color:var(--blue);font-weight:600;font-size:15px;padding:12px 6px}
+.apQuick button::before{content:"＋ ";font-weight:700}
+.apQuick button:last-child::before{content:""}
+.apSeg{display:flex;gap:2px;margin-top:14px;padding:2px;border-radius:10px;background:rgba(118,118,128,.12);overflow-x:auto;scrollbar-width:none}
+.apSeg::-webkit-scrollbar{display:none}
+.apSeg button{flex:1 0 auto;border:none;background:none;border-radius:8px;padding:7px 10px;font-size:13.5px;font-weight:600;color:#000;white-space:nowrap}
+.apSeg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.apSeg i{font-style:normal;color:var(--muted);font-weight:500;margin-left:4px;font-size:12px}
+.shell.app.apple .foldArrow{display:none!important}

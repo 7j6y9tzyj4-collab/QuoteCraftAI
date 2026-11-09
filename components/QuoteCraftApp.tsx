@@ -2029,7 +2029,7 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
+   {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
    {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onShareBundle={shareClientBundle} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
      user={user} tasks={calcTasks}
      onSurveyToEstimate={(c:Client,s:Survey)=>{
