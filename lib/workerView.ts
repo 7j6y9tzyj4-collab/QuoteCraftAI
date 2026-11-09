@@ -49,7 +49,11 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     hours+=h;earned+=h*rate;paid+=p;
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
     projects.push({sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
-      scope:items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional})),
+      // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати
+      scope:items.length?items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional}))
+        :[...s.labor.filter(l=>String(l.description||"").trim()&&!/^Agreed work \(per estimate\)$/i.test(String(l.description).trim())).map(l=>({name:String(l.description).replace(/^Change order #\d+:\s*/i,""),qty:1,unit:"each",note:"",optional:false})),
+          ...(s.changes||[]).filter(c=>c.status==="accepted").flatMap(c=>c.lines.filter(x=>String(x.description||"").trim()).map(x=>({name:String(x.description),qty:1,unit:"each",note:"",optional:false})))]
+          .filter((x,i,a)=>a.findIndex(y=>y.name===x.name)===i),
       notes:"", // умови для клієнта (оплата, що не входить) помічнику не показуємо
       materials:items.filter(i=>(Number(i.materialRate)||0)>0&&!i.optional).map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||"")})),
       days,hours:Math.round(h*100)/100,

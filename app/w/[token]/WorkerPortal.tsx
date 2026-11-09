@@ -123,7 +123,7 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
     <ShopList key={p.sid} lang={lang} authHeaders={{"x-worker-token":token}} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     {msg&&<div style={{...card,background:msg.startsWith("✓")?"#ecfdf3":"#fef3f2",color:msg.startsWith("✓")?"#067647":"#b42318"}}>{msg}</div>}
 
-    {p.scope.length>0&&<details style={card}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>
+    {p.scope.length>0&&<details style={card} open={p.scope.length<=6}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>
       <ol style={{paddingLeft:20}}>{p.scope.filter(s=>!s.optional).map((s,i)=><li key={i} style={{marginTop:6}}><b>{tr(s.name)}</b>{s.qty>1||s.unit!=="each"?` — ${s.qty} ${unitL(s.unit)}`:""}{s.note&&<div style={{fontSize:13,color:"#667085"}}>{tr(s.note)}</div>}</li>)}</ol>
       {p.scope.some(s=>s.optional)&&<p style={{fontSize:13,color:"#667085"}}>{L.opts}{p.scope.filter(s=>s.optional).map(s=>tr(s.name)).join("; ")}</p>}
     </details>}
