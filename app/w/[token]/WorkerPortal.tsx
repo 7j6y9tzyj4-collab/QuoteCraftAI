@@ -152,7 +152,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
       </div>
       {v.paid>0&&<small style={{opacity:.7}}>{L.paid}{money(v.paid)}</small>}
     </div>
-    {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828"}}>{x.client}</button>)}</div>}
+    {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}
     {p?<Project key={p.sid+lang} token={token} p={p} lang={lang}/>:<div style={card}>{L.none}</div>}
   </div>;
 }
