@@ -21,7 +21,8 @@ export default function ViewSettings({ui,onSave,isAdmin}:{ui:UiPrefs;onSave:(u:U
     <h2 style={{marginTop:20}}>🎨 Стиль</h2>
     <div style={{display:"flex",gap:6}}>
       <button onClick={()=>{if(ui.theme!=="classic"){onSave({...ui,theme:"classic"});setTimeout(()=>location.reload(),300)}}} style={pill(ui.theme!=="business")}>Класичний<small style={{display:"block",fontWeight:500,opacity:.8}}>яскравий, з емодзі</small></button>
-      <button onClick={()=>onSave({...ui,theme:"business"})} style={pill(ui.theme==="business")}>Бізнес<small style={{display:"block",fontWeight:500,opacity:.8}}>строгий, як Jobber</small></button>
+      <button onClick={()=>{onSave({...ui,theme:"business"});if(ui.theme==="apple")setTimeout(()=>location.reload(),300)}} style={pill(ui.theme==="business")}>Бізнес<small style={{display:"block",fontWeight:500,opacity:.8}}>строгий, як Jobber</small></button>
+      <button onClick={()=>onSave({...ui,theme:"apple"})} style={pill(ui.theme==="apple")}>Apple<small style={{display:"block",fontWeight:500,opacity:.8}}>простий, як iPhone</small></button>
     </div>
 
     <h2 style={{marginTop:20}}>🎨 Вигляд програми</h2>

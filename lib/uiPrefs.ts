@@ -8,7 +8,7 @@ import {supabase} from "./supabase";
 export type HomeBlock="hero"|"inbox"|"push"|"leads"|"awaiting"|"translator"|"due"|"metrics"|"recent";
 export type Tab="home"|"calc"|"saved"|"pay"|"clients"|"prices";
 export type Mode="simple"|"standard"|"full";
-export type Theme="classic"|"business";
+export type Theme="classic"|"business"|"apple";
 export type UiPrefs={mode:Mode;home:Record<HomeBlock,boolean>;tabs:Tab[];text:"normal"|"large";lang:"uk"|"en";onboarded?:boolean;theme:Theme};
 
 export const HOME_BLOCKS:{k:HomeBlock;label:string}[]=[
@@ -41,7 +41,7 @@ function clean(x:any):UiPrefs{
   let tabs=(Array.isArray(x?.tabs)?x.tabs:base.tabs).filter((t:any)=>TABS.some(T=>T.k===t)) as Tab[];
   if(!tabs.includes("prices"))tabs=[...tabs,"prices"]; // там налаштування — прибирати не можна
   if(!tabs.includes("home"))tabs=["home",...tabs];
-  return {mode:base.mode,home,tabs:[...new Set(tabs)],text:x?.text==="large"?"large":"normal",lang:x?.lang==="en"?"en":"uk",onboarded:!!x?.onboarded,theme:x?.theme==="business"?"business":"classic"};
+  return {mode:base.mode,home,tabs:[...new Set(tabs)],text:x?.text==="large"?"large":"normal",lang:x?.lang==="en"?"en":"uk",onboarded:!!x?.onboarded,theme:x?.theme==="business"?"business":x?.theme==="apple"?"apple":"classic"};
 }
 
 export function useUiPrefs(user:User|null){

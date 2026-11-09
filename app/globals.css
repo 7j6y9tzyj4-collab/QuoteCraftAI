@@ -114,3 +114,62 @@ body:has(.shell.app){overflow:hidden}
 .shell.app.biz nav .active{color:var(--brand)}
 .shell.app.biz nav .active::before{content:"";position:absolute;top:-6px;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--brand)}
 .shell.app.biz .badge{border-radius:6px;letter-spacing:.03em}
+
+/* ===== 🍏 Apple-стиль (⚙ → Стиль → Apple): системний шрифт, світло-сірий фон, білі картки, синій акцент ===== */
+.shell.app.apple{--bg:#f2f2f7;--card:#fff;--ink:#000;--muted:#8e8e93;--line:rgba(60,60,67,.12);--blue:#007aff;--brand:#007aff;--green:#34c759;--orange:#ff9500;
+  background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;font-feature-settings:"tnum" 1}
+.shell.app.apple header{background:rgba(249,249,249,.86);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);color:#000;border-bottom:.5px solid var(--line);padding:10px 16px}
+.shell.app.apple header small{display:none}
+.shell.app.apple header strong{font-size:17px;font-weight:600}
+.shell.app.apple main{padding:12px 16px 24px}
+.shell.app.apple .panel,.shell.app.apple .metrics article,.shell.app.apple .assistant,.shell.app.apple .estimate,.shell.app.apple .total{background:var(--card);border:none;border-radius:14px;box-shadow:none}
+.shell.app.apple h1{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.shell.app.apple h2{font-size:20px;font-weight:700;letter-spacing:-.015em}
+.shell.app.apple h3{font-size:16px;font-weight:600}
+.shell.app.apple .primary{background:var(--blue);color:#fff;border-radius:12px;font-weight:600}
+.shell.app.apple .secondary{background:rgba(118,118,128,.12);color:var(--blue);border:none;border-radius:12px;font-weight:600}
+.shell.app.apple .add{background:rgba(0,122,255,.1)!important;color:var(--blue)!important;border-radius:10px;font-weight:600}
+.shell.app.apple .hero{background:var(--card);color:#000;border-radius:16px}
+.shell.app.apple .hero p{color:#3c3c43}
+.shell.app.apple .eyebrow,.shell.app.apple .hero>span{color:var(--muted)}
+.shell.app.apple input,.shell.app.apple textarea,.shell.app.apple select{border-radius:10px;border:none;background:rgba(118,118,128,.12);font-family:inherit}
+.shell.app.apple input:focus,.shell.app.apple textarea:focus,.shell.app.apple select:focus{outline:2px solid rgba(0,122,255,.35);background:#fff}
+.shell.app.apple .screenbar button{border:none;background:none;color:var(--blue);font-weight:600}
+.shell.app.apple nav{background:rgba(249,249,249,.9);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--line);padding:6px 4px calc(4px + env(safe-area-inset-bottom))}
+.shell.app.apple nav button{color:#999;font-size:0;padding-top:4px;background:none}
+.shell.app.apple nav button svg{width:26px;height:26px;display:block;margin:0 auto 1px}
+.shell.app.apple nav span{font-size:10.5px;font-weight:500;letter-spacing:0}
+.shell.app.apple nav .active{color:var(--blue)}
+/* Головна */
+.apHome{display:grid;gap:0}
+.apHello{margin:8px 2px 14px}
+.apHello small{color:var(--muted);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+.apHello h1{margin:2px 0 0;font-size:32px!important;line-height:1.1}
+.apNew{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:16px;border:none;border-radius:16px;background:var(--blue);color:#fff;box-shadow:0 6px 18px rgba(0,122,255,.28)}
+.apNew b{display:block;font-size:19px;font-weight:700}
+.apNew small{display:block;font-size:14px;opacity:.85;margin-top:1px}
+.apNewIcon{flex:none;width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center}
+.apCard{background:var(--card);border-radius:14px;overflow:hidden}
+.apRow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;text-align:left;border:none;background:none;color:#000;border-radius:0}
+.apCard>.apRow+.apRow{border-top:.5px solid var(--line)}
+.apRow b{display:block;font-size:16px;font-weight:600}
+.apRow small{display:block;color:var(--muted);font-size:13px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.apRow>span:first-child{flex:1;min-width:0}
+.apNotice{margin-top:10px;background:#fff8e6}
+.apStats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.apStat{text-align:left;padding:14px;border:none;border-radius:14px;background:var(--card);color:#000;min-height:84px}
+.apStat small{display:block;color:var(--muted);font-size:13px;font-weight:500}
+.apStat b{display:block;font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.02em}
+.apStat em{display:block;font-style:normal;color:var(--muted);font-size:12px;margin-top:1px}
+.apGood{color:#248a3d}
+.apWarn{color:#c93400}
+.apGroup{margin-top:22px}
+.apGroup h2{margin:0 4px 8px;font-size:20px}
+.apGroupHead{display:flex;justify-content:space-between;align-items:baseline}
+.apGroupHead button{border:none;background:none;color:var(--blue);font-size:16px;font-weight:500;padding:0 4px}
+.apTag{flex:none;font-size:13px;font-weight:600;color:var(--blue);background:rgba(0,122,255,.1);padding:4px 9px;border-radius:999px}
+.apAmt{flex:none;text-align:right}
+.apAmt b{font-size:16px}
+.apBar{display:block;height:4px;border-radius:2px;background:rgba(118,118,128,.16);margin-top:7px;overflow:hidden;max-width:180px}
+.apBar>i{display:block;height:100%;background:var(--green);border-radius:2px}
+.apEmpty{padding:16px;color:var(--muted);font-size:15px}

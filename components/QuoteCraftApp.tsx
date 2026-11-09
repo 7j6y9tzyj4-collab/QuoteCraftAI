@@ -20,6 +20,7 @@ import AiUsage from "@/components/AiUsage";
 import FeedbackAdmin from "@/components/FeedbackAdmin";
 import LessonsPanel from "@/components/LessonsPanel";
 import NavIcon from "@/components/NavIcon";
+import AppleHome from "@/components/AppleHome";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
 import {useWorkerInbox,WorkerInboxBanner} from "@/components/WorkerInbox";
@@ -1842,11 +1843,16 @@ export default function QuoteCraftApp(){
    </div>;
  }
 
- const biz=ui.theme==="business";
- return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
-  <header><div><strong>{biz&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
+ const biz=ui.theme==="business";const apple=ui.theme==="apple";
+ const APPLE_TABS:{k:string;label:string;to:typeof screen}[]=[{k:"home",label:"Головна",to:"home"},{k:"pay",label:"Проєкти",to:"pay"},{k:"saved",label:"Естімейти",to:"saved"},{k:"clients",label:"Клієнти",to:"clients"},{k:"more",label:"Ще",to:"prices"}];
+ return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}${apple?" apple":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz||apple}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
+  <header><div><strong>{(biz||apple)&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
-   {screen==="home"&&<>
+   {screen==="home"&&apple&&<AppleHome user={user} statements={payStatements} inbox={inbox}
+      draftLabel={calcItems.length>0&&!calcSavedId?(calcClient||calcProject||"поточний розрахунок"):""}
+      onNew={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}
+      onContinue={()=>setScreen("calc")} onOpenProject={id=>{setPayOpenId(id);setScreen("pay")}} onGo={s=>setScreen(s)}/>}
+   {screen==="home"&&!apple&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
     {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/></>}
     {ui.home.push&&<><PushSetup user={user} compact/></>}
@@ -2083,6 +2089,7 @@ export default function QuoteCraftApp(){
 </div>}
 </section>}
   </main>
-  <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{biz?<NavIcon k={k}/>:t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>
+  {apple?<nav className="noPrint" style={{gridTemplateColumns:"repeat(5,1fr)"}}>{APPLE_TABS.map(t=><button key={t.k} className={screen===t.to?"active":""} onClick={()=>setScreen(t.to)} style={{position:"relative"}}><NavIcon k={t.k}/>{t.k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#ff3b30",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:700,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>)}</nav>:
+  <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{biz?<NavIcon k={k}/>:t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>}
  </div>
 }
