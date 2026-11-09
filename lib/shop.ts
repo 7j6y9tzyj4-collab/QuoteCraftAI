@@ -25,8 +25,9 @@ export async function shopAdd(user_id:string,sid:string,items:string[],by:string
   if(!items.length)return;
   const {error}=await supabaseAdmin.from("shop_items").insert(items.map(text=>({user_id,sid,text,by,kind})));if(error)throw error;
 }
-export async function shopToggle(user_id:string,id:string,done:boolean){
-  await supabaseAdmin.from("shop_items").update({done,done_at:done?new Date().toISOString():null}).eq("id",id).eq("user_id",user_id);
+// sid і kind обов'язкові: помічник може змінювати лише позиції свого проєкту
+export async function shopToggle(user_id:string,id:string,done:boolean,sid:string,kind:ShopKind){
+  await supabaseAdmin.from("shop_items").update({done,done_at:done?new Date().toISOString():null}).eq("id",id).eq("user_id",user_id).eq("sid",sid).eq("kind",kind);
 }
-export async function shopDel(user_id:string,id:string){await supabaseAdmin.from("shop_items").delete().eq("id",id).eq("user_id",user_id)}
+export async function shopDel(user_id:string,id:string,sid:string,kind:ShopKind){await supabaseAdmin.from("shop_items").delete().eq("id",id).eq("user_id",user_id).eq("sid",sid).eq("kind",kind)}
 export async function shopClearDone(user_id:string,sid:string,kind:ShopKind="shop"){await supabaseAdmin.from("shop_items").delete().eq("user_id",user_id).eq("sid",sid).eq("kind",kind).eq("done",true)}

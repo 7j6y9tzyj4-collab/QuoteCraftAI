@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from "next/server";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
-import {aiGuard,isAdmin} from "@/lib/aiGuard";
+import {aiGuard,isAdmin,userFromReq} from "@/lib/aiGuard";
 
 export const runtime="nodejs";
 
@@ -18,6 +18,7 @@ const INSTRUCTIONS=[
 // GET ?check=1 — перевірка, що OpenAI приймає налаштування (ключ не повертаємо)
 export async function GET(req:NextRequest){
   if(req.nextUrl.searchParams.get("check")!=="1")return NextResponse.json({error:"nope"},{status:400});
+  if(!isAdmin(await userFromReq(req)))return NextResponse.json({error:"admin only"},{status:403});
   const r=await mint("selftest",{});
   return NextResponse.json({ok:!!r.key,model:r.model,transcription:r.transcription,error:r.error});
 }

@@ -15,7 +15,7 @@ const L={
   en:{h:"🛒 Shopping list",ph:"What to buy? e.g. 2 bags thinset, grey grout, 3 sheets of drywall",add:"＋ Add",mic:"🎙 Speak",stop:"⏹ Done",rec:"🎙 Speak… tap Done when finished",tr:"Recognizing…",adding:"Adding…",
       empty:"The list is empty. Dictate or type what to buy.",clear:"Remove bought",short:"Recording too short.",nomic:"No microphone access.",bought:"bought"},
 };
-export default function ShopList({call,lang="uk",style,kind="shop",hideEmpty=false}:{call:(body:any)=>Promise<{items:Item[]}>;lang?:Lang;style?:React.CSSProperties;kind?:"shop"|"punch";hideEmpty?:boolean}){
+export default function ShopList({call,lang="uk",style,kind="shop",hideEmpty=false,authHeaders}:{call:(body:any)=>Promise<{items:Item[]}>;lang?:Lang;style?:React.CSSProperties;kind?:"shop"|"punch";hideEmpty?:boolean;authHeaders?:Record<string,string>}){
   const t=kind==="punch"?{...L[lang],...P[lang]}:L[lang];
   const [items,setItems]=useState<Item[]|null>(null);
   const [text,setText]=useState("");const [busy,setBusy]=useState("");const [msg,setMsg]=useState("");
@@ -39,7 +39,7 @@ export default function ShopList({call,lang="uk",style,kind="shop",hideEmpty=fal
           const blob=new Blob(chunks.current,{type:r.mimeType||"audio/mp4"});
           if(blob.size<800){setMsg(t.short);setBusy("");return}
           const f=new FormData();f.append("audio",blob,`shop.${(r.mimeType||"").includes("webm")?"webm":"mp4"}`);
-          const j=await fetch("/api/transcribe",{method:"POST",body:f}).then(x=>x.json());
+          const j=await fetch("/api/transcribe",{method:"POST",body:f,headers:authHeaders}).then(x=>x.json());
           const said=String(j?.text||"").trim();setBusy("");
           if(!said){setMsg(j?.error||t.short);return}
           await add(said);

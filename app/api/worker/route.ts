@@ -35,9 +35,9 @@ export async function POST(req:NextRequest){
         await shopAdd(u,sid,items,link.worker,kind);
         if(items.length)await notify(`${kind==="punch"?"✅ Доробки:":"🛒 Треба купити:"} ${items.slice(0,6).join(", ")}${items.length>6?` … (+${items.length-6})`:""}`);
       }
-      else if(b.action==="shop_toggle"){await shopToggle(u,String(b.id),!!b.done);
+      else if(b.action==="shop_toggle"){await shopToggle(u,String(b.id),!!b.done,sid,kind);
         if(kind==="punch"&&b.done&&b.text)await notify(`✅ Зробив доробку: ${String(b.text).slice(0,100)}`)}
-      else if(b.action==="shop_del")await shopDel(u,String(b.id));
+      else if(b.action==="shop_del")await shopDel(u,String(b.id),sid,kind);
       else if(b.action==="shop_clear")await shopClearDone(u,sid,kind);
       return NextResponse.json({items:await shopList(u,sid,kind)});
     }

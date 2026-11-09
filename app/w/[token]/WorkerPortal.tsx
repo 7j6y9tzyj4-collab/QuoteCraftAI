@@ -23,7 +23,7 @@ const T={
 };
 // переклад обсягу робіт / матеріалів на українську (кеш у браузері)
 const TRK="qc_w_tr_uk";
-function useUk(texts:string[],on:boolean){
+function useUk(texts:string[],on:boolean,token:string){
   const [map,setMap]=useState<Record<string,string>|null>(null);
   useEffect(()=>{let m={};try{m=JSON.parse(localStorage.getItem(TRK)||"{}")}catch{};setMap(m)},[]);
   const [busy,setBusy]=useState(false);
@@ -37,7 +37,7 @@ function useUk(texts:string[],on:boolean){
       const out:Record<string,string>={};
       for(let i=0;i<need.length;i+=30){
         const chunk=need.slice(i,i+30);
-        try{const r=await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texts:chunk,to:"uk"})});const j=await r.json();if(r.ok&&Array.isArray(j.texts))chunk.forEach((t,k)=>out[t]=j.texts[k])}catch{}
+        try{const r=await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json","x-worker-token":token},body:JSON.stringify({texts:chunk,to:"uk"})});const j=await r.json();if(r.ok&&Array.isArray(j.texts))chunk.forEach((t,k)=>out[t]=j.texts[k])}catch{}
       }
       if(!alive)return;
       setMap(m=>{const next={...(m||{}),...out};try{localStorage.setItem(TRK,JSON.stringify(next))}catch{};return next});setBusy(false);
@@ -56,7 +56,7 @@ async function post(body:object){
 
 function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
   const L=T[lang];const fmt=(d:string)=>fmtL(d,L.loc);const unitL=(u:string)=>L.units[u]||u;
-  const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk");
+  const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk",token);
   const router=useRouter();
   const [date,setDate]=useState(today());
   const [hours,setHours]=useState<number|"">("");
@@ -119,8 +119,8 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
     </div>
-    <ShopList key={"p"+p.sid} kind="punch" hideEmpty lang={lang} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
-    <ShopList key={p.sid} lang={lang} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
+    <ShopList key={"p"+p.sid} kind="punch" hideEmpty lang={lang} authHeaders={{"x-worker-token":token}} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
+    <ShopList key={p.sid} lang={lang} authHeaders={{"x-worker-token":token}} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     {msg&&<div style={{...card,background:msg.startsWith("✓")?"#ecfdf3":"#fef3f2",color:msg.startsWith("✓")?"#067647":"#b42318"}}>{msg}</div>}
 
     {p.scope.length>0&&<details style={card}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>

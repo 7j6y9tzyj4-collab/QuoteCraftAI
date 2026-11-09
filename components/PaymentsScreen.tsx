@@ -63,6 +63,7 @@ function ReceiptThumb({r}:{r:Receipt}){
 export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened}:{user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
+ const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
  // ▸/▾ згортання довгих блоків у проєкті (запам'ятовується)
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
@@ -109,7 +110,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        const cloud=data?.statements as Statement[]|undefined;
        if(Array.isArray(cloud)&&cloud.length){
          const fixed=normalizeCrew(cloud);
-         if(fixed.changed){listRef.current=fixed.list;supabase.from("user_statements").upsert({user_id:user.id,statements:fixed.list,updated_at:new Date().toISOString()},{onConflict:"user_id"}).then(()=>{})}
+         setBase(cloud);
+         if(fixed.changed){listRef.current=fixed.list;void saveCloud(fixed.list)}
          setList(fixed.list);try{localStorage.setItem(SK,JSON.stringify(fixed.list))}catch{}
        }
        setReady(true);
@@ -121,11 +123,46 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    listRef.current=next;
    setList(next);
    try{localStorage.setItem(SK,JSON.stringify(next))}catch{}
-   if(user&&cloudOk.current){
-     supabase.from("user_statements").upsert({user_id:user.id,statements:next,updated_at:new Date().toISOString()},{onConflict:"user_id"})
-       .then(({error}:{error:any})=>{if(error)setMsg("Не вдалося зберегти в акаунт: "+error.message)});
-   }
+   if(user&&cloudOk.current)void saveCloud(next);
  }
+ // ☁️ Зберігаємо в акаунт ТІЛЬКИ змінені проєкти (save_statements) — щоб телефон і комп'ютер не стирали зміни один одного
+ function setBase(arr:Statement[]){const m=new Map<string,string>();for(const x of arr)m.set(x.id,JSON.stringify(x));baseRef.current=m}
+ async function saveCloud(next:Statement[]){
+   if(!user)return;
+   const base=baseRef.current;
+   const changed=next.filter(x=>base.get(x.id)!==JSON.stringify(x));
+   const deleted=[...base.keys()].filter(id=>!next.some(x=>x.id===id));
+   if(!changed.length&&!deleted.length)return;
+   savingRef.current++;
+   try{
+     const {error}=await supabase.rpc("save_statements",{p_changed:changed,p_deleted:deleted});
+     if(error){
+       // запасний варіант (функції ще нема) — як раніше, весь список
+       const {error:e2}=await supabase.from("user_statements").upsert({user_id:user.id,statements:next,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+       if(e2){setMsg("Не вдалося зберегти в акаунт: "+e2.message);return}
+     }
+     for(const x of changed)base.set(x.id,JSON.stringify(x));for(const id of deleted)base.delete(id);
+   }finally{savingRef.current--}
+ }
+ // повернувся в програму (з іншого пристрою могли щось додати) — підтягуємо свіже з акаунта
+ useEffect(()=>{
+   if(!user)return;
+   const onVis=()=>{
+     if(document.visibilityState!=="visible"||savingRef.current>0||!cloudOk.current)return;
+     supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{
+       const cloud=data?.statements as Statement[]|undefined;if(!Array.isArray(cloud)||savingRef.current>0)return;
+       // локальні ще не збережені зміни лишаємо, решту беремо з акаунта
+       const base=baseRef.current;const local=listRef.current;
+       const dirty=new Map(local.filter(x=>base.get(x.id)!==JSON.stringify(x)).map(x=>[x.id,x]));
+       const merged=[...cloud.map(c=>dirty.get(c.id)||c),...local.filter(x=>dirty.has(x.id)&&!cloud.some(c=>c.id===x.id))];
+       setBase(cloud);listRef.current=merged;setList(merged);try{localStorage.setItem(SK,JSON.stringify(merged))}catch{}
+       if(dirty.size)void saveCloud(merged);
+     });
+   };
+   document.addEventListener("visibilitychange",onVis);
+   return()=>document.removeEventListener("visibilitychange",onVis);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[user]);
  // ---- 🎤 голосом: години, оплати, чеки без фото ----
  function applyVoice(acts:VoiceAction[]):string{
    const us=(d:string)=>{const m=String(d||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[2]}/${m[3]}/${m[1]}`:today()};
