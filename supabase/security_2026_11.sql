@@ -26,3 +26,12 @@ begin
   insert into user_statements(user_id,statements,updated_at) values(uid,cur,now()) on conflict (user_id) do update set statements=excluded.statements, updated_at=now();
 end $f$;
 grant execute on function public.save_statements(jsonb,text[]) to authenticated;
+-- помічник позначає, чим платив за свій чек (викликає /api/worker з service role)
+create or replace function public.set_receipt_payer(p_user uuid,p_sid text,p_rid text,p_paid text) returns void language plpgsql security definer set search_path=public as $f$
+begin
+  update user_statements set statements=(
+    select jsonb_agg(case when s->>'id'=p_sid then jsonb_set(s,'{receipts}',(select coalesce(jsonb_agg(case when r->>'id'=p_rid then r||jsonb_build_object('paidBy',p_paid) else r end order by ro),'[]'::jsonb) from jsonb_array_elements(s->'receipts') with ordinality x(r,ro))) else s end order by so)
+    from jsonb_array_elements(statements) with ordinality y(s,so)), updated_at=now()
+  where user_id=p_user;
+end $f$;
+revoke all on function public.set_receipt_payer(uuid,text,text,text) from public, anon, authenticated;

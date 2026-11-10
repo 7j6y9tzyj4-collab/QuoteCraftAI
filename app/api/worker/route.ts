@@ -90,6 +90,23 @@ export async function POST(req:NextRequest){
       await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""}${payload.paidBy===link.worker?" · 💳 платив своєю карткою":payload.paidBy==="biz"?" · 💼 бізнес-картка":""}${b.dupOk?" (каже, що це не дубль)":""}`);
       return NextResponse.json({ok:true,receipt:payload});
     }
+    // помічник позначає, чим платив за свій чек: своєю карткою (повернути) чи бізнес-карткою
+    if(b.action==="receipt_payer"){
+      const rid=String(b.id||"");const pb=b.paidBy==="biz"?"biz":link.worker;
+      const {data:pend}=await supabaseAdmin.from("worker_inbox").select("id,payload").eq("token",link.token).eq("sid",sid).eq("kind","receipt").is("applied_at",null);
+      const row=((pend||[]) as any[]).find(i=>String(i.payload?.id)===rid);
+      if(row){await supabaseAdmin.from("worker_inbox").update({payload:{...row.payload,paidBy:pb}}).eq("id",row.id);return NextResponse.json({ok:true})}
+      const {data:st}=await supabaseAdmin.from("user_statements").select("statements").eq("user_id",link.user_id).maybeSingle();
+      const list=(((st as any)?.statements)||[]) as Statement[];
+      const si=list.findIndex(x=>x.id===sid);const ri=si<0?-1:(list[si].receipts||[]).findIndex(r=>r.id===rid);
+      if(ri<0)return NextResponse.json({error:"Чек не знайдено."},{status:404});
+      const rc=list[si].receipts[ri];
+      if(String(rc.by||"").trim().toLowerCase()!==link.worker.trim().toLowerCase())return NextResponse.json({error:"Можна змінювати тільки свої чеки."},{status:403});
+      const {error}=await supabaseAdmin.rpc("set_receipt_payer",{p_user:link.user_id,p_sid:sid,p_rid:rid,p_paid:pb});
+      if(error)throw error;
+      if(pb!=="biz")await notify(`💳 Позначив чек ${rc.store||""} $${(Number(rc.amount)||0).toFixed(2)} як оплачений своєю карткою — повернути`);
+      return NextResponse.json({ok:true});
+    }
     if(b.action==="receipt_cancel"){
       const path=String(b.photoPath||"");
       if(path.startsWith(`${link.user_id}/${sid}/`)&&!path.includes("/photos/"))await supabaseAdmin.storage.from(BUCKET).remove([path]);
