@@ -819,16 +819,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
              <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
              {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
              <select value={catOf(r)} onChange={e=>setLine<Receipt>("receipts",r.id,{category:e.target.value})}>{OWN_CATS.map(c=><option key={c}>{c}</option>)}</select>
-             {!cur.own&&(()=>{const helpers=(cur.crew||[]).filter(c=>!c.self&&c.name);const names=[...new Set([...helpers.map(c=>c.name),...(r.by?[r.by]:[]),...(r.paidBy&&r.paidBy!=="biz"&&r.paidBy!=="other"?[r.paidBy]:[])])];
-           const v=r.paidBy===undefined?(r.card&&!cardList().includes(r.card)?"":"biz"):r.paidBy;
-           return <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:v===""?"#b42318":"#475467"}}>{v===""?"⚠ Хто платив?":"Оплата:"}
-             <select value={v} onChange={e=>setLine<Receipt>("receipts",r.id,{paidBy:e.target.value})} style={{flex:1,padding:"6px 8px",fontSize:13}}>
-               {v===""&&<option value="">— вибери{r.card?` (картка ****${r.card})`:""} —</option>}
-               <option value="biz">💼 Бізнес-картка{r.card&&cardList().includes(r.card)?` ****${r.card}`:""}</option>
-               {names.map(n=><option key={n} value={n}>💳 {n} — своя картка, повернути{r.card&&!cardList().includes(r.card)?` (****${r.card})`:""}</option>)}
-               <option value="other">💵 Готівка / інше</option>
-             </select></label>})()}
-         {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
+             {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
              <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Це для клієнта…</option>{list.filter(s=>!s.own).map(s=><option key={s.id} value={s.id}>{s.client}{s.project?` — ${s.project}`:""}</option>)}</select>
            </div>
            {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}
@@ -964,6 +955,15 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
          {r.by?<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}{isFresh(r)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</small>:r.src!=="mail"&&<small style={{color:"#98a2b3"}}>✍️ додав ти</small>}
+         {!cur.own&&(()=>{const helpers=(cur.crew||[]).filter(c=>!c.self&&c.name);const names=[...new Set([...helpers.map(c=>c.name),...(r.by?[r.by]:[]),...(r.paidBy&&r.paidBy!=="biz"&&r.paidBy!=="other"?[r.paidBy]:[])])];
+           const v=r.paidBy===undefined?(r.card&&!cardList().includes(r.card)?"":"biz"):r.paidBy;
+           return <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:v===""?"#b42318":"#475467"}}>{v===""?"⚠ Хто платив?":"Оплата:"}
+             <select value={v} onChange={e=>setLine<Receipt>("receipts",r.id,{paidBy:e.target.value})} style={{flex:1,padding:"6px 8px",fontSize:13}}>
+               {v===""&&<option value="">— вибери{r.card?` (картка ****${r.card})`:""} —</option>}
+               <option value="biz">💼 Бізнес-картка{r.card&&cardList().includes(r.card)?` ****${r.card}`:""}</option>
+               {names.map(n=><option key={n} value={n}>💳 {n} — своя картка, повернути{r.card&&!cardList().includes(r.card)?` (****${r.card})`:""}</option>)}
+               <option value="other">💵 Готівка / інше</option>
+             </select></label>})()}
          {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
          <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Перенести в інший проєкт…</option>{list.filter(s=>s.id!==cur.id).map(s=><option key={s.id} value={s.id}>{s.own?"🧰 Мої витрати":`${s.client}${s.project?` — ${s.project}`:""}`}</option>)}{!list.some(s=>s.own)&&<option value={OWN_ID}>🧰 Мої витрати</option>}</select>
        </div>
