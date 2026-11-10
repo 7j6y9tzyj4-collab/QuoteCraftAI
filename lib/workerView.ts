@@ -8,6 +8,7 @@ export type WorkerLink={token:string;user_id:string;worker:string;rate:number;pr
 export type WorkerDay={date:string;hours:number;note:string;pending:boolean};
 export type WorkerProject={sid:string;client:string;project:string;address:string;phone:string;
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
+  myReceipts:{date:string;store:string;amount:number;pending:boolean}[];
   materials:{name:string;qty:number;unit:string;note:string}[];
   days:WorkerDay[];hours:number;receipts:number;photos:number};
 export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;owed:number};
@@ -57,6 +58,10 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
       notes:"", // умови для клієнта (оплата, що не входить) помічнику не показуємо
       materials:items.filter(i=>(Number(i.materialRate)||0)>0&&!i.optional).map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||"")})),
       days,hours:Math.round(h*100)/100,
+      // чеки, які додав саме цей помічник (уже прийняті + ще не переглянуті власником)
+      myReceipts:[...s.receipts.filter(r=>n(r.by||"")===n(link.worker)).map(r=>({date:normDate(r.date),store:String(r.store||""),amount:Number(r.amount)||0,pending:false})),
+        ...((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").map(i=>({date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),store:String(i.payload?.store||""),amount:Number(i.payload?.amount)||0,pending:true}))]
+        .sort((a,b)=>b.date.localeCompare(a.date)),
       receipts:s.receipts.length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").length,
       photos:(s.photos||[]).length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="photo").length});
   }

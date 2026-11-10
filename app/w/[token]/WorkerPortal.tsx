@@ -138,6 +138,10 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
       <input ref={rec} type="file" accept="image/*" capture="environment" hidden onChange={e=>upload(e.target.files,"receipt")}/>
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
+      {p.myReceipts.length>0&&<details style={{marginTop:8}}><summary style={{fontWeight:700,fontSize:15}}>{lang==="en"?`My receipts (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`:`Мої чеки (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`}</summary>
+        {p.myReceipts.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:"1px solid #f2f4f7",fontSize:15}}>
+          <span>{fmt(r.date)} · {r.store||(lang==="en"?"receipt":"чек")}{r.pending&&<small style={{color:"#b54708"}}> · {lang==="en"?"not reviewed yet":"ще не переглянуто"}</small>}</span><b>{money(r.amount)}</b></div>)}
+      </details>}
       {draft&&<div style={{marginTop:10,padding:12,borderRadius:14,border:dup?"2px solid #f79009":"1px solid #d0d5dd",background:dup?"#fffaeb":"#fff"}}>
         <b style={{display:"block",marginBottom:6}}>{lang==="en"?"Check the receipt":"Перевір чек"}</b>
         {dup&&<p style={{margin:"0 0 8px",color:"#b54708",fontSize:14,fontWeight:700}}>⚠ {lang==="en"?"This receipt is already in the app:":"Цей чек уже є в програмі:"} <span style={{fontWeight:500}}>{dup}</span><br/>{lang==="en"?"Add it anyway?":"Додати все одно?"}</p>}
