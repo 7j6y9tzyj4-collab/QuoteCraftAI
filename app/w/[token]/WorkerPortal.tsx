@@ -69,15 +69,31 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
     try{await post({token,sid:p.sid,action:"hours",date,hours,note});setMsg(L.saved(Number(hours),fmt(date)));setHours("");setNote("");router.refresh()}
     catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}
   }
+  // 🧾 чек: спочатку показуємо, що прочитала програма (і чи такий чек уже є), а додаємо тільки після «Додати»
+  const [draft,setDraft]=useState<any|null>(null);const [dup,setDup]=useState("");
+  async function scanReceipt(files:FileList|null){
+    const f=files?.[0];if(!f)return;setBusy("receipt");setMsg("");
+    try{const j=await prepareJobPhoto(f);const d=await post({token,sid:p.sid,action:"receipt_scan",photo:j.dataUrl});setDraft(d.draft);setDup(d.dup||"")}
+    catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("");if(rec.current)rec.current.value=""}
+  }
+  async function confirmReceipt(){
+    if(!draft)return;setBusy("rc");
+    try{await post({token,sid:p.sid,action:"receipt_confirm",draft,dupOk:!!dup});setMsg(L.sent+`${draft.store||"чек"} ${money(Number(draft.amount)||0)}`);setDraft(null);setDup("");router.refresh()}
+    catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("")}
+  }
+  async function cancelReceipt(){
+    if(!draft)return;const pth=draft.photoPath;setDraft(null);setDup("");setMsg(lang==="en"?"Receipt not added.":"Чек не додано.");
+    try{await post({token,sid:p.sid,action:"receipt_cancel",photoPath:pth})}catch{}
+  }
   async function upload(files:FileList|null,kind:"receipt"|"photo"){
+    if(kind==="receipt"){await scanReceipt(files);return}
     if(!files?.length)return;setBusy(kind);setMsg("");
     const out:string[]=[];
     try{
       for(const f of Array.from(files)){
         const j=await prepareJobPhoto(f);
         const d=await post({token,sid:p.sid,action:kind,photo:j.dataUrl});
-        if(kind==="receipt")out.push(d.receipt?.amount?`${d.receipt.store||"receipt"} ${money(d.receipt.amount)}`:L.recNo);
-        else out.push(L.ph);
+        void d;out.push(L.ph);
       }
       setMsg(L.sent+out.join(", "));router.refresh();
     }catch(e){setMsg(e instanceof Error?e.message:String(e))}finally{setBusy("");if(rec.current)rec.current.value="";if(ph.current)ph.current.value=""}
@@ -116,12 +132,26 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
     <div style={card}>
       <h3 style={{marginTop:0}}>{L.media}</h3>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        <button disabled={!!busy} onClick={()=>rec.current?.click()} style={{...big,background:"#2563eb",color:"#fff"}}>{busy==="receipt"?L.reading:L.rec}</button>
+        <button disabled={!!busy||!!draft} onClick={()=>rec.current?.click()} style={{...big,background:"#2563eb",color:"#fff"}}>{busy==="receipt"?L.reading:L.rec}</button>
         <button disabled={!!busy} onClick={()=>ph.current?.click()} style={{...big,background:"#7a5af8",color:"#fff"}}>{busy==="photo"?L.sending:L.photo}</button>
       </div>
       <input ref={rec} type="file" accept="image/*" capture="environment" hidden onChange={e=>upload(e.target.files,"receipt")}/>
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
+      {draft&&<div style={{marginTop:10,padding:12,borderRadius:14,border:dup?"2px solid #f79009":"1px solid #d0d5dd",background:dup?"#fffaeb":"#fff"}}>
+        <b style={{display:"block",marginBottom:6}}>{lang==="en"?"Check the receipt":"Перевір чек"}</b>
+        {dup&&<p style={{margin:"0 0 8px",color:"#b54708",fontSize:14,fontWeight:700}}>⚠ {lang==="en"?"This receipt is already in the app:":"Цей чек уже є в програмі:"} <span style={{fontWeight:500}}>{dup}</span><br/>{lang==="en"?"Add it anyway?":"Додати все одно?"}</p>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <label style={{fontSize:13,color:"#667085"}}>{lang==="en"?"Store":"Магазин"}<input value={draft.store||""} onChange={e=>setDraft({...draft,store:e.target.value})} style={{display:"block",width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,boxSizing:"border-box"}}/></label>
+          <label style={{fontSize:13,color:"#667085"}}>{lang==="en"?"Total, $":"Сума, $"}<input type="number" step="0.01" value={draft.amount||""} onChange={e=>setDraft({...draft,amount:Number(e.target.value)||0})} style={{display:"block",width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,boxSizing:"border-box"}}/></label>
+        </div>
+        <small style={{display:"block",color:"#475467",marginTop:6}}>{draft.date}{draft.items?` · ${String(draft.items).slice(0,140)}`:""}</small>
+        {!draft.amount&&<small style={{display:"block",color:"#b42318",marginTop:4}}>{lang==="en"?"Total not read — type it in.":"Суму не прочитало — впиши вручну."}</small>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+          <button disabled={busy==="rc"} onClick={cancelReceipt} style={{...big,background:"#eef2f7",color:"#344054"}}>{lang==="en"?"✕ Cancel":"✕ Скасувати"}</button>
+          <button disabled={busy==="rc"} onClick={confirmReceipt} style={{...big,background:dup?"#f79009":"#079455",color:"#fff"}}>{busy==="rc"?"…":dup?(lang==="en"?"Add anyway":"Все одно додати"):(lang==="en"?"✓ Add":"✓ Додати")}</button>
+        </div>
+      </div>}
     </div>
     <ShopList key={"p"+p.sid} kind="punch" hideEmpty lang={lang} authHeaders={{"x-worker-token":token}} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>
     <ShopList key={p.sid} lang={lang} authHeaders={{"x-worker-token":token}} style={card} call={async(x:any)=>{const a=x.action==="list"?"shop_list":"shop_"+x.action;return post({...x,token,sid:p.sid,action:a})}}/>

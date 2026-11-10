@@ -4,6 +4,8 @@ import {loadLink} from "@/lib/workerView";
 import {parseReceiptAI} from "@/lib/parseReceiptAI";
 import {sendPush,statementTitle} from "@/lib/push";
 import {aiGuard} from "@/lib/aiGuard";
+import {findDuplicate} from "@/lib/receiptBatch";
+import type {Statement} from "@/lib/statement";
 import {shopKind,splitShop,shopList,shopAdd,shopToggle,shopDel,shopClearDone} from "@/lib/shop";
 
 export const runtime="nodejs";
@@ -48,6 +50,44 @@ export async function POST(req:NextRequest){
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"hours",payload:{date,hours,note:String(b.note||"").slice(0,200)}});
       if(error)throw error;
       await notify(`⏱ Записав ${hours} год за ${date.slice(5).replace("-","/")}${b.note?` — ${String(b.note).slice(0,80)}`:""}`);
+      return NextResponse.json({ok:true});
+    }
+    // 🧾 Чек у 2 кроки: receipt_scan — фото + AI + перевірка дубліката (нічого ще не додано);
+    // receipt_confirm — помічник перевірив суму й натиснув «Додати»; receipt_cancel — прибрати фото.
+    if(b.action==="receipt_scan"){
+      const photo=String(b.photo||"");
+      if(!okPhoto(photo))return NextResponse.json({error:"Фото не підходить (JPEG/PNG до ~0.8 МБ)."},{status:400});
+      const path=`${link.user_id}/${sid}/${id}.jpg`;
+      const up=await supabaseAdmin.storage.from(BUCKET).upload(path,toBuf(photo),{contentType:"image/jpeg",upsert:true});
+      if(up.error)throw up.error;
+      let r={date:"",store:"",items:"",total:0,receipt_no:"",confidence:0};
+      try{if(process.env.OPENAI_API_KEY&&(await aiGuard(req,"worker-receipt",0.008,link.user_id)).ok)r=await parseReceiptAI(photo)}catch{/* без суми — впише вручну */}
+      const draft={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence};
+      // дублікати: у всіх проєктах власника + чеки, що вже чекають у вхідних
+      let dup="";
+      if(draft.amount){
+        const [{data:st},{data:pend}]=await Promise.all([
+          supabaseAdmin.from("user_statements").select("statements").eq("user_id",link.user_id).maybeSingle(),
+          supabaseAdmin.from("worker_inbox").select("sid,payload").eq("user_id",link.user_id).eq("kind","receipt").is("applied_at",null),
+        ]);
+        for(const s0 of ((st as any)?.statements||[]) as Statement[]){const m=findDuplicate(draft,s0.receipts||[]);if(m){dup=`${m.date} · ${m.store||"чек"} · $${(Number(m.amount)||0).toFixed(2)} — ${s0.own?"«Мої витрати»":`проєкт «${s0.client||""}${s0.project?` — ${s0.project}`:""}»`}`;break}}
+        if(!dup)for(const i of (pend||[]) as any[]){if(findDuplicate(draft,[i.payload])){dup=`${i.payload?.date} · ${i.payload?.store||"чек"} · $${(Number(i.payload?.amount)||0).toFixed(2)} — вже надісланий, чекає перевірки`;break}}
+      }
+      return NextResponse.json({ok:true,draft,dup});
+    }
+    if(b.action==="receipt_confirm"){
+      const d=b.draft||{};
+      const path=String(d.photoPath||"");
+      if(!path.startsWith(`${link.user_id}/${sid}/`)||!/^[0-9a-f-]{36}$/i.test(String(d.id||"")))return NextResponse.json({error:"Чек не знайдено, сфотографуй ще раз."},{status:400});
+      const payload={id:String(d.id),date:String(d.date||isoToday()).slice(0,20),store:String(d.store||"").slice(0,80),items:String(d.items||"").slice(0,500),amount:Math.round((Number(d.amount)||0)*100)/100,receiptNo:String(d.receiptNo||"").slice(0,40),photoPath:path,confidence:Number(d.confidence)||0};
+      const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"receipt",payload});
+      if(error)throw error;
+      await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""}${b.dupOk?" (каже, що це не дубль)":""}`);
+      return NextResponse.json({ok:true,receipt:payload});
+    }
+    if(b.action==="receipt_cancel"){
+      const path=String(b.photoPath||"");
+      if(path.startsWith(`${link.user_id}/${sid}/`)&&!path.includes("/photos/"))await supabaseAdmin.storage.from(BUCKET).remove([path]);
       return NextResponse.json({ok:true});
     }
     if(b.action==="receipt"||b.action==="photo"){
