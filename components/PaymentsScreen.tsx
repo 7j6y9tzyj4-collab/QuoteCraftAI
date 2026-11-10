@@ -389,6 +389,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(!res.ok)throw new Error(d?.error||"AI error");
        const hash=await imageHash(p.dataUrl).catch(()=>"");
        const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash};
+       // 0) такий самий чек уже є в ІНШОМУ проєкті (будь-якого клієнта) → питаємо, щоб не задвоїти витрати
+       const other=listRef.current.filter(x=>x.id!==target.id).map(x=>({x,r:findDuplicate(info,x.receipts||[])})).find(o=>o.r);
+       if(other&&!confirm(`Цей чек уже є в іншому проєкті:\n${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)}\nу «${other.x.client||"Без імені"}${other.x.project?` — ${other.x.project}`:""}».\n\nДодати його ще й сюди? (Скасувати — не додавати)`)){
+         skipped.push(`${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)} — уже в «${other.x.client||"Без імені"}»`);continue}
        // 1) такий чек з фото вже є → не додаємо
        const dup=findDuplicate(info,receipts);
        if(dup&&hasPhoto(dup)){skipped.push(`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`);continue}
