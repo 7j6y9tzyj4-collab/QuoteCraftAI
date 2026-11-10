@@ -4,6 +4,8 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** шлях у Supabase Storage (bucket receipts) */ photoPath?:string;
   /** запасний варіант без акаунта: маленька копія фото */ photoData?:string;
   /** номер чека (Receipt #, Order #) — для пошуку дублікатів */ receiptNo?:string;
+  /** останні 4 цифри картки з чека */ card?:string;
+  /** хто платив: "biz" — бізнес-картка власника; ім'я помічника — його власні гроші (треба повернути); "other" — готівка/інше; порожньо — невідомо */ paidBy?:string;
   /** відбиток зображення — той самий файл двічі не додаємо */ hash?:string;
   /** для «Мої витрати»: Інструменти / Матеріали / Витратні / Інше */ category?:string;
   /** хто додав (помічник за посиланням) */ by?:string;
@@ -106,14 +108,15 @@ export function statementStatus(s:Statement,upcomingStart?:string):StatusKey{
 }
 
 // ---- команда: години, нараховано, виплачено, винен ----
-export type CrewRow={id:string;name:string;rate:number;self:boolean;hours:number;accrued:number;paid:number;owed:number};
+export type CrewRow={id:string;name:string;rate:number;self:boolean;hours:number;accrued:number;paid:number;owed:number;/** чеки, оплачені його карткою — повернути */reimb:number};
 export function crewSummary(s:Statement){
   const crew=s.crew||[];
   const rows:CrewRow[]=crew.map(c=>{
     const hours=r2((s.workLog||[]).filter(w=>w.workerId===c.id).reduce((a,w)=>a+(Number(w.hours)||0),0));
     const accrued=r2(hours*(Number(c.rate)||0));
     const paid=r2((s.payouts||[]).filter(p=>p.workerId===c.id).reduce((a,p)=>a+(Number(p.amount)||0),0));
-    return {id:c.id,name:c.name,rate:Number(c.rate)||0,self:!!c.self,hours,accrued,paid,owed:r2(accrued-paid)};
+    const reimb=c.self?0:r2(s.receipts.filter(r=>r.paidBy&&r.paidBy.trim().toLowerCase()===String(c.name||"").trim().toLowerCase()).reduce((a,r)=>a+(Number(r.amount)||0),0));
+    return {id:c.id,name:c.name,rate:Number(c.rate)||0,self:!!c.self,hours,accrued,paid,reimb,owed:r2(accrued+reimb-paid)};
   });
   const sum=(k:"hours"|"accrued"|"paid"|"owed")=>r2(rows.reduce((a,r)=>a+r[k],0));
   const helpers=rows.filter(r=>!r.self);
@@ -148,4 +151,12 @@ export function profitOf(s:Statement){
   const base=labor+t.matKeep;const margin=base>0?Math.round(profit/base*100):null;
   const helperHours=r2(crew.rows.filter(r=>!r.self).reduce((a,r)=>a+r.hours,0));
   return {labor,cost,profit,margin,helperHours,matKeep:t.matKeep,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
+}
+
+/** хто платив за чек: бізнес-картка власника → "biz"; інша картка й чек додав помічник → помічник; інша картка, додав власник → "" (уточнити) */
+export function payerFor(card:string|undefined,by:string|undefined,biz:string[]):string|undefined{
+  const c=String(card||"").trim();
+  if(c&&biz.includes(c))return "biz";
+  if(by)return c?by:"";       // помічник додав, картка не бізнесова → платив він; картка не прочиталась → уточнити
+  return c?"":undefined;      // власник додав чек з чужою карткою — уточнити; без картки — як раніше (вважаємо бізнес)
 }

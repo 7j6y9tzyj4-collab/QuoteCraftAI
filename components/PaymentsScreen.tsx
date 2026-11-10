@@ -20,6 +20,7 @@ import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
 import JobsSchedule from "@/components/JobsSchedule";
 import WorkerLinks from "@/components/WorkerLinks";
 import ShopList from "@/components/ShopList";
+import {cardList} from "@/lib/company";
 import FoldTitle from "@/components/FoldTitle";
 import {useFold} from "@/lib/useFold";
 import ProfitCard from "@/components/ProfitCard";
@@ -31,7 +32,7 @@ import YearReport from "@/components/YearReport";
 import MonthReceiptsButton from "@/components/MonthReceiptsButton";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
-import {isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {payerFor,isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -204,7 +205,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const s=lst.find(x=>x.id===sid);if(!s)return null;
    const p=row.payload||{};
    if(lst.some(x=>findDuplicate({date:p.date,store:p.store,amount:Number(p.amount)||0,receiptNo:p.receiptNo},x.receipts||[])))return lst;
-   const rc:Receipt={id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath||undefined,receiptNo:p.receiptNo||undefined,src:"mail",why:why??(row.reason||undefined),...(s.own?{category:guessOwnCategory(p.items||"")}:{})};
+   const rc:Receipt={id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath||undefined,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:s.own?undefined:payerFor(p.card,undefined,cardList()),src:"mail",why:why??(row.reason||undefined),...(s.own?{category:guessOwnCategory(p.items||"")}:{})};
    return lst.map(x=>x.id===sid?{...x,receipts:[...x.receipts,rc].sort(byDate),updatedAt:new Date().toISOString()}:x);
  }
  async function pullMail(){
@@ -257,7 +258,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(!w){w={id:uid(),name:who,rate:rateOf(it.token)};crew=[...crew,w]}
        s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined,by:who,at:it.created_at}]};sum[k].h+=Number(p.hours)||0;
      }else if(it.kind==="receipt"){
-       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
+       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:p.paidBy||payerFor(p.card,who,cardList()),by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
      }else if(it.kind==="photo"){
        if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||uid(),path:p.path,date:us(p.date),by:who,note:p.note||undefined,at:it.created_at}]};sum[k].p++;
      }
@@ -388,7 +389,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        const d=await res.json();
        if(!res.ok)throw new Error(d?.error||"AI error");
        const hash=await imageHash(p.dataUrl).catch(()=>"");
-       const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash};
+       const card=String(d.card_last4||"").replace(/\D/g,"").slice(-4);
+       const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash,card:card||undefined,paidBy:target.own?undefined:payerFor(card,undefined,cardList())};
        // 0) такий самий чек уже є в ІНШОМУ проєкті (будь-якого клієнта) → питаємо, щоб не задвоїти витрати
        const other=listRef.current.filter(x=>x.id!==target.id).map(x=>({x,r:findDuplicate(info,x.receipts||[])})).find(o=>o.r);
        if(other&&!confirm(`Цей чек уже є в іншому проєкті:\n${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)}\nу «${other.x.client||"Без імені"}${other.x.project?` — ${other.x.project}`:""}».\n\nДодати його ще й сюди? (Скасувати — не додавати)`)){
@@ -556,7 +558,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        finally{URL.revokeObjectURL(orig)}
      }
      patchDraft(key,{status:"ok",date:j.date||today(),store:j.store||"",items:j.items||"",amount:Number(j.total)||0,
-       receiptNo:String(j.receipt_no||""),confidence:typeof j.confidence==="number"?j.confidence:1,hash:await imageHash(d.dataUrl),scan,include:(Number(j.total)||0)!==0});
+       receiptNo:String(j.receipt_no||""),card:String(j.card_last4||"").replace(/\D/g,"").slice(-4),confidence:typeof j.confidence==="number"?j.confidence:1,hash:await imageHash(d.dataUrl),scan,include:(Number(j.total)||0)!==0});
    }catch(e){patchDraft(key,{status:"error",error:errText(e),include:false})}
  }
 
@@ -626,7 +628,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        tid=newIds[d.source];
      }
      const rid=uid();
-     const rec:Receipt={id:rid,date:d.date||today(),store:d.store,items:d.items,amount:Number(d.amount)||0,receiptNo:d.receiptNo||undefined,hash:d.hash||undefined};
+     const rec:Receipt={id:rid,date:d.date||today(),store:d.store,items:d.items,amount:Number(d.amount)||0,receiptNo:d.receiptNo||undefined,hash:d.hash||undefined,card:d.card||undefined,paidBy:tid===OWN_ID?undefined:payerFor(d.card,undefined,cardList())};
      const img=d.scan||d.dataUrl;
      let saved=false;
      if(user){
@@ -817,7 +819,16 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
              <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
              {r.by&&<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}</small>}
              <select value={catOf(r)} onChange={e=>setLine<Receipt>("receipts",r.id,{category:e.target.value})}>{OWN_CATS.map(c=><option key={c}>{c}</option>)}</select>
-             {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
+             {!cur.own&&(()=>{const helpers=(cur.crew||[]).filter(c=>!c.self&&c.name);const names=[...new Set([...helpers.map(c=>c.name),...(r.by?[r.by]:[]),...(r.paidBy&&r.paidBy!=="biz"&&r.paidBy!=="other"?[r.paidBy]:[])])];
+           const v=r.paidBy===undefined?(r.card&&!cardList().includes(r.card)?"":"biz"):r.paidBy;
+           return <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:v===""?"#b42318":"#475467"}}>{v===""?"⚠ Хто платив?":"Оплата:"}
+             <select value={v} onChange={e=>setLine<Receipt>("receipts",r.id,{paidBy:e.target.value})} style={{flex:1,padding:"6px 8px",fontSize:13}}>
+               {v===""&&<option value="">— вибери{r.card?` (картка ****${r.card})`:""} —</option>}
+               <option value="biz">💼 Бізнес-картка{r.card&&cardList().includes(r.card)?` ****${r.card}`:""}</option>
+               {names.map(n=><option key={n} value={n}>💳 {n} — своя картка, повернути{r.card&&!cardList().includes(r.card)?` (****${r.card})`:""}</option>)}
+               <option value="other">💵 Готівка / інше</option>
+             </select></label>})()}
+         {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
              <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Це для клієнта…</option>{list.filter(s=>!s.own).map(s=><option key={s.id} value={s.id}>{s.client}{s.project?` — ${s.project}`:""}</option>)}</select>
            </div>
            {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}

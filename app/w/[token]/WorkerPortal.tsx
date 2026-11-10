@@ -54,7 +54,7 @@ async function post(body:object){
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d?.error||"Помилка");return d;
 }
 
-function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
+function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;worker:string}){
   const L=T[lang];const fmt=(d:string)=>fmtL(d,L.loc);const unitL=(u:string)=>L.units[u]||u;
   const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk",token);
   const router=useRouter();
@@ -140,7 +140,7 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
       {p.myReceipts.length>0&&<details style={{marginTop:8}}><summary style={{fontWeight:700,fontSize:15}}>{lang==="en"?`My receipts (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`:`Мої чеки (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`}</summary>
         {p.myReceipts.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:"1px solid #f2f4f7",fontSize:15}}>
-          <span>{fmt(r.date)} · {r.store||(lang==="en"?"receipt":"чек")}{r.pending&&<small style={{color:"#b54708"}}> · {lang==="en"?"not reviewed yet":"ще не переглянуто"}</small>}</span><b>{money(r.amount)}</b></div>)}
+          <span>{fmt(r.date)} · {r.store||(lang==="en"?"receipt":"чек")}<small style={{display:"block",color:r.mine?"#7a5af8":"#667085"}}>{r.mine?(lang==="en"?`💳 your card${r.card?` ****${r.card}`:""} — will be paid back`:`💳 твоя картка${r.card?` ****${r.card}`:""} — повернуть`):(lang==="en"?"💼 business card":"💼 бізнес-картка")}{r.pending?(lang==="en"?" · not reviewed yet":" · ще не переглянуто"):""}</small></span><b>{money(r.amount)}</b></div>)}
       </details>}
       {draft&&<div style={{marginTop:10,padding:12,borderRadius:14,border:dup?"2px solid #f79009":"1px solid #d0d5dd",background:dup?"#fffaeb":"#fff"}}>
         <b style={{display:"block",marginBottom:6}}>{lang==="en"?"Check the receipt":"Перевір чек"}</b>
@@ -150,10 +150,16 @@ function Project({token,p,lang}:{token:string;p:WorkerProject;lang:Lang}){
           <label style={{fontSize:13,color:"#667085"}}>{lang==="en"?"Total, $":"Сума, $"}<input type="number" step="0.01" value={draft.amount||""} onChange={e=>setDraft({...draft,amount:Number(e.target.value)||0})} style={{display:"block",width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,boxSizing:"border-box"}}/></label>
         </div>
         <small style={{display:"block",color:"#475467",marginTop:6}}>{draft.date}{draft.items?` · ${String(draft.items).slice(0,140)}`:""}</small>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:8}}>
+          {(["mine","biz"] as const).map(k=>{const on=k==="biz"?draft.paidBy==="biz":draft.paidBy!=="biz"&&!!draft.paidBy;
+            return <button key={k} onClick={()=>setDraft({...draft,paidBy:k==="biz"?"biz":worker})} style={{padding:"10px 6px",borderRadius:10,border:on?"2px solid #101828":"1px solid #d0d5dd",background:on?"#101828":"#fff",color:on?"#fff":"#344054",fontWeight:700,fontSize:14}}>
+              {k==="mine"?(lang==="en"?"💳 My own card":"💳 Моя картка"):(lang==="en"?"💼 Business card":"💼 Бізнес-картка")}</button>})}
+        </div>
+        <small style={{display:"block",color:"#667085",marginTop:4}}>{draft.card?`${lang==="en"?"Card on receipt":"Картка на чеку"}: ****${draft.card}`:(lang==="en"?"Card not read — choose who paid.":"Картку не прочитало — вибери, хто платив.")}</small>
         {!draft.amount&&<small style={{display:"block",color:"#b42318",marginTop:4}}>{lang==="en"?"Total not read — type it in.":"Суму не прочитало — впиши вручну."}</small>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
           <button disabled={busy==="rc"} onClick={cancelReceipt} style={{...big,background:"#eef2f7",color:"#344054"}}>{lang==="en"?"✕ Cancel":"✕ Скасувати"}</button>
-          <button disabled={busy==="rc"} onClick={confirmReceipt} style={{...big,background:dup?"#f79009":"#079455",color:"#fff"}}>{busy==="rc"?"…":dup?(lang==="en"?"Add anyway":"Все одно додати"):(lang==="en"?"✓ Add":"✓ Додати")}</button>
+          <button disabled={busy==="rc"||!draft.paidBy} onClick={confirmReceipt} style={{...big,background:dup?"#f79009":"#079455",color:"#fff"}}>{busy==="rc"?"…":dup?(lang==="en"?"Add anyway":"Все одно додати"):(lang==="en"?"✓ Add":"✓ Додати")}</button>
         </div>
       </div>}
     </div>
@@ -184,9 +190,10 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
         <div><div style={{opacity:.7}}>{L.earned(v.rate)}</div><b style={{fontSize:20}}>{money(v.earned)}</b></div>
         <div><div style={{opacity:.7}}>{L.owed}</div><b style={{fontSize:20,color:v.owed>0?"#fdb022":"#75e0a7"}}>{money(v.owed)}</b></div>
       </div>
+      {v.reimb>0&&<small style={{opacity:.85,display:"block"}}>{lang==="en"?"incl. receipts paid with your card: ":"у т.ч. за чеки з твоєї картки: "}{money(v.reimb)}</small>}
       {v.paid>0&&<small style={{opacity:.7}}>{L.paid}{money(v.paid)}</small>}
     </div>
     {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}
-    {p?<Project key={p.sid+lang} token={token} p={p} lang={lang}/>:<div style={card}>{L.none}</div>}
+    {p?<Project key={p.sid+lang} token={token} p={p} lang={lang} worker={v.worker}/>:<div style={card}>{L.none}</div>}
   </div>;
 }

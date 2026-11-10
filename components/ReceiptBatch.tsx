@@ -9,7 +9,7 @@ export type Draft={
   /** картинка для AI і перегляду */ dataUrl:string;
   /** що збережемо як фото чека (обрізане/кольорове) */ scan?:string;
   status:"wait"|"reading"|"ok"|"error";error?:string;
-  date:string;store:string;items:string;amount:number;receiptNo:string;confidence:number;hash:string;
+  date:string;store:string;items:string;amount:number;receiptNo:string;card?:string;confidence:number;hash:string;
   include:boolean;
   /** «вже є: …» — дублікат */ dupOf?:string;
   /** куди додати: id розрахунку, "new" — новий проєкт з назви файлу, "" — ще не вибрано */ targetId:string;

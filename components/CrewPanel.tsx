@@ -78,7 +78,7 @@ export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement
         {sm.rows.map(r=><div key={r.id} style={{display:"grid",gridTemplateColumns:"1fr 54px 76px 76px 76px",gap:6,fontSize:14,padding:"5px 0",borderTop:"1px solid #eaecf0"}}>
           <b style={{overflow:"hidden",textOverflow:"ellipsis"}}>{r.name||"Без імені"}{r.self?" (я)":""}</b>
           <span style={{textAlign:"right"}}>{r.hours}</span>
-          <span style={{textAlign:"right"}}>{r.rate>0?money(r.accrued):"—"}</span>
+          <span style={{textAlign:"right"}}>{r.rate>0?money(r.accrued):"—"}{r.reimb>0&&<small style={{display:"block",color:"#7a5af8"}}>+ чеки {money(r.reimb)}</small>}</span>
           <span style={{textAlign:"right"}}>{r.self?"—":money(r.paid)}</span>
           <b style={{textAlign:"right",color:r.owed>0.005?"#b42318":r.owed<-0.005?"#b54708":"#067647"}}>{r.self?"—":money(r.owed)}</b>
         </div>)}

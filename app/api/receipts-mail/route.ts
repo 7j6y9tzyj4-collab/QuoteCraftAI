@@ -38,12 +38,12 @@ export async function POST(req:NextRequest){
     // 1) картинка чека в листі (Floor & Decor, Home Depot e-receipt)
     const img=[...html.matchAll(/<img[^>]+>/gi)].map(m=>m[0]).find(t=>/alt=["'][^"']*receipt/i.test(t)||/src=["'][^"']*receipt[^"']*\.(jpe?g|png)/i.test(t));
     const src=img?.match(/src=["']([^"']+)["']/i)?.[1]?.replace(/&amp;/g,"&");
-    let rec={date:"",store,items:"",amount:0,receiptNo:"",job:""};let photoPath="";let conf=0;
+    let rec={date:"",store,items:"",amount:0,receiptNo:"",job:"",card:""};let photoPath="";let conf=0;
     if(src&&/^https:\/\//.test(src)){
       const r=await fetch(src);if(!r.ok)throw new Error("receipt image "+r.status);
       const buf=Buffer.from(await r.arrayBuffer());const type=r.headers.get("content-type")||"image/jpeg";
       const p=await parseReceiptAI(`data:${type};base64,${buf.toString("base64")}`);
-      rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||""};conf=p.confidence;
+      rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;
       const id=crypto.randomUUID();photoPath=`${userId}/mail/${id}.jpg`;
       if(!dry){const up=await supabaseAdmin.storage.from("receipts").upload(photoPath,buf,{contentType:type,upsert:true});if(up.error)photoPath=""}
     }else{
@@ -54,10 +54,10 @@ export async function POST(req:NextRequest){
         await supabaseAdmin.from("mail_receipts").insert({user_id:userId,msg_id:msgId,store,subject,status:"skipped",reason:"не чек",payload:{}});
         return NextResponse.json({ok:true,skipped:"not a receipt"});
       }
-      rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||""};conf=p.confidence;
+      rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;
     }
     const a=await assignMailReceipt(userId,rec);
-    const payload={id:crypto.randomUUID(),date:rec.date,store:rec.store,items:rec.items,amount:rec.amount,receiptNo:rec.receiptNo||undefined,photoPath:photoPath||undefined,job:rec.job||undefined,readConf:conf};
+    const payload={id:crypto.randomUUID(),date:rec.date,store:rec.store,items:rec.items,amount:rec.amount,receiptNo:rec.receiptNo||undefined,card:rec.card||undefined,photoPath:photoPath||undefined,job:rec.job||undefined,readConf:conf};
     const status=a.dupOf?"skipped":a.sid?"auto":"review";
     if(dry)return NextResponse.json({ok:true,dry:true,status,assign:a,receipt:payload});
     const {error}=await supabaseAdmin.from("mail_receipts").insert({user_id:userId,msg_id:msgId,store:rec.store,subject,payload,sid:a.sid,suggest:a.suggest,reason:a.reason,confidence:a.confidence,status});

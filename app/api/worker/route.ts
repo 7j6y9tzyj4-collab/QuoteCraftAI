@@ -5,7 +5,8 @@ import {parseReceiptAI} from "@/lib/parseReceiptAI";
 import {sendPush,statementTitle} from "@/lib/push";
 import {aiGuard} from "@/lib/aiGuard";
 import {findDuplicate} from "@/lib/receiptBatch";
-import type {Statement} from "@/lib/statement";
+import {payerFor,type Statement} from "@/lib/statement";
+import {cardList} from "@/lib/company";
 import {shopKind,splitShop,shopList,shopAdd,shopToggle,shopDel,shopClearDone} from "@/lib/shop";
 
 export const runtime="nodejs";
@@ -62,7 +63,11 @@ export async function POST(req:NextRequest){
       if(up.error)throw up.error;
       let r={date:"",store:"",items:"",total:0,receipt_no:"",confidence:0};
       try{if(process.env.OPENAI_API_KEY&&(await aiGuard(req,"worker-receipt",0.008,link.user_id)).ok)r=await parseReceiptAI(photo)}catch{/* без суми — впише вручну */}
-      const draft={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence};
+      const {data:cs}=await supabaseAdmin.from("user_settings").select("company").eq("user_id",link.user_id).maybeSingle();
+      const card=String((r as any).card_last4||"").replace(/\D/g,"").slice(-4);
+      const biz=cardList(String((cs as any)?.company?.cards||""));
+      const draft={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence,card,
+        paidBy:card&&biz.includes(card)?"biz":card?link.worker:""};
       // дублікати: у всіх проєктах власника + чеки, що вже чекають у вхідних
       let dup="";
       if(draft.amount){
@@ -79,10 +84,10 @@ export async function POST(req:NextRequest){
       const d=b.draft||{};
       const path=String(d.photoPath||"");
       if(!path.startsWith(`${link.user_id}/${sid}/`)||!/^[0-9a-f-]{36}$/i.test(String(d.id||"")))return NextResponse.json({error:"Чек не знайдено, сфотографуй ще раз."},{status:400});
-      const payload={id:String(d.id),date:String(d.date||isoToday()).slice(0,20),store:String(d.store||"").slice(0,80),items:String(d.items||"").slice(0,500),amount:Math.round((Number(d.amount)||0)*100)/100,receiptNo:String(d.receiptNo||"").slice(0,40),photoPath:path,confidence:Number(d.confidence)||0};
+      const payload={id:String(d.id),date:String(d.date||isoToday()).slice(0,20),store:String(d.store||"").slice(0,80),items:String(d.items||"").slice(0,500),amount:Math.round((Number(d.amount)||0)*100)/100,receiptNo:String(d.receiptNo||"").slice(0,40),photoPath:path,confidence:Number(d.confidence)||0,card:String(d.card||"").replace(/\D/g,"").slice(-4),paidBy:d.paidBy==="biz"?"biz":d.paidBy===link.worker?link.worker:""};
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"receipt",payload});
       if(error)throw error;
-      await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""}${b.dupOk?" (каже, що це не дубль)":""}`);
+      await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""}${payload.paidBy===link.worker?" · 💳 платив своєю карткою":payload.paidBy==="biz"?" · 💼 бізнес-картка":""}${b.dupOk?" (каже, що це не дубль)":""}`);
       return NextResponse.json({ok:true,receipt:payload});
     }
     if(b.action==="receipt_cancel"){

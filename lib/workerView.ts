@@ -8,10 +8,10 @@ export type WorkerLink={token:string;user_id:string;worker:string;rate:number;pr
 export type WorkerDay={date:string;hours:number;note:string;pending:boolean};
 export type WorkerProject={sid:string;client:string;project:string;address:string;phone:string;
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
-  myReceipts:{date:string;store:string;amount:number;pending:boolean}[];
+  myReceipts:{date:string;store:string;amount:number;pending:boolean;mine:boolean;card:string}[];reimb:number;
   materials:{name:string;qty:number;unit:string;note:string}[];
   days:WorkerDay[];hours:number;receipts:number;photos:number};
-export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;owed:number};
+export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;reimb:number;owed:number};
 
 const n=(s:string)=>String(s||"").trim().toLowerCase();
 
@@ -33,7 +33,7 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
   const list=((st?.statements||[]) as Statement[]);
   const saved=((calcs||[]) as {id:string;data:SavedCalc}[]).map(r=>({...r.data,id:r.id}));
   const cl=((clients||[]) as {data:any}[]).map(r=>r.data||{});
-  let hours=0,earned=0,paid=0;
+  let hours=0,earned=0,paid=0,reimbAll=0;
   const projects:WorkerProject[]=[];
   for(const sid of link.projects){
     const s=list.find(x=>x.id===sid);if(!s)continue;
@@ -47,9 +47,11 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const h=days.reduce((a,d)=>a+d.hours,0);
     const rate=me?Number(me.rate)||link.rate:link.rate;
     const p=me?(s.payouts||[]).filter(x=>x.workerId===me.id).reduce((a,x)=>a+(Number(x.amount)||0),0):0;
-    hours+=h;earned+=h*rate;paid+=p;
+    // чеки, оплачені його карткою (прийняті власником) — їх треба повернути
+    const rb=s.receipts.filter(r=>n(r.paidBy||"")===n(link.worker)).reduce((a,r)=>a+(Number(r.amount)||0),0);
+    hours+=h;earned+=h*rate;paid+=p;reimbAll+=rb;
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
-    projects.push({sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
+    projects.push({reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
       // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати
       scope:items.length?items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional}))
         :[...s.labor.filter(l=>String(l.description||"").trim()&&!/^Agreed work \(per estimate\)$/i.test(String(l.description).trim())).map(l=>({name:String(l.description).replace(/^Change order #\d+:\s*/i,""),qty:1,unit:"each",note:"",optional:false})),
@@ -59,13 +61,13 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
       materials:items.filter(i=>(Number(i.materialRate)||0)>0&&!i.optional).map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||"")})),
       days,hours:Math.round(h*100)/100,
       // чеки, які додав саме цей помічник (уже прийняті + ще не переглянуті власником)
-      myReceipts:[...s.receipts.filter(r=>n(r.by||"")===n(link.worker)).map(r=>({date:normDate(r.date),store:String(r.store||""),amount:Number(r.amount)||0,pending:false})),
-        ...((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").map(i=>({date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),store:String(i.payload?.store||""),amount:Number(i.payload?.amount)||0,pending:true}))]
+      myReceipts:[...s.receipts.filter(r=>n(r.by||"")===n(link.worker)).map(r=>({date:normDate(r.date),store:String(r.store||""),amount:Number(r.amount)||0,pending:false,mine:n(r.paidBy||"")===n(link.worker),card:String(r.card||"")})),
+        ...((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").map(i=>({date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),store:String(i.payload?.store||""),amount:Number(i.payload?.amount)||0,pending:true,mine:n(i.payload?.paidBy||"")===n(link.worker),card:String(i.payload?.card||"")}))]
         .sort((a,b)=>b.date.localeCompare(a.date)),
       receipts:s.receipts.length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").length,
       photos:(s.photos||[]).length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="photo").length});
   }
   const r2=(x:number)=>Math.round(x*100)/100;
   const {data:set}=await supabaseAdmin.from("user_settings").select("company").eq("user_id",uid).maybeSingle();
-  return {company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),owed:r2(earned-paid)};
+  return {company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
 }
