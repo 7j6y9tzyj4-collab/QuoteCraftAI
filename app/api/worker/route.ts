@@ -107,6 +107,21 @@ export async function POST(req:NextRequest){
       if(pb!=="biz")await notify(`💳 Позначив чек ${rc.store||""} $${(Number(rc.amount)||0).toFixed(2)} як оплачений своєю карткою — повернути`);
       return NextResponse.json({ok:true});
     }
+    if(b.action==="receipt_photo"){
+      // фото власного чека (підписане посилання на годину)
+      const rid=String(b.id||"");let path="";
+      const {data:pend}=await supabaseAdmin.from("worker_inbox").select("payload").eq("token",link.token).eq("sid",sid).eq("kind","receipt").is("applied_at",null);
+      const row=((pend||[]) as any[]).find(i=>String(i.payload?.id)===rid);
+      if(row)path=String(row.payload?.photoPath||"");
+      else{
+        const {data:st}=await supabaseAdmin.from("user_statements").select("statements").eq("user_id",link.user_id).maybeSingle();
+        const rc=((((st as any)?.statements)||[]) as Statement[]).find(x=>x.id===sid)?.receipts.find(r=>r.id===rid);
+        if(rc&&String(rc.by||"").trim().toLowerCase()===link.worker.trim().toLowerCase())path=String(rc.photoPath||"");
+      }
+      if(!path)return NextResponse.json({error:"Фото чека немає."},{status:404});
+      const {data:su}=await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path,3600);
+      return NextResponse.json({url:su?.signedUrl||""});
+    }
     if(b.action==="receipt_cancel"){
       const path=String(b.photoPath||"");
       if(path.startsWith(`${link.user_id}/${sid}/`)&&!path.includes("/photos/"))await supabaseAdmin.storage.from(BUCKET).remove([path]);

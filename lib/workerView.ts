@@ -8,7 +8,7 @@ export type WorkerLink={token:string;user_id:string;worker:string;rate:number;pr
 export type WorkerDay={date:string;hours:number;note:string;pending:boolean};
 export type WorkerProject={sid:string;client:string;project:string;address:string;phone:string;
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
-  myReceipts:{id:string;date:string;store:string;amount:number;pending:boolean;mine:boolean;card:string}[];reimb:number;
+  myReceipts:{id:string;date:string;store:string;amount:number;pending:boolean;mine:boolean;card:string;items:string;photo:boolean;payer:"mine"|"biz"|"none"}[];reimb:number;
   materials:{name:string;qty:number;unit:string;note:string}[];
   days:WorkerDay[];hours:number;receipts:number;photos:number};
 export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;reimb:number;owed:number;
@@ -70,8 +70,8 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
       materials:items.filter(i=>(Number(i.materialRate)||0)>0&&!i.optional).map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||"")})),
       days,hours:Math.round(h*100)/100,
       // чеки, які додав саме цей помічник (уже прийняті + ще не переглянуті власником)
-      myReceipts:[...s.receipts.filter(r=>n(r.by||"")===n(link.worker)).map(r=>({id:r.id,date:normDate(r.date),store:String(r.store||""),amount:Number(r.amount)||0,pending:false,mine:n(r.paidBy||"")===n(link.worker),card:String(r.card||"")})),
-        ...((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").map(i=>({id:String(i.payload?.id||""),date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),store:String(i.payload?.store||""),amount:Number(i.payload?.amount)||0,pending:true,mine:n(i.payload?.paidBy||"")===n(link.worker),card:String(i.payload?.card||"")}))]
+      myReceipts:[...s.receipts.filter(r=>n(r.by||"")===n(link.worker)).map(r=>({id:r.id,date:normDate(r.date),store:String(r.store||""),amount:Number(r.amount)||0,pending:false,mine:n(r.paidBy||"")===n(link.worker),card:String(r.card||""),items:String(r.items||"").slice(0,300),photo:!!r.photoPath,payer:(n(r.paidBy||"")===n(link.worker)?"mine":r.paidBy==="biz"?"biz":"none") as "mine"|"biz"|"none"})),
+        ...((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").map(i=>({id:String(i.payload?.id||""),date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),store:String(i.payload?.store||""),amount:Number(i.payload?.amount)||0,pending:true,mine:n(i.payload?.paidBy||"")===n(link.worker),card:String(i.payload?.card||""),items:String(i.payload?.items||"").slice(0,300),photo:!!i.payload?.photoPath,payer:(n(i.payload?.paidBy||"")===n(link.worker)?"mine":i.payload?.paidBy==="biz"?"biz":"none") as "mine"|"biz"|"none"}))]
         .sort((a,b)=>b.date.localeCompare(a.date)),
       receipts:s.receipts.length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="receipt").length,
       photos:(s.photos||[]).length+((inbox||[]) as any[]).filter(i=>i.sid===sid&&i.kind==="photo").length});

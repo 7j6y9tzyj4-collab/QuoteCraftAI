@@ -174,6 +174,53 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
   </>;
 }
 
+// 🧾 Усі мої чеки по всіх об'єктах: натиснув на чек — видно картку, фото і можна виправити, хто платив.
+function MyReceipts({token,v,lang}:{token:string;v:WorkerView;lang:Lang}){
+  const en=lang==="en";const router=useRouter();
+  const all=v.projects.flatMap(p=>p.myReceipts.map(r=>({...r,sid:p.sid,where:`${p.client}${v.projects.filter(y=>y.client===p.client).length>1&&p.project?` — ${String(p.project).trim().slice(0,30)}`:""}`}))).sort((a,b)=>b.date.localeCompare(a.date));
+  const [open,setOpen]=useState(false);const [sel,setSel]=useState("");const [busy,setBusy]=useState("");const [err,setErr]=useState("");
+  const [urls,setUrls]=useState<Record<string,string>>({});
+  if(!all.length)return null;
+  const sum=all.reduce((a,r)=>a+r.amount,0);const mine=all.filter(r=>r.payer==="mine");const none=all.filter(r=>r.payer==="none").length;
+  async function setPayer(r:typeof all[number],k:"mine"|"biz"){setBusy(r.id+k);setErr("");
+    try{await post({token,sid:r.sid,action:"receipt_payer",id:r.id,paidBy:k});router.refresh()}catch(e){setErr(e instanceof Error?e.message:String(e))}finally{setBusy("")}}
+  async function photo(r:typeof all[number]){setBusy(r.id+"p");setErr("");
+    try{const d=await post({token,sid:r.sid,action:"receipt_photo",id:r.id});if(d.url)setUrls(u=>({...u,[r.id]:d.url}))}catch(e){setErr(e instanceof Error?e.message:String(e))}finally{setBusy("")}}
+  const tag=(r:typeof all[number])=>r.payer==="mine"?{t:en?"💳 my card":"💳 моя картка",c:"#7a5af8",b:"#f4f3ff"}:r.payer==="biz"?{t:en?"💼 business card":"💼 бізнес-картка",c:"#475467",b:"#f2f4f7"}:{t:en?"⚠ who paid?":"⚠ хто платив?",c:"#b42318",b:"#fef3f2"};
+  const btn=(on:boolean):React.CSSProperties=>({padding:"11px 6px",borderRadius:10,border:on?"2px solid #101828":"1px solid #d0d5dd",background:on?"#101828":"#fff",color:on?"#fff":"#344054",fontWeight:700,fontSize:14});
+  return <>
+    <button onClick={()=>setOpen(o=>!o)} style={{display:"block",width:"100%",textAlign:"left",border:"none",background:"#fff",borderRadius:14,padding:14,marginTop:10,boxShadow:"0 1px 3px #0001"}}>
+      <small style={{display:"block",color:"#8e8e93",fontSize:13,fontWeight:500}}>🧾 {en?"My receipts":"Мої чеки"}</small>
+      <b style={{display:"block",fontSize:24,fontWeight:700,marginTop:4,color:"#000"}}>{all.length} · {money(sum)}</b>
+      <small style={{display:"block",color:none?"#b42318":"#8e8e93",fontSize:12,marginTop:1}}>{en?`my card: ${mine.length} · ${money(mine.reduce((a,r)=>a+r.amount,0))}`:`з моєї картки: ${mine.length} · ${money(mine.reduce((a,r)=>a+r.amount,0))}`}{none?(en?` · ⚠ ${none} without payer`:` · ⚠ ${none} без платника`):""} · {open?(en?"hide":"сховати"):(en?"tap to open":"натисни")}</small>
+    </button>
+    {open&&<div style={{...card,marginTop:10,padding:0}}>
+      {err&&<div style={{padding:"10px 14px",color:"#b42318",fontSize:14}}>{err}</div>}
+      {all.map((r,k)=>{const g=tag(r);const on=sel===r.id;return <div key={r.sid+r.id} style={{borderTop:k?"1px solid #f2f2f7":"none"}}>
+        <button onClick={()=>setSel(on?"":r.id)} style={{display:"flex",width:"100%",justifyContent:"space-between",gap:10,alignItems:"center",padding:"12px 14px",border:"none",background:on?"#f9fafb":"transparent",textAlign:"left",color:"#000"}}>
+          <span style={{minWidth:0}}><b style={{display:"block",fontSize:16}}>{r.store||(en?"Receipt":"Чек")}</b>
+            <small style={{display:"block",color:"#8e8e93"}}>{fmtL(r.date,T[lang].loc)} · {r.where}</small>
+            <small style={{display:"inline-block",marginTop:4,padding:"2px 8px",borderRadius:8,background:g.b,color:g.c,fontWeight:700}}>{g.t}</small></span>
+          <b style={{flex:"none",fontSize:16}}>{money(r.amount)}</b>
+        </button>
+        {on&&<div style={{padding:"0 14px 14px"}}>
+          <div style={{fontSize:14,color:"#475467"}}>{en?"Card on the receipt":"Картка на чеку"}: <b>{r.card?`****${r.card}`:(en?"not read":"не прочиталась")}</b></div>
+          {r.items&&<div style={{fontSize:13,color:"#667085",marginTop:4}}>{r.items}</div>}
+          {r.pending&&<div style={{fontSize:13,color:"#b54708",marginTop:4}}>{en?"Not reviewed by the owner yet":"Власник ще не переглянув"}</div>}
+          {r.photo&&(urls[r.id]?<a href={urls[r.id]} target="_blank" rel="noreferrer"><img src={urls[r.id]} alt="" style={{display:"block",width:"100%",maxHeight:360,objectFit:"contain",borderRadius:10,marginTop:8,background:"#f2f4f7"}}/></a>
+            :<button disabled={busy===r.id+"p"} onClick={()=>photo(r)} style={{marginTop:8,border:"none",borderRadius:10,background:"rgba(47,109,246,.1)",color:"#2f6df6",fontWeight:600,fontSize:14,padding:"8px 12px"}}>{busy===r.id+"p"?"…":(en?"🖼 Show receipt photo":"🖼 Показати фото чека")}</button>)}
+          <div style={{fontSize:13,color:"#667085",marginTop:10}}>{en?"Who paid for it?":"Хто за нього платив?"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:4}}>
+            <button disabled={!!busy} onClick={()=>setPayer(r,"mine")} style={btn(r.payer==="mine")}>{busy===r.id+"mine"?"…":(en?"💳 My own card":"💳 Моя картка")}</button>
+            <button disabled={!!busy} onClick={()=>setPayer(r,"biz")} style={btn(r.payer==="biz")}>{busy===r.id+"biz"?"…":(en?"💼 Business card":"💼 Бізнес-картка")}</button>
+          </div>
+          <small style={{display:"block",color:"#8e8e93",marginTop:6}}>{en?"My card — the amount is added to what you are owed. Business card — nothing is owed back.":"Моя картка — суму додадуть до того, що тобі винні. Бізнес-картка — повертати нічого не треба."}</small>
+        </div>}
+      </div>})}
+    </div>}
+  </>;
+}
+
 export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
   const [i,setI]=useState(0);
   const [lang,setLang]=useState<Lang>("uk");
@@ -203,6 +250,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
       <div style={tile}><small style={tl}>{en?"All hours":"Усього годин"}</small><b style={tb}>{v.hours}</b><small style={ts}>{en?"earned":"заробив"} {money(v.earned)}</small></div>
       <div style={tile}><small style={tl}>{en?"Paid out":"Виплачено"}</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
     </div>
+    <MyReceipts token={token} v={v} lang={lang}/>
     {v.reimb>0&&<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Receipts paid with your own card are added to what you are owed.":"Чеки, оплачені твоєю карткою, додаються до того, що тобі винні."}</small>}
 
     {v.today.length>0&&<><h2 style={h2s}>{en?"Today":"Сьогодні"}</h2>
