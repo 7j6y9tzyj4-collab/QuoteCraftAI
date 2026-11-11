@@ -62,7 +62,7 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
-export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,onOpened,apple=false}:{apple?:boolean;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,onOpened,apple=false}:{apple?:boolean;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
@@ -70,7 +70,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const [ptab,setPtab]=useState<"over"|"rec"|"pay"|"crew"|"photo">("over");
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
- useEffect(()=>{if(openReq){setOpenId(openReq);onOpened?.()}},[openReq,onOpened]);
+ useEffect(()=>{if(openReq){setOpenId(openReq);setPtab(openTab||"over");onOpened?.()}},[openReq,onOpened]); // eslint-disable-line react-hooks/exhaustive-deps
  const [msg,setMsg]=useState("");
  const [busy,setBusy]=useState(false);
  const cloudOk=useRef(false);
