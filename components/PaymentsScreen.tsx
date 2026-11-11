@@ -24,6 +24,7 @@ import {cardList} from "@/lib/company";
 import FoldTitle from "@/components/FoldTitle";
 import {useFold} from "@/lib/useFold";
 import ProfitCard from "@/components/ProfitCard";
+import CrewOwed from "@/components/CrewOwed";
 import MaterialsCompare from "@/components/MaterialsCompare";
 import ReviewAsk from "@/components/ReviewAsk";
 import SignoffBox from "@/components/SignoffBox";
@@ -749,6 +750,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
      {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
      {list.length>0&&<MonthEarnings list={list}/>}
+     {list.length>0&&<CrewOwed list={list}/>}
      <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
        <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
        <span style={{textAlign:"right",alignSelf:"center"}}>›</span>

@@ -85,6 +85,9 @@ export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement
         <div style={{display:"grid",gridTemplateColumns:"1fr 54px 76px 76px 76px",gap:6,fontSize:14,padding:"7px 0 0",borderTop:"2px solid #d0d5dd",marginTop:4,fontWeight:800}}>
           <span>Разом</span><span style={{textAlign:"right"}}>{sm.hours}</span><span style={{textAlign:"right"}}>{money(sm.cost)}</span><span style={{textAlign:"right"}}>{money(sm.paid)}</span><span style={{textAlign:"right"}}>{money(sm.helperOwed)}</span></div>
         <small className="muted" style={{display:"block",marginTop:4}}>«Разом» по грошах — тільки помічники (без тебе).</small>
+        {sm.rows.filter(r=>!r.self&&(r.reimb>0||Math.abs(r.owed)>0.5)).map(r=><div key={"o"+r.id} style={{marginTop:8,padding:"8px 10px",borderRadius:10,background:"#f4f3ff",fontSize:14}}>
+          <b>{r.name}:</b> за роботу {money(r.accrued)}{r.reimb>0?<> + 💳 за чеки з його картки {money(r.reimb)}</>:null}{r.paid>0?<> − виплачено {money(r.paid)}</>:null} = <b style={{color:r.owed>0.5?"#b42318":"#067647"}}>винен {money(r.owed)}</b>
+        </div>)}
         {sm.rows.some(r=>r.owed<-0.005)&&<small style={{display:"block",marginTop:6,color:"#b54708"}}>Виплачено більше, ніж зароблено (помаранчевий мінус).</small>}
       </div>
     </>}
