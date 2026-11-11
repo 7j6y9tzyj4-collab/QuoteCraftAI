@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {statementTotals,statementStatus,type Statement} from "@/lib/statement";
+import MonthEarnings,{workEarnings} from "@/components/MonthEarnings";
 import {useScheduleJobs,upcomingStart,todayISO} from "@/lib/scheduleStarts";
 import {ownerFirst,companyName} from "@/lib/company";
 
@@ -33,7 +34,8 @@ export default function AppleHome({user,statements,draftLabel,inbox,onNew,onCont
     const owedList=rows.filter(r=>r.t.balance>0.5).sort((a,b)=>b.t.balance-a.t.balance);
     return {active,owed,received,recvList,owedList};
   },[statements,jobs]);
-  const [open,setOpen]=useState<""|"owed"|"recv">("");
+  const [open,setOpen]=useState<""|"owed"|"recv"|"earn">("");
+  const earn=useMemo(()=>{const d=new Date();return workEarnings(statements,`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`)},[statements]);
   const t=todayISO();const week=new Date(Date.now()+7*864e5).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const soon=(jobs||[]).filter(j=>j.start&&j.start>=t&&j.start<=week).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4);
   const now=new Date();const h=now.getHours();
@@ -59,6 +61,8 @@ export default function AppleHome({user,statements,draftLabel,inbox,onNew,onCont
       <button className="apStat" onClick={()=>onGo("saved")}><small>Чекають відповіді</small><b>{awaiting.n}</b>{awaiting.n>0&&<em>{awaiting.viewed} відкрили</em>}</button>
       <button className="apStat" onClick={()=>setOpen(open==="recv"?"":"recv")}><small>Клієнти заплатили за {month}</small><b className="apGood">{money(v.received)}</b><em>{v.recvList.length} оплат(и) · робота + матеріали · натисни</em></button>
     </div>
+    <button className="apStat" style={{width:"100%",marginTop:10}} onClick={()=>setOpen(open==="earn"?"":"earn")}><small>Мій заробіток за {month} (робота, без матеріалів)</small><b style={{color:earn.net<0?"#b42318":undefined}} className={earn.net<0?"":"apGood"}>{money(earn.net)}</b><em>{earn.myHours>0?`${earn.myHours} год · ${money(earn.perHour)}/год · `:""}після помічників і моїх витрат · натисни</em></button>
+    {open==="earn"&&<MonthEarnings list={statements}/>}
     {open==="owed"&&<div className="apCard" style={{marginTop:10}}>
       <div className="apRow" style={{display:"block"}}><b>Хто скільки ще не заплатив</b><small style={{display:"block"}}>Це залишок по кожному проєкту: вся сума (робота + матеріали) мінус те, що клієнт уже дав. Не обов'язково до сплати сьогодні — частина за ще не зроблену роботу.</small></div>
       {v.owedList.map(({s,t})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small><small style={{display:"block"}}>всього {money(t.total)} · заплатили {money(t.paid)}</small></span><span className="apAmt"><b className="apWarn">{money(t.balance)}</b><small>залишок</small></span><Chevron/></button>)}
