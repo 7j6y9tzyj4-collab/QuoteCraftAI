@@ -217,3 +217,4 @@ body:has(.shell.app){overflow:hidden}
 .apGo{width:100%;margin-top:14px;padding:16px!important;font-size:17px!important;border-radius:14px!important}
 .apGo:disabled{opacity:.45}
 .apLink{display:block;margin:12px auto 0;border:none;background:none;color:var(--blue);font-size:15px}
+.apAmt small{display:block}

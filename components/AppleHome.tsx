@@ -28,8 +28,12 @@ export default function AppleHome({user,statements,draftLabel,inbox,onNew,onCont
     const owed=rows.reduce((a,r)=>a+Math.max(0,r.t.balance),0);
     const ym=new Date().toISOString().slice(0,7);
     const received=list.reduce((a,s)=>a+s.payments.filter(p=>{const m=String(p.date).match(/^(\d{2})\/\d{2}\/(\d{4})/);return m?`${m[2]}-${m[1]}`===ym:String(p.date).slice(0,7)===ym}).reduce((x,p)=>x+(Number(p.amount)||0),0),0);
-    return {active,owed,received};
+    const inMonth=(d:any)=>{const m=String(d).match(/^(\d{2})\/\d{2}\/(\d{4})/);return m?`${m[2]}-${m[1]}`===ym:String(d).slice(0,7)===ym};
+    const recvList=list.flatMap(s=>s.payments.filter(p=>inMonth(p.date)).map(p=>({id:p.id,sid:s.id,client:s.client||"Без імені",project:s.project||"",date:String(p.date),method:(p as any).method||"",amount:Number(p.amount)||0}))).sort((a,b)=>b.date.localeCompare(a.date));
+    const owedList=rows.filter(r=>r.t.balance>0.5).sort((a,b)=>b.t.balance-a.t.balance);
+    return {active,owed,received,recvList,owedList};
   },[statements,jobs]);
+  const [open,setOpen]=useState<""|"owed"|"recv">("");
   const t=todayISO();const week=new Date(Date.now()+7*864e5).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const soon=(jobs||[]).filter(j=>j.start&&j.start>=t&&j.start<=week).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4);
   const now=new Date();const h=now.getHours();
@@ -51,10 +55,19 @@ export default function AppleHome({user,statements,draftLabel,inbox,onNew,onCont
 
     <div className="apStats">
       <button className="apStat" onClick={()=>onGo("pay")}><small>Активні проєкти</small><b>{v.active.length}</b></button>
-      <button className="apStat" onClick={()=>onGo("pay")}><small>Клієнти винні</small><b className={v.owed>0?"apWarn":""}>{money(v.owed)}</b></button>
+      <button className="apStat" onClick={()=>setOpen(open==="owed"?"":"owed")}><small>Ще не оплачено по проєктах</small><b className={v.owed>0?"apWarn":""}>{money(v.owed)}</b><em>{v.owedList.length} проєкт(ів) · вся сума до кінця робіт · натисни</em></button>
       <button className="apStat" onClick={()=>onGo("saved")}><small>Чекають відповіді</small><b>{awaiting.n}</b>{awaiting.n>0&&<em>{awaiting.viewed} відкрили</em>}</button>
-      <button className="apStat" onClick={()=>onGo("pay")}><small>Отримано за {month}</small><b className="apGood">{money(v.received)}</b></button>
+      <button className="apStat" onClick={()=>setOpen(open==="recv"?"":"recv")}><small>Клієнти заплатили за {month}</small><b className="apGood">{money(v.received)}</b><em>{v.recvList.length} оплат(и) · робота + матеріали · натисни</em></button>
     </div>
+    {open==="owed"&&<div className="apCard" style={{marginTop:10}}>
+      <div className="apRow" style={{display:"block"}}><b>Хто скільки ще не заплатив</b><small style={{display:"block"}}>Це залишок по кожному проєкту: вся сума (робота + матеріали) мінус те, що клієнт уже дав. Не обов'язково до сплати сьогодні — частина за ще не зроблену роботу.</small></div>
+      {v.owedList.map(({s,t})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small><small style={{display:"block"}}>всього {money(t.total)} · заплатили {money(t.paid)}</small></span><span className="apAmt"><b className="apWarn">{money(t.balance)}</b><small>залишок</small></span><Chevron/></button>)}
+    </div>}
+    {open==="recv"&&<div className="apCard" style={{marginTop:10}}>
+      <div className="apRow" style={{display:"block"}}><b>Оплати від клієнтів за {month}</b><small style={{display:"block"}}>Усі гроші, що прийшли цього місяця (за роботу і за матеріали разом). Це не твій заробіток — чеки і помічник звідси не відняті.</small></div>
+      {v.recvList.length===0&&<div className="apRow"><small>Цього місяця оплат ще не внесено.</small></div>}
+      {v.recvList.map(p=><button key={p.id} className="apRow" onClick={()=>onOpenProject(p.sid)}><span style={{flex:1,minWidth:0}}><b>{p.client}</b><small>{p.project}</small><small style={{display:"block"}}>{p.date}{p.method?` · ${p.method}`:""}</small></span><span className="apAmt"><b className="apGood">{money(p.amount)}</b></span><Chevron/></button>)}
+    </div>}
 
     {soon.length>0&&<section className="apGroup">
       <h2>Найближчі роботи</h2>
@@ -68,7 +81,7 @@ export default function AppleHome({user,statements,draftLabel,inbox,onNew,onCont
         return <button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}>
           <span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||companyName()}</small>
             <i className="apBar"><i style={{width:pct+"%"}}/></i></span>
-          <span className="apAmt">{t.balance>0.5?<><b>{money(t.balance)}</b><small>винні · {pct}% оплачено</small></>:<><b className="apGood">Оплачено</b><small>{money(t.total)}</small></>}</span>
+          <span className="apAmt">{t.balance>0.5?<><b className="apWarn">{money(t.balance)}</b><small>залишок</small><small>заплатили {money(t.paid)} з {money(t.total)}</small></>:<><b className="apGood">✓ Оплачено повністю</b><small>{money(t.total)}</small></>}</span>
           <Chevron/>
         </button>})}</div>}
     </section>
