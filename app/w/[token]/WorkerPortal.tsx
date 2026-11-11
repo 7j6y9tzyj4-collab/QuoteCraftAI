@@ -181,19 +181,48 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
   const pick=(l:Lang)=>{setLang(l);try{localStorage.setItem("qc_w_lang",l)}catch{}};
   const L=T[lang];
   const p=v.projects[i];
+  const en=lang==="en";const hr=new Date().getHours();
+  const hello=en?(hr<12?"Good morning":hr<18?"Good afternoon":"Good evening"):(hr<12?"Доброго ранку":hr<18?"Добрий день":"Добрий вечір");
+  const open=(sid:string)=>{const k=v.projects.findIndex(x=>x.sid===sid);if(k>=0)setI(k);setTimeout(()=>document.getElementById("w-proj")?.scrollIntoView({behavior:"smooth",block:"start"}),50)};
+  const tile:React.CSSProperties={background:"#fff",borderRadius:14,padding:14,minWidth:0,boxShadow:"0 1px 3px #0001"};
+  const tl:React.CSSProperties={display:"block",color:"#8e8e93",fontSize:13,fontWeight:500};
+  const tb:React.CSSProperties={display:"block",fontSize:24,fontWeight:700,marginTop:4,letterSpacing:"-.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"};
+  const ts:React.CSSProperties={display:"block",color:"#8e8e93",fontSize:12,marginTop:1};
+  const h2s:React.CSSProperties={fontSize:20,margin:"20px 8px 8px",letterSpacing:"-.01em"};
+  const act:React.CSSProperties={border:"none",borderRadius:10,background:"rgba(47,109,246,.1)",color:"#2f6df6",fontWeight:600,fontSize:14,padding:"8px 12px",textDecoration:"none"};
   return <div style={{maxWidth:560,margin:"0 auto",padding:"8px 4px 40px"}}>
-    <div style={{...card,background:"#101828",color:"#fff"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><small style={{opacity:.7}}>{v.company}</small><span style={{display:"flex",gap:4}}>{(["uk","en"] as Lang[]).map(l=><button key={l} onClick={()=>pick(l)} style={{padding:"4px 10px",borderRadius:999,border:"none",fontWeight:800,background:lang===l?"#fff":"#344054",color:lang===l?"#101828":"#fff"}}>{l==="uk"?"UA":"EN"}</button>)}</span></div>
-      <h1 style={{margin:"2px 0 8px"}}>👷 {v.worker}</h1>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,fontSize:13}}>
-        <div><div style={{opacity:.7}}>{L.hours}</div><b style={{fontSize:20}}>{v.hours}</b></div>
-        <div><div style={{opacity:.7}}>{L.earned(v.rate)}</div><b style={{fontSize:20}}>{money(v.earned)}</b></div>
-        <div><div style={{opacity:.7}}>{L.owed}</div><b style={{fontSize:20,color:v.owed>0?"#fdb022":"#75e0a7"}}>{money(v.owed)}</b></div>
-      </div>
-      {v.reimb>0&&<small style={{opacity:.85,display:"block"}}>{lang==="en"?"incl. receipts paid with your card: ":"у т.ч. за чеки з твоєї картки: "}{money(v.reimb)}</small>}
-      {v.paid>0&&<small style={{opacity:.7}}>{L.paid}{money(v.paid)}</small>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 8px 0"}}><small style={{color:"#8e8e93",fontWeight:600}}>{v.company}</small><span style={{display:"flex",gap:4}}>{(["uk","en"] as Lang[]).map(l=><button key={l} onClick={()=>pick(l)} style={{padding:"4px 10px",borderRadius:999,border:"none",fontWeight:800,background:lang===l?"#101828":"#e5e5ea",color:lang===l?"#fff":"#101828"}}>{l==="uk"?"UA":"EN"}</button>)}</span></div>
+    <div style={{padding:"4px 8px 0"}}>
+      <small style={{color:"#8e8e93",textTransform:"uppercase",fontWeight:600,fontSize:12}}>{new Date().toLocaleDateString(L.loc,{weekday:"long",day:"numeric",month:"long"})}</small>
+      <h1 style={{margin:"2px 0 0",fontSize:30,letterSpacing:"-.02em"}}>{hello}, {v.worker}</h1>
     </div>
-    {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10,marginTop:12}}>
+      <div style={tile}><small style={tl}>{en?"This week":"Цей тиждень"}</small><b style={{...tb,color:"#079455"}}>{money(v.week.earned)}</b><small style={ts}>{v.week.hours} {L.h} × ${v.rate}</small></div>
+      <div style={tile}><small style={tl}>{en?"Owed to you":"Тобі винні"}</small><b style={{...tb,color:v.owed>0.5?"#c2410c":"#079455"}}>{money(v.owed)}</b>
+        <small style={ts}>{en?"work":"робота"} {money(Math.max(0,v.owed-v.reimb))}{v.reimb>0?<> + {en?"receipts":"чеки"} {money(v.reimb)}</>:null}</small></div>
+      <div style={tile}><small style={tl}>{en?"All hours":"Усього годин"}</small><b style={tb}>{v.hours}</b><small style={ts}>{en?"earned":"заробив"} {money(v.earned)}</small></div>
+      <div style={tile}><small style={tl}>{en?"Paid out":"Виплачено"}</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
+    </div>
+    {v.reimb>0&&<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Receipts paid with your own card are added to what you are owed.":"Чеки, оплачені твоєю карткою, додаються до того, що тобі винні."}</small>}
+
+    {v.today.length>0&&<><h2 style={h2s}>{en?"Today":"Сьогодні"}</h2>
+      <div style={{...card,marginTop:0,padding:0}}>{v.today.map((j,k)=><div key={k} style={{padding:14,borderTop:k?"1px solid #f2f2f7":"none"}}>
+        <b style={{fontSize:17}}>{j.client}</b>
+        {j.title&&<div style={{fontSize:14,color:"#667085"}}>{j.title}</div>}
+        {j.address&&<div style={{fontSize:14,color:"#667085",marginTop:2}}>📍 {j.address}</div>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
+          {j.address&&<a style={act} href={`https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}`} target="_blank" rel="noreferrer">🧭 {en?"Route":"Маршрут"}</a>}
+          {j.sid&&<button style={act} onClick={()=>open(j.sid)}>⏱ {en?"Log hours":"Записати години"}</button>}
+          {j.sid&&<button style={act} onClick={()=>open(j.sid)}>📷 {en?"Receipt":"Чек"}</button>}
+        </div>
+      </div>)}</div></>}
+    {v.soon.length>0&&<><h2 style={h2s}>{en?"Coming up":"Найближчі роботи"}</h2>
+      <div style={{...card,marginTop:0,padding:0}}>{v.soon.map((j,k)=><div key={k} style={{padding:"12px 14px",borderTop:k?"1px solid #f2f2f7":"none",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+        <span style={{minWidth:0}}><b>{j.client}</b>{j.title&&<div style={{fontSize:13,color:"#667085"}}>{j.title}</div>}</span>
+        <span style={{flex:"none",background:"#e8f0fe",color:"#2f6df6",borderRadius:999,padding:"4px 10px",fontWeight:700,fontSize:13}}>{fmtL(j.start,L.loc)}</span>
+      </div>)}</div></>}
+    <h2 id="w-proj" style={h2s}>{en?"My jobs":"Мої об'єкти"}</h2>
+    {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:0,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}
     {p?<Project key={p.sid+lang} token={token} p={p} lang={lang} worker={v.worker}/>:<div style={card}>{L.none}</div>}
   </div>;
 }
