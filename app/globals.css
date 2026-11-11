@@ -219,9 +219,9 @@ body:has(.shell.app){overflow:hidden}
 .apLink{display:block;margin:12px auto 0;border:none;background:none;color:var(--blue);font-size:15px}
 .apAmt small{display:block}
 
-.apQuick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
-.apQuick button{border:none;border-radius:14px;background:var(--card);color:#000;padding:12px 6px;font-size:14px;font-weight:600;display:grid;gap:2px;justify-items:center}
-.apQuick button span{font-size:22px}
-.apQuick button.on{outline:2px solid #2f6df6}
+.apHomeQuick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+.apHomeQuick button{border:none;border-radius:14px;background:var(--card);color:#000;padding:12px 6px;font-size:14px;font-weight:600;display:grid;gap:2px;justify-items:center}
+.apHomeQuick button span{font-size:22px}
+.apHomeQuick button.on{outline:2px solid #2f6df6}
 .apActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .apActs a,.apActs button{border:none;border-radius:10px;background:rgba(47,109,246,.1);color:#2f6df6;font-weight:600;font-size:14px;padding:8px 12px;text-decoration:none}

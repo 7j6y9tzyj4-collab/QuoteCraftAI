@@ -77,7 +77,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
 
     {inbox.total>0&&<button className="apRow apCard apNotice" onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.text}</small></span><Chevron/></button>}
 
-    <div className="apQuick">
+    <div className="apHomeQuick">
       {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{if(v.active.length===1){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
     </div>
     {quick&&<div className="apCard" style={{marginTop:10}}>
