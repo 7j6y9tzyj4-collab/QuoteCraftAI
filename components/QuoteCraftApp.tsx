@@ -185,6 +185,7 @@ export default function QuoteCraftApp(){
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [prefsOpen,setPrefsOpen]=useState(false);
+ const [moreSec,setMoreSec]=useState(""); // 🍏 «Ще»: який розділ відкрито ("" — меню)
  const [shareMsg,setShareMsg]=useState<{link:string;text:string;busy:boolean}|null>(null); // 💬 повідомлення клієнту до посилання
  const {ui,save:saveUi}=useUiPrefs(user);
  useEffect(()=>{ // токен до всіх запитів /api/* — для обліку AI і лімітів
@@ -1845,6 +1846,7 @@ export default function QuoteCraftApp(){
  }
 
  const biz=ui.theme==="business";const apple=ui.theme==="apple";
+ const ms=(k:string)=>!apple||moreSec===k;
  const APPLE_TABS:{k:string;label:string;to:typeof screen}[]=[{k:"home",label:"Головна",to:"home"},{k:"pay",label:"Проєкти",to:"pay"},{k:"saved",label:"Естімейти",to:"saved"},{k:"clients",label:"Клієнти",to:"clients"},{k:"more",label:"Ще",to:"prices"}];
  return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}${apple?" apple":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz||apple}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
   <header><div><strong>{(biz||apple)&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
@@ -1853,6 +1855,7 @@ export default function QuoteCraftApp(){
       draftLabel={calcItems.length>0&&!calcSavedId?(calcClient||calcProject||"поточний розрахунок"):""}
       onNew={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}
       onContinue={()=>setScreen("calc")} onOpenProject={(id,tab)=>{setPayOpenTab(tab||null);setPayOpenId(id);setScreen("pay")}} onGo={s=>setScreen(s)}/>}
+   {screen==="home"&&apple&&<div className="apHomeExtra"><SiteLeads user={user}/><PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/></div>}
    {screen==="home"&&!apple&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
     {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/></>}
@@ -2061,21 +2064,27 @@ export default function QuoteCraftApp(){
        void generateCalc(undefined,text);
      }}/>}
    {screen==="saved"&&<section className="panel"><div className="head"><h2>З калькулятора</h2><button className="add" onClick={()=>{clearCalc();setScreen("calc")}}>＋ New</button></div>{calcSaved.length===0?<p className="empty">Ще немає. У калькуляторі натисни «💾 Зберегти естімейт».</p>:calcSaved.map(c=><article className="saved" key={c.id}><button onClick={()=>openCalc(c)}><b>{c.client||"Unnamed client"}{c.id===calcSavedId&&<span className="badge badge-draft">відкритий</span>}</b><small>{c.project||"Estimate"} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</small>{findClient(clients,c.client||"")?.address&&<small>📍 {findClient(clients,c.client||"")!.address}</small>}</button><strong>{money(c.total)}</strong><button className="dup" onClick={()=>duplicateCalc(c)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteCalc(c.id)}>Delete</button></article>)}</section>}
-   {screen==="saved"&&all.length>0&&<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>}
+   {screen==="saved"&&all.length>0&&(apple?<details className="panel"><summary style={{fontWeight:600,color:"#8e8e93"}}>Старі AI-естімейти (архів) · {all.length}</summary><section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section></details>:<section className="panel"><div className="head"><h2>Старі AI-естімейти (архів)</h2></div><p className="muted">Нові естімейти робляться в калькуляторі. Ці можна відкрити й переглянути; посилання клієнтам працюють.</p>{all.map(e=><article className="saved" key={e.id}><button onClick={()=>{setCur(e);setScreen("new")}}><b>{e.client||"Unnamed client"}<span className={`badge badge-${e.status||"draft"}`}>{statusLabel(e.status)}</span></b><small>{e.project||"Estimate"}</small></button><strong>{money(value(e))}</strong><button className="dup" onClick={()=>duplicate(e)} title="Duplicate">⧉</button><button className="delete" onClick={()=>deleteEstimate(e.id)}>Delete</button></article>)}</section>)}
 
-   {<section hidden={screen!=="prices"} className="panel"><div className="noPrint" style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}><button className={prefsOpen?"primary":"secondary"} onClick={()=>{setPrefsOpen(v=>!v);document.querySelector("main")?.scrollTo({top:0})}} style={{padding:"10px 14px",fontWeight:800}}>{prefsOpen?"← До цін":"⚙ Налаштування"}</button></div>{!prefsOpen&&<><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceHistory saved={calcSaved} old={all} prices={prices}/><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/></>}
+   {<section hidden={screen!=="prices"} className="panel">{apple&&(moreSec===""?<div className="apMore">
+     <h1 style={{margin:"0 0 10px"}}>Ще</h1>
+     <div className="apCard">{([["prices","💲","Мої ціни","Ставки, з яких рахується естімейт"],["company","🏢","Компанія і картки","Назва, логотип, телефон, бізнес-картки"],["owner","💵","Оплата й умови","Zelle, завдаток, умови в естімейті"],["view","🎨","Вигляд і мова","Стиль, розмір тексту, що показувати"],["push","🔔","Сповіщення","Push на цей телефон"],["mail","📧","Чеки з пошти","Автоматично з Gmail"],["lessons","🧠","Чого навчилась програма","Правки, які AI запам'ятав"],["ai","🤖","Використання AI","Витрати, користувачі, відгуки"],["backup","💾","Резервна копія","Завантажити всі дані"],["account","🔑","Пароль і вихід",user?.email||""]] as [string,string,string,string][]).map(([k,ic,l,d])=><button key={k} className="apRow" onClick={()=>{setMoreSec(k);document.querySelector("main")?.scrollTo({top:0})}}><span style={{fontSize:22,flex:"none",width:30}}>{ic}</span><span style={{flex:1,minWidth:0}}><b>{l}</b><small>{d}</small></span><span style={{color:"#c7c7cc",fontSize:20}}>›</span></button>)}
+       <a className="apRow" href="/translate" style={{textDecoration:"none",color:"inherit"}}><span style={{fontSize:22,flex:"none",width:30}}>🎧</span><span style={{flex:1,minWidth:0}}><b>Перекладач UA ⇄ EN</b><small>Розмова з клієнтом через AirPods</small></span><span style={{color:"#c7c7cc",fontSize:20}}>›</span></a>
+     </div></div>
+     :<button className="noPrint" onClick={()=>setMoreSec("")} style={{border:"none",background:"none",color:"#2f6df6",fontWeight:600,fontSize:16,padding:"0 0 10px"}}>‹ Ще</button>)}<div className="noPrint" hidden={apple} style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}><button className={prefsOpen?"primary":"secondary"} onClick={()=>{setPrefsOpen(v=>!v);document.querySelector("main")?.scrollTo({top:0})}} style={{padding:"10px 14px",fontWeight:800}}>{prefsOpen?"← До цін":"⚙ Налаштування"}</button></div>{(apple?moreSec==="prices":!prefsOpen)&&<><span className="eyebrow">PRICE LIBRARY</span><h1>Твої ціни</h1><p className="muted">AI визначає роботу, але не вигадує ціну. Ставка береться звідси.</p><PriceHistory saved={calcSaved} old={all} prices={prices}/><PriceEditor key={user?.id||"guest"} prices={prices} onSave={savePrices}/></>}
 
-{prefsOpen&&<div>
-  <span className="eyebrow">ACCOUNT</span>
-  <CompanyProfile user={user} onChange={()=>setCompanyTick(t=>t+1)}/>
-  <BackupPanel user={user}/>
-  <OwnerSettings user={user} onChange={setOwnerPrefs}/>
-  <ViewSettings ui={ui} onSave={saveUi} isAdmin={user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"}/>
-  <div style={{marginTop:20}}><PushSetup user={user}/></div>
-  <MailReceiptsSetup user={user}/>
-  <LessonsPanel user={user}/>
-  <AiUsage user={user}/>
-  {user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"&&<FeedbackAdmin/>}
+{(apple?(moreSec!==""&&moreSec!=="prices"):prefsOpen)&&<div>
+  {!apple&&<span className="eyebrow">ACCOUNT</span>}
+  {ms("company")&&<CompanyProfile user={user} onChange={()=>setCompanyTick(t=>t+1)}/>}
+  {ms("backup")&&<BackupPanel user={user}/>}
+  <div hidden={!ms("owner")}><OwnerSettings user={user} onChange={setOwnerPrefs}/></div>
+  {ms("view")&&<ViewSettings ui={ui} onSave={saveUi} isAdmin={user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"}/>}
+  {ms("push")&&<div style={{marginTop:apple?0:20}}><PushSetup user={user}/></div>}
+  {ms("mail")&&<MailReceiptsSetup user={user}/>}
+  {ms("lessons")&&<LessonsPanel user={user}/>}
+  {ms("ai")&&<AiUsage user={user}/>}
+  {ms("ai")&&user?.id==="239d3941-68b8-4f7d-b058-f1a87f861143"&&<FeedbackAdmin/>}
+  <div hidden={!ms("account")}>
   <h2>Пароль для Face ID</h2>
   <p className="muted" style={{fontSize:14}}>Натисни в поле нижче — iPhone / Mac запропонує «Надійний пароль». Погодься і натисни «Зберегти». Пароль сам збережеться в iCloud, і далі при вході Face ID / Touch ID підставлятиме його сам.</p>
   <form onSubmit={e=>{e.preventDefault();updatePassword()}}>
@@ -2108,10 +2117,11 @@ export default function QuoteCraftApp(){
   >
     Sign out
   </button>
+  </div>
 </div>}
 </section>}
   </main>
-  {apple?<nav className="noPrint" style={{gridTemplateColumns:"repeat(5,1fr)"}}>{APPLE_TABS.map(t=><button key={t.k} className={screen===t.to?"active":""} onClick={()=>setScreen(t.to)} style={{position:"relative"}}><NavIcon k={t.k}/>{t.k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#ff3b30",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:700,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>)}</nav>:
+  {apple?<nav className="noPrint" style={{gridTemplateColumns:"repeat(5,1fr)"}}>{APPLE_TABS.map(t=><button key={t.k} className={screen===t.to?"active":""} onClick={()=>{if(t.k==="more")setMoreSec("");setScreen(t.to)}} style={{position:"relative"}}><NavIcon k={t.k}/>{t.k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#ff3b30",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:700,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>)}</nav>:
   <nav className="noPrint" style={{gridTemplateColumns:`repeat(${ui.tabs.length},1fr)`}}>{ui.tabs.map(k=>{const t=TABS.find(x=>x.k===k)!;return <button key={k} className={screen===k?"active":""} onClick={()=>setScreen(k)} style={{position:"relative"}}>{biz?<NavIcon k={k}/>:t.icon}{k==="pay"&&inbox.total>0&&<i style={{position:"absolute",top:0,right:"calc(50% - 22px)",minWidth:18,height:18,padding:"0 5px",borderRadius:9,background:"#d92d20",color:"#fff",fontSize:11,fontStyle:"normal",fontWeight:800,lineHeight:"18px"}}>{inbox.total}</i>}<span>{t.label}</span></button>})}</nav>}
  </div>
 }

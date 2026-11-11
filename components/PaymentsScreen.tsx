@@ -748,9 +748,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>)}
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
+     {!apple&&<>
      {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
-     {list.length>0&&<MonthEarnings list={list}/>}
-     {list.length>0&&<CrewOwed list={list}/>}
+     {!apple&&list.length>0&&<MonthEarnings list={list}/>}
+     {!apple&&list.length>0&&<CrewOwed list={list}/>}
      <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
        <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
        <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
@@ -768,6 +769,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
      <MonthReceiptsButton list={list}/>
+     </>}
      {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
        {([["all","Всі"],["active","В роботі"],["planned","Заплановані"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>inTab(s,k)).length;if(k==="planned"&&!n)return null;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
      </div>}
@@ -776,6 +778,28 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <span><b>{s.client||"Без імені"}</b><small>{s.project||"Payment statement"}</small>{findClient(clientBook,s.client)?.address&&<small>📍 {findClient(clientBook,s.client)!.address}</small>}<small style={{color:m.color,fontWeight:800,marginTop:3}}>{st==="done"?"✓ ":st==="planned"?"🗓 ":"● "}{m.label}{st==="planned"&&start?` · з ${shortDate(start)}`:""}{s.status?" ✎":""}{st==="done"&&jobRate(s).hours>0?` · ${money(jobRate(s).rate)}/год`:""}</small>{(()=>{const p=profitOf(s);return p.cost>0&&p.margin!==null?<small style={{color:p.low?"#b42318":"#067647",fontWeight:700}}>💰 прибуток {money(p.profit)} · {p.margin}%{p.low?" ⚠":""}</small>:null})()}{st==="done"&&!s.reviewAsked?<small style={{color:"#b54708",fontWeight:700}}>⭐ попроси відгук у Google</small>:null}</span>
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
+     {apple&&<><h2 style={{margin:"22px 0 6px",fontSize:20}}>Інструменти</h2>
+     {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
+     {!apple&&list.length>0&&<MonthEarnings list={list}/>}
+     {!apple&&list.length>0&&<CrewOwed list={list}/>}
+     <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
+       <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
+       <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
+       <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
+       <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
+       <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
+     </button>
+     <MonthReceiptsButton list={list}/>
+     </>}
    </section>{inputs}</>;
  }
 
@@ -891,10 +915,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <div className="apStat"><small>{t.balance>=0?"Клієнт винен":"Переплата"}</small><b className={t.balance>0.5?"apWarn":"apGood"}>{money(Math.abs(t.balance))}</b><em>оплачено {pct}%</em></div>
        </div>
        <div className="apBar apBarBig"><i style={{width:pct+"%"}}/></div>
-       <div className="apQuick">
-         <button onClick={()=>{setPtab("rec");setRec(true);targetRef.current=cur.id;camRef.current?.click()}}>Чек</button>
-         <button onClick={()=>{setPtab("pay");setPay(true);update({payments:[...cur.payments,{id:uid(),date:today(),amount:0,method:"Zelle"}]})}}>Оплата</button>
-         <button onClick={()=>pdf(false)} disabled={busy}>PDF</button>
+       <div className="apQuick" style={{gridTemplateColumns:"1fr"}}>
+         <button onClick={()=>pdf(false)} disabled={busy}>📄 PDF для клієнта</button>
        </div>
        <div className="apSeg">{tabs.map(([k,l,n])=><button key={k} className={ptab===k?"on":""} onClick={()=>setPtab(k)}>{l}{n?<i>{n}</i>:null}</button>)}</div>
      </div>})()}
@@ -916,7 +938,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        {items.map((t,i)=><div key={i} data-notr style={{fontSize:15,padding:"4px 0"}}>{t}</div>)}
        <small className="muted">Години — у «👷 Команда й години», чеки — у «Чеки на матеріали», фото — у «Фото». Позначка «НОВЕ» тримається добу.</small>
      </section>})()}</>}
-   {show("over")&&<ProfitCard st={cur}/>}
+   {show("over")&&(apple?<details className="panel" style={{padding:"12px 14px"}}><summary style={{fontWeight:600}}>Прибуток — детальніше</summary><ProfitCard st={cur}/></details>:<ProfitCard st={cur}/>)}
 
    {show("over")&&<section className="panel">
      <div className="head"><FoldTitle open={fWork||apple} onToggle={tWork} title="Робота" summary={`${cur.labor.length} рядк. · ${money(t.labor)}`}/><button className="add" onClick={()=>{setWork(true);update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}}>＋ Рядок</button></div>
