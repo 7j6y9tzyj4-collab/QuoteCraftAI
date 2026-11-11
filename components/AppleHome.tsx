@@ -11,7 +11,7 @@ import CrewOwed,{crewOwedAll} from "@/components/CrewOwed";
 
 // 🍏 Головна в стилі Apple: привітання, одна велика кнопка, 4 цифри, найближчі роботи, активні проєкти.
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n||0);
-type Job={client?:string;title?:string;start?:string;days?:number;sid?:string;address?:string};
+type Job={client?:string;title?:string;start?:string;days?:number;sid?:string;address?:string;sat?:boolean;auto?:boolean};
 type PTab="over"|"rec"|"pay"|"crew"|"photo";
 const Chevron=()=><svg width="8" height="14" viewBox="0 0 8 14" fill="none" aria-hidden><path d="M1 1l6 6-6 6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
@@ -51,7 +51,14 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
   const t=todayISO();const week=new Date(Date.now()+7*864e5).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const soon=(jobs||[]).filter(j=>j.start&&j.start>t&&j.start<=week).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4);
   const addDays=(iso:string,n:number)=>{const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+n);return d.toLocaleDateString("sv-SE")};
-  const todayJobs=(jobs||[]).filter(j=>j.start&&j.start<=t&&addDays(String(j.start),Math.max(1,Math.ceil(Number(j.days)||1))-1)>=t);
+  // кінець роботи за робочими днями (неділя — вихідний, субота — якщо позначено)
+  const endOf=(j:Job)=>{let d=new Date(String(j.start)+"T12:00:00");let left=Math.max(1,Math.ceil(Number(j.days)||1));for(let g=0;g<400;g++){const wd=d.getDay();if(wd!==0&&(wd!==6||j.sat)){left--;if(left<=0)break}d.setDate(d.getDate()+1)}return d.toLocaleDateString("sv-SE")};
+  const planned:Job[]=(jobs||[]).filter(j=>j.start&&j.start<=t&&endOf(j)>=t);
+  // проєкти в роботі, яких нема в графіку: години записані за останні 3 дні
+  const iso=(d:string)=>{const m=String(d).match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[1]}-${m[2]}`:String(d).slice(0,10)};
+  const from3=addDays(t,-3);
+  const live:Job[]=v.active.filter(({s})=>(s.workLog||[]).some(w=>{const d=iso(w.date);return d>=from3&&d<=t})&&!planned.some(j=>j.sid?j.sid===s.id:String(j.client||"").trim().toLowerCase()===String(s.client||"").trim().toLowerCase())).map(({s})=>({client:s.client,title:s.project,sid:s.id,auto:true}));
+  const todayJobs=[...planned,...live];
   const stFor=(j:Job)=>statements.find(s=>!s.own&&(j.sid?s.id===j.sid:String(s.client||"").trim().toLowerCase()===String(j.client||"").trim().toLowerCase()));
   const now=new Date();const h=now.getHours();
   const hello=h<12?"Доброго ранку":h<18?"Добрий день":"Добрий вечір";
@@ -85,11 +92,14 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
         return <div key={i} className="apRow" style={{display:"block"}}>
           <b style={{display:"block"}}>{j.client||"Робота"}</b>
           {j.title&&<small style={{display:"block"}}>{j.title}</small>}
+          {j.auto&&<small style={{display:"block",color:"#34a853"}}>в роботі · години записані за останні дні</small>}
           {addr&&<small style={{display:"block",marginTop:2}}>📍 {addr}</small>}
           <div className="apActs">
             {addr&&<a href={`https://maps.apple.com/?daddr=${encodeURIComponent(addr)}`} target="_blank" rel="noreferrer">🧭 Маршрут</a>}
             {c?.phone&&<a href={`tel:${c.phone}`}>📞 Дзвінок</a>}
             {c?.phone&&<a href={`sms:${c.phone}`}>💬 SMS</a>}
+            {st&&<button onClick={()=>onOpenProject(st.id,"crew")}>⏱ Години</button>}
+            {st&&<button onClick={()=>onOpenProject(st.id,"rec")}>📷 Чек</button>}
             {st&&<button onClick={()=>onOpenProject(st.id)}>Проєкт</button>}
           </div>
         </div>})}</div>
