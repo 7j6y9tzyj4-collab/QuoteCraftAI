@@ -62,6 +62,12 @@ function ReceiptThumb({r}:{r:Receipt}){
  return <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="receipt" style={{width:56,height:72,objectFit:"cover",borderRadius:8,border:"1px solid #d0d5dd"}}/></a>;
 }
 
+// повідомлення після дії: дублікат / увага — жовтим і помітно, решта — зеленим
+function MsgBox({msg}:{msg:string}){
+  const warn=/⚠|Увага|вже є|Пропущено|Не вдалося|помилк/i.test(msg);
+  return <div role="status" style={{margin:"8px 0 10px",padding:"12px 14px",borderRadius:12,fontSize:15,fontWeight:600,lineHeight:1.35,background:warn?"#fffaeb":"#ecfdf3",border:`1px solid ${warn?"#fec84b":"#abefc6"}`,color:warn?"#93370d":"#067647"}}>{msg}</div>;
+}
+
 export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,onOpened,apple=false}:{apple?:boolean;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
@@ -383,7 +389,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const latest=list.find(s=>s.id===target.id)||target;
    // робоча копія чеків проєкту: сюди додаємо нові і в неї ж «вклеюємо» фото до чеків, вписаних вручну
    let receipts:Receipt[]=[...latest.receipts];
-   let addedN=0,mergedN=0;const skipped:string[]=[];const failed:string[]=[];
+   let addedN=0,mergedN=0;const skipped:string[]=[];const failed:string[]=[];let lastDate="";
    for(const f of Array.from(files)){
      try{
        const p=await prepareReceiptFile(f);
@@ -400,7 +406,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          skipped.push(`${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)} — уже в «${other.x.client||"Без імені"}»`);continue}
        // 1) такий чек з фото вже є → не додаємо
        const dup=findDuplicate(info,receipts);
-       if(dup&&hasPhoto(dup)){skipped.push(`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`);continue}
+       if(dup&&hasPhoto(dup)){skipped.push(`${dup.date} · ${dup.store||"чек"} · ${money(Number(dup.amount)||0)}`);lastDate=normDate(dup.date)||lastDate;continue}
+       lastDate=normDate(info.date)||lastDate;
        // 2) є такий самий чек, вписаний вручну без фото → прикріплюємо фото до нього
        const manual=dup||findManualMatch(info,receipts);
        const rid=manual?manual.id:uid();
@@ -437,9 +444,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      persist(list.map(s=>s.id===now.id?{...now,receipts,updatedAt:new Date().toISOString()}:s));
    }
    setBusy(false);
-   const parts=[`Додано чеків: ${addedN}.`];
+   const parts=addedN||!skipped.length?[`Додано чеків: ${addedN}.`]:[];
    if(mergedN)parts.push(`Фото прикріплено до чеків, вписаних вручну: ${mergedN}.`);
-   if(skipped.length)parts.push(`Пропущено — вже є: ${skipped.join("; ")}.`);
+   if(skipped.length)parts.push(`⚠ Цей чек уже є — вдруге не додаю: ${skipped.join("; ")}.`);
+   // «Мої витрати» показують один місяць: чек з іншого місяця — перемикаємо на його місяць, щоб його було видно
+   if(target.own&&lastDate&&lastDate.slice(0,7)!==ownMonth){setOwnMonth(lastDate.slice(0,7));parts.push(`Чек за ${new Date(lastDate.slice(0,7)+"-15").toLocaleDateString("uk-UA",{month:"long",year:"numeric"})} — показую цей місяць.`)}
    setMsg(parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):" Перевір суми з чеками."));
    if(fileRef.current)fileRef.current.value="";
    if(camRef.current)camRef.current.value="";
@@ -728,7 +737,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <button className="secondary" onClick={()=>pasteReceipt(s.id)}>📋 Скріншот</button>
        </div>)}
      </div>}
-     {msg&&<p className="muted" style={{marginTop:8}}>{msg}</p>}
+     {msg&&<MsgBox msg={msg}/>}
      {mailReview.length>0&&<div style={{marginTop:10,padding:12,borderRadius:12,background:"#fffaeb",border:"1px solid #fedf89"}}>
        <b>🧾 Чеки з пошти — куди? · {mailReview.length}</b>
        <small className="muted" style={{display:"block"}}>Програма не впевнена. Синя кнопка — її підказка.</small>
@@ -855,7 +864,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
        </div>)}
      </section>
-     {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
+     {msg&&<MsgBox msg={msg}/>}
      <section className="total">
        {byCat.filter(x=>x.sum).map(x=><div key={x.c}><span>{x.c}</span><span>{money(x.sum)}</span></div>)}
        <div className="grand"><span>Разом за {monthName}</span><b>{money(total)}</b></div>
@@ -1021,7 +1030,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    {show("over")&&<section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>}
 
-   {msg&&<p className="muted" style={{margin:"0 4px 10px"}}>{msg}</p>}
+   {msg&&<MsgBox msg={msg}/>}
    <section className="total">
      <div><span>Робота</span><span>{money(t.labor)}</span></div>
      {t.fixed?<><div><span>Матеріали (за естімейтом)</span><span>{money(t.matPlan)}</span></div>{t.matOver>0&&<div><span>+ Матеріали понад естімейт</span><span>{money(t.matOver)}</span></div>}</>
