@@ -71,6 +71,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
  useEffect(()=>{if(openReq){setOpenId(openReq);setPtab(openTab||"over");onOpened?.()}},[openReq,onOpened]); // eslint-disable-line react-hooks/exhaustive-deps
+ // «Мої витрати» відкрили з Головної, а запису ще нема — створюємо, але тільки коли список уже завантажений
+ useEffect(()=>{if(openId===OWN_ID&&list.length>0&&!list.some(x=>x.id===OWN_ID))persist([newOwnStatement(),...list])},[openId,list]); // eslint-disable-line react-hooks/exhaustive-deps
  const [msg,setMsg]=useState("");
  const [busy,setBusy]=useState(false);
  const cloudOk=useRef(false);

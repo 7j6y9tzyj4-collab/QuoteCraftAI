@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
-import {statementTotals,statementStatus,type Statement} from "@/lib/statement";
+import {statementTotals,statementStatus,OWN_ID,type Statement} from "@/lib/statement";
 import MonthEarnings,{workEarnings} from "@/components/MonthEarnings";
 import {useScheduleJobs,upcomingStart,todayISO} from "@/lib/scheduleStarts";
 import {ownerFirst,companyName,cardList} from "@/lib/company";
@@ -43,10 +43,11 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
       if(unk.length)warns.push({id:"u"+s.id,sid:s.id,tab:"rec",text:`Чек без платника · ${unk.length}`,sub:`${nm} — познач, хто платив (${money(unk.reduce((a,r)=>a+(Number(r.amount)||0),0))})`});
       if(t.matOver>0.5)warns.push({id:"m"+s.id,sid:s.id,tab:"rec",text:`Матеріали понад естімейт на ${money(t.matOver)}`,sub:`${nm} — чеки ${money(t.receipts)} при плані ${money(t.matPlan)}`});
     }
-    return {active,owed,received,recvList,owedList,helpers,helpOwed,warns};
+    const rest=rows.filter(r=>!active.includes(r));
+    return {active,rest,owed,received,recvList,owedList,helpers,helpOwed,warns};
   },[statements,jobs]);
   const [open,setOpen]=useState<""|"owed"|"recv"|"earn"|"help">("");
-  const [quick,setQuick]=useState<""|PTab>("");
+  const [quick,setQuick]=useState<""|PTab>("");const [moreP,setMoreP]=useState(false);
   const earn=useMemo(()=>{const d=new Date();return workEarnings(statements,`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`)},[statements]);
   const t=todayISO();const week=new Date(Date.now()+7*864e5).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const soon=(jobs||[]).filter(j=>j.start&&j.start>t&&j.start<=week).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4);
@@ -78,12 +79,15 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     {inbox.total>0&&<button className="apRow apCard apNotice" onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.text}</small></span><Chevron/></button>}
 
     <div className="apHomeQuick">
-      {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{if(v.active.length===1){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
+      {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{setMoreP(false);if(k!=="rec"&&v.active.length===1&&!v.rest.length){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
     </div>
     {quick&&<div className="apCard" style={{marginTop:10}}>
       <div className="apRow" style={{display:"block"}}><small>{quick==="rec"?"До якого проєкту чек?":quick==="crew"?"На якому проєкті години?":"Від кого оплата?"}</small></div>
       {v.active.length===0&&<div className="apRow"><small>Немає активних проєктів.</small></div>}
       {v.active.map(({s})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id,quick as PTab)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small></span><Chevron/></button>)}
+      {quick==="rec"&&<button className="apRow" onClick={()=>onOpenProject(OWN_ID,"rec")}><span style={{flex:1,minWidth:0}}><b>🧰 Мої витрати</b><small>Інструменти, бензин, матеріали для себе — не для клієнта</small></span><Chevron/></button>}
+      {v.rest.length>0&&!moreP&&<button className="apRow" onClick={()=>setMoreP(true)}><span style={{flex:1,minWidth:0,color:"#2f6df6"}}><b style={{color:"#2f6df6"}}>Інший проєкт…</b><small>заплановані й завершені · {v.rest.length}</small></span></button>}
+      {moreP&&v.rest.map(({s})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id,quick as PTab)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small></span><Chevron/></button>)}
     </div>}
 
     {todayJobs.length>0&&<section className="apGroup">
