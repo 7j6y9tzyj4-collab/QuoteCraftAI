@@ -35,3 +35,6 @@ begin
   where user_id=p_user;
 end $f$;
 revoke all on function public.set_receipt_payer(uuid,text,text,text) from public, anon, authenticated;
+
+-- 🕘 Історія версій клієнтського естімейту: стара версія зберігається при кожній зміні (2026-11-12)
+-- (таблиця shared_quote_versions + тригер keep_quote_version на shared_quotes — застосовано в базі)

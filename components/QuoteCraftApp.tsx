@@ -20,6 +20,7 @@ import AiUsage from "@/components/AiUsage";
 import FeedbackAdmin from "@/components/FeedbackAdmin";
 import LessonsPanel from "@/components/LessonsPanel";
 import NavIcon from "@/components/NavIcon";
+import QuoteVersions from "@/components/QuoteVersions";
 import AppleHome from "@/components/AppleHome";
 import {useUiPrefs,TABS} from "@/lib/uiPrefs";
 import MailReceiptsSetup from "@/components/MailReceiptsSetup";
@@ -2050,6 +2051,7 @@ export default function QuoteCraftApp(){
         <button className="secondary" onClick={()=>setShareMsg(null)}>✕</button>
       </div>
     </section>}
+    {calcShareToken&&<QuoteVersions token={calcShareToken} tick={calcMessage}/>}
     {calcShareToken&&calcQuote&&<p className="muted noPrint" style={{marginTop:6}}>Посилання: {calcQuote.status==="accepted"?<b style={{color:"#067647"}}>✓ Прийнято{typeof calcQuote.chosenTier==="number"&&calcTiers?` варіант «${calcTiers.names[calcQuote.chosenTier]}»`:""}{calcQuote.accepted_name?` — ${calcQuote.accepted_name}`:""}{calcQuote.accepted_at?`, ${new Date(calcQuote.accepted_at).toLocaleDateString("uk-UA")}`:""}{calcQuote.chosenOptions?.length?` · додав опції: ${calcQuote.chosenOptions.map(i=>calcItems.filter(x=>x.optional)[i]?.name).filter(Boolean).join(", ")}`:""}</b>:calcQuote.status==="viewed"?<><b>👁 Клієнт переглянув{calcQuote.viewed_at?` ${new Date(calcQuote.viewed_at).toLocaleDateString("uk-UA")}`:""}</b> <button type="button" className="secondary" style={{padding:"2px 8px",fontSize:12}} onClick={async()=>{const {error}=await supabase.from("shared_quotes").update({status:"sent",viewed_at:null}).eq("token",calcShareToken);if(!error)setCalcQuote(q=>q?{...q,status:"sent",viewed_at:null}:q)}}>це був я</button></>:"надіслано, ще не відкривали"} · <a href={`/q/${calcShareToken}`} target="_blank" rel="noreferrer">відкрити</a></p>}
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
