@@ -12,6 +12,7 @@ import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
 import {invoiceLink} from "@/lib/invoiceLink";
 import ChangeOrders from "@/components/ChangeOrders";
+import ClientDecisions from "@/components/ClientDecisions";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
 import HoursCalendar from "@/components/HoursCalendar";
@@ -68,7 +69,7 @@ function MsgBox({msg}:{msg:string}){
   return <div role="status" style={{margin:"8px 0 10px",padding:"12px 14px",borderRadius:12,fontSize:15,fontWeight:600,lineHeight:1.35,background:warn?"#fffaeb":"#ecfdf3",border:`1px solid ${warn?"#fec84b":"#abefc6"}`,color:warn?"#93370d":"#067647"}}>{msg}</div>;
 }
 
-export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,onOpened,apple=false}:{apple?:boolean;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,openCal,onCalOpened,onOpened,apple=false}:{apple?:boolean;openCal?:boolean;onCalOpened?:()=>void;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
@@ -108,6 +109,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const [report,setReport]=useState(false);
  const [hoursCal,setHoursCal]=useState(false);
  const [jobsCal,setJobsCal]=useState(false);
+ useEffect(()=>{if(openCal){setOpenId(null);setJobsCal(true);onCalOpened?.()}},[openCal]); // eslint-disable-line react-hooks/exhaustive-deps
  const [ownMonth,setOwnMonth]=useState(()=>new Date().toLocaleDateString("sv-SE").slice(0,7)); // YYYY-MM
 
  // завантаження: локально одразу, потім з акаунта (таблиця user_statements)
@@ -963,6 +965,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    </section>}
 
    {show("over")&&<ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>}
+   {show("over")&&!cur.own&&<ClientDecisions key={"d"+cur.id} st={cur} onPatch={update}/>}
 
    {show("rec")&&<MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>}
    {show("rec")&&batchView}

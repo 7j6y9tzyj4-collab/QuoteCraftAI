@@ -7,7 +7,9 @@ import {normDate} from "@/lib/receiptBatch";
 
 // 📅 Графік робіт: заплановані роботи (клієнт, з якого дня, скільки робочих днів) + де вже працював (години) + вільні дні.
 export type Job={id:string;client:string;title:string;start:string;days:number;sat:boolean;sid?:string;
-  /** хто робить: «Я» (за замовчуванням) або помічник — роботи помічника не займають мої дні */ worker?:string};
+  /** хто робить: «Я» (за замовчуванням) або помічник — роботи помічника не займають мої дні */ worker?:string;
+  /** час (необов'язково): «18:00», «ввечері» */ time?:string;
+  /** завдаток, якого чекаємо перед початком */ depAmount?:number;depDue?:string;depGot?:boolean};
 const isMe=(w?:string)=>!w||/^\s*(я|me)\s*$/i.test(w);
 const pad=(n:number)=>String(n).padStart(2,"0");
 const iso=(d:Date)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -29,6 +31,8 @@ export default function JobsSchedule({user,list,onClose}:{user:User|null;list:St
     if(!user)return;
     supabase.from("user_settings").select("schedule").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>setJobs(Array.isArray(data?.schedule)?data.schedule:[]));
   },[user]);
+  // повернувся в програму — підтягнути свіжий графік (якщо зараз нічого не редагую)
+  useEffect(()=>{if(!user)return;const f=()=>{if(edit)return;supabase.from("user_settings").select("schedule").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{if(Array.isArray(data?.schedule))setJobs(data.schedule)})};window.addEventListener("qc-sync",f);return()=>window.removeEventListener("qc-sync",f)},[user,edit]);
   async function save(next:Job[]){
     setJobs(next);
     if(!user)return;
@@ -67,9 +71,15 @@ export default function JobsSchedule({user,list,onClose}:{user:User|null;list:St
         <label>Робочих днів<input type="number" min={1} max={60} value={edit.days} onChange={e=>setEdit({...edit,days:Math.max(1,Number(e.target.value)||1)})}/></label>
       </div>
       <label style={{display:"flex",gap:8,alignItems:"center"}}><input type="checkbox" style={{width:"auto"}} checked={edit.sat} onChange={e=>setEdit({...edit,sat:e.target.checked})}/>працюю і в суботу</label>
+      <label>Час (необов'язково)<input value={edit.time||""} onChange={e=>setEdit({...edit,time:e.target.value})} placeholder="18:00 або «ввечері»"/></label>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <label>Завдаток, $<input type="number" min={0} value={edit.depAmount||""} onChange={e=>setEdit({...edit,depAmount:Number(e.target.value)||0})} placeholder="0"/></label>
+        <label>Чекаємо до<input type="date" value={edit.depDue||""} onChange={e=>setEdit({...edit,depDue:e.target.value})}/></label>
+      </div>
+      {(edit.depAmount||0)>0&&<label style={{display:"flex",gap:8,alignItems:"center"}}><input type="checkbox" style={{width:"auto"}} checked={!!edit.depGot} onChange={e=>setEdit({...edit,depGot:e.target.checked})}/>завдаток отримано</label>}
       {edit.start&&<small className="muted">До {fmt(jobDays(edit)[jobDays(edit).length-1])} включно (неділі не рахуються)</small>}
       <div className="actions">
-        <button className="primary" disabled={!edit.client.trim()||!edit.start} onClick={()=>{const j={...edit,client:edit.client.trim(),worker:isMe(edit.worker)?undefined:edit.worker!.trim(),sid:list.find(s=>s.client.trim().toLowerCase()===edit.client.trim().toLowerCase())?.id};void save(jobs.some(x=>x.id===j.id)?jobs.map(x=>x.id===j.id?j:x):[...jobs,j]);setEdit(null)}}>Зберегти</button>
+        <button className="primary" disabled={!edit.client.trim()||!edit.start} onClick={()=>{const j={...edit,client:edit.client.trim(),time:(edit.time||"").trim()||undefined,depAmount:edit.depAmount||undefined,depDue:edit.depAmount?edit.depDue||undefined:undefined,depGot:edit.depAmount?!!edit.depGot:undefined,worker:isMe(edit.worker)?undefined:edit.worker!.trim(),sid:list.find(s=>s.client.trim().toLowerCase()===edit.client.trim().toLowerCase())?.id};void save(jobs.some(x=>x.id===j.id)?jobs.map(x=>x.id===j.id?j:x):[...jobs,j]);setEdit(null)}}>Зберегти</button>
         {jobs.some(x=>x.id===edit.id)&&<button className="secondary" style={{color:"#b42318"}} onClick={()=>{if(confirm("Видалити цю роботу з графіка?")){void save(jobs.filter(x=>x.id!==edit.id));setEdit(null)}}}>Видалити</button>}
         <button className="secondary" onClick={()=>setEdit(null)}>Скасувати</button>
       </div>
@@ -93,7 +103,7 @@ export default function JobsSchedule({user,list,onClose}:{user:User|null;list:St
     <h3 style={{marginTop:16}}>Попереду</h3>
     {!upcoming.length&&<p className="muted">Ще нічого не заплановано. «＋ Робота» — клієнт, з якого дня, скільки днів.</p>}
     {upcoming.map(j=>{const ds=jobDays(j);return <button key={j.id} className="estimate" onClick={()=>setEdit(j)} style={{borderLeft:`6px solid ${colorOf(j.client)}`}}>
-      <span><b>{j.client}</b><small>{isMe(j.worker)?"":`👷 ${j.worker} · `}{j.title||"Робота"} · {ds.length} дн.</small></span>
+      <span><b>{j.client}</b><small>{isMe(j.worker)?"":`👷 ${j.worker} · `}{j.title||"Робота"} · {ds.length} дн.{j.time?` · ${j.time}`:""}</small>{(j.depAmount||0)>0&&<small style={{display:"block",color:j.depGot?"#067647":"#b54708"}}>{j.depGot?"✓ завдаток отримано":`⏳ завдаток $${j.depAmount}${j.depDue?` до ${fmt(j.depDue)}`:""}`}</small>}</span>
       <span style={{textAlign:"right"}}><small>{fmt(ds[0])}</small><small className="muted">до {fmt(ds[ds.length-1])}</small></span>
     </button>})}
     {msg&&<p className="muted">{msg}</p>}

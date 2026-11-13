@@ -255,7 +255,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
 
     {v.today.length>0&&<><h2 style={h2s}>{en?"Today":"Сьогодні"}</h2>
       <div style={{...card,marginTop:0,padding:0}}>{v.today.map((j,k)=><div key={k} style={{padding:14,borderTop:k?"1px solid #f2f2f7":"none"}}>
-        <b style={{fontSize:17}}>{j.client}</b>
+        <b style={{fontSize:17}}>{j.client}{j.time?` · ${j.time}`:""}</b>
         {j.title&&<div style={{fontSize:14,color:"#667085"}}>{j.title}</div>}
         {j.address&&<div style={{fontSize:14,color:"#667085",marginTop:2}}>📍 {j.address}</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
@@ -267,7 +267,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
     {v.soon.length>0&&<><h2 style={h2s}>{en?"Coming up":"Найближчі роботи"}</h2>
       <div style={{...card,marginTop:0,padding:0}}>{v.soon.map((j,k)=><div key={k} style={{padding:"12px 14px",borderTop:k?"1px solid #f2f2f7":"none",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
         <span style={{minWidth:0}}><b>{j.client}</b>{j.title&&<div style={{fontSize:13,color:"#667085"}}>{j.title}</div>}</span>
-        <span style={{flex:"none",background:"#e8f0fe",color:"#2f6df6",borderRadius:999,padding:"4px 10px",fontWeight:700,fontSize:13}}>{fmtL(j.start,L.loc)}</span>
+        <span style={{flex:"none",background:"#e8f0fe",color:"#2f6df6",borderRadius:999,padding:"4px 10px",fontWeight:700,fontSize:13}}>{fmtL(j.start,L.loc)}{j.time?` · ${j.time}`:""}</span>
       </div>)}</div></>}
     <h2 id="w-proj" style={h2s}>{en?"My jobs":"Мої об'єкти"}</h2>
     {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:0,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}

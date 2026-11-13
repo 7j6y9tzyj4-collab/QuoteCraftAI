@@ -19,6 +19,8 @@ export const isFresh=(x:{by?:string;at?:string})=>!!x.by&&!!x.at&&Date.now()-new
 export type Payout={id:string;date:string;workerId:string;amount:number};
 export type StatusKey="planned"|"active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
+/** рішення клієнта: питання → відповідь; history — що було до того, як передумав */
+export type Decision={id:string;question:string;answer:string;date:string;history?:{answer:string;date:string}[]};
 export type ScheduleStep={id:string;label:string;amount:number;due?:string};
 export type Statement={
   id:string;
@@ -39,6 +41,7 @@ export type Statement={
   own?:boolean;
   /** графік оплат: депозит / етапи / фінал */
   schedule?:ScheduleStep[];
+  decisions?:Decision[];
   /** доплати (change orders) */
   changes?:import("./changeOrder").ChangeOrder[];
   /** статус проєкту, вибраний вручну; нема — рахується автоматично */

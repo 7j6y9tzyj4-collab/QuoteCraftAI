@@ -4,20 +4,22 @@ import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {statementTotals,statementStatus,OWN_ID,type Statement} from "@/lib/statement";
 import MonthEarnings,{workEarnings} from "@/components/MonthEarnings";
-import {useScheduleJobs,upcomingStart,todayISO} from "@/lib/scheduleStarts";
+import {useScheduleJobs,upcomingStart,todayISO,nextFreeDay} from "@/lib/scheduleStarts";
+import {scheduleStatus} from "@/components/PaymentSchedule";
 import {ownerFirst,companyName,cardList} from "@/lib/company";
 import {findClient,type Client} from "@/lib/clients";
 import CrewOwed,{crewOwedAll} from "@/components/CrewOwed";
 
 // 🍏 Головна в стилі Apple: привітання, одна велика кнопка, 4 цифри, найближчі роботи, активні проєкти.
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n||0);
-type Job={client?:string;title?:string;start?:string;days?:number;sid?:string;address?:string;sat?:boolean;auto?:boolean};
+type Job={client?:string;title?:string;start?:string;days?:number;sid?:string;address?:string;sat?:boolean;auto?:boolean;time?:string;worker?:string;depAmount?:number;depDue?:string;depGot?:boolean};
 type PTab="over"|"rec"|"pay"|"crew"|"photo";
 const Chevron=()=><svg width="8" height="14" viewBox="0 0 8 14" fill="none" aria-hidden><path d="M1 1l6 6-6 6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
-export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo}:{
+export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo,awaitingSlot,onStatements}:{
+  awaitingSlot?:React.ReactNode;onStatements?:(next:Statement[])=>void;
   user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string};
-  onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab)=>void;onGo:(s:"pay"|"saved"|"clients")=>void}){
+  onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab)=>void;onGo:(s:"pay"|"saved"|"clients"|"cal")=>void}){
   const jobs=useScheduleJobs(user) as Job[];
   const [awaiting,setAwaiting]=useState<{n:number;sum:number;viewed:number}>({n:0,sum:0,viewed:0});
   useEffect(()=>{if(!user)return;
@@ -44,9 +46,30 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
       if(t.matOver>0.5)warns.push({id:"m"+s.id,sid:s.id,tab:"rec",text:`Матеріали понад естімейт на ${money(t.matOver)}`,sub:`${nm} — чеки ${money(t.receipts)} при плані ${money(t.matPlan)}`});
     }
     const rest=rows.filter(r=>!active.includes(r));
-    return {active,rest,owed,received,recvList,owedList,helpers,helpOwed,warns};
+    // 💵 «До сплати зараз»: закінчені роботи з залишком + етапи оплати, в яких уже настав строк
+    const tdy=todayISO();const dueNow:{id:string;sid:string;client:string;what:string;amount:number}[]=[];
+    for(const {s,t,st} of rows){if(t.balance<=0.5)continue;
+      if(st==="waiting"){dueNow.push({id:"w"+s.id,sid:s.id,client:s.client||"Без імені",what:`${s.project||"Проєкт"} — роботу закінчено`,amount:t.balance});continue}
+      for(const step of scheduleStatus(s)){const due=String(step.due||"");const m=due.match(/^(\d{2})\/(\d{2})\/(\d{4})/);const d=m?`${m[3]}-${m[1]}-${m[2]}`:due.slice(0,10);
+        if(!step.done&&d&&d<=tdy)dueNow.push({id:"s"+s.id+step.id,sid:s.id,client:s.client||"Без імені",what:`${step.label||"Етап оплати"} · строк ${d.slice(8)}.${d.slice(5,7)}`,amount:Math.max(0,(Number(step.amount)||0)-step.got)})}
+    }
+    const dueSum=dueNow.reduce((a,x)=>a+x.amount,0);
+    return {active,rest,dueNow,dueSum,owed,received,recvList,owedList,helpers,helpOwed,warns};
   },[statements,jobs]);
-  const [open,setOpen]=useState<""|"owed"|"recv"|"earn"|"help">("");
+  const [open,setOpen]=useState<""|"owed"|"recv"|"earn"|"help"|"await"|"due">("");
+  const free=useMemo(()=>nextFreeDay(jobs as any),[jobs]);
+  const deposits=(jobs||[]).filter(j=>(j.depAmount||0)>0&&!j.depGot).sort((a,b)=>String(a.depDue||"9").localeCompare(String(b.depDue||"9")));
+  // 💵 одна виплата помічнику → сама розкидається по проєктах і зберігається в акаунт
+  async function payHelper(parts:{sid:string;workerId:string;amount:number}[]){
+    const dt=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});const now=new Date().toISOString();
+    const changed:Statement[]=[];
+    const next=statements.map(s=>{const ps=parts.filter(p=>p.sid===s.id&&p.amount>0);if(!ps.length)return s;const n={...s,payouts:[...(s.payouts||[]),...ps.map(p=>({id:crypto.randomUUID(),date:dt,workerId:p.workerId,amount:p.amount}))],updatedAt:now};changed.push(n);return n});
+    if(!changed.length)return "Немає куди записати виплату.";
+    const {error}=await supabase.rpc("save_statements",{p_changed:changed,p_deleted:[]});
+    if(error)return "Не вдалося зберегти: "+error.message;
+    try{localStorage.setItem("qc_statements",JSON.stringify(next))}catch{}
+    onStatements?.(next);
+  }
   const [quick,setQuick]=useState<""|PTab>("");const [moreP,setMoreP]=useState(false);
   const earn=useMemo(()=>{const d=new Date();return workEarnings(statements,`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`)},[statements]);
   const t=todayISO();const week=new Date(Date.now()+7*864e5).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
@@ -94,7 +117,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
       <h2>Сьогодні</h2>
       <div className="apCard">{todayJobs.map((j,i)=>{const c=findClient(clients,String(j.client||""));const addr=j.address||c?.address||"";const st=stFor(j);
         return <div key={i} className="apRow" style={{display:"block"}}>
-          <b style={{display:"block"}}>{j.client||"Робота"}</b>
+          <b style={{display:"block"}}>{j.client||"Робота"}{j.time?<span className="apTag" style={{marginLeft:8}}>{j.time}</span>:null}</b>
           {j.title&&<small style={{display:"block"}}>{j.title}</small>}
           {j.auto&&<small style={{display:"block",color:"#34a853"}}>в роботі · години записані за останні дні</small>}
           {addr&&<small style={{display:"block",marginTop:2}}>📍 {addr}</small>}
@@ -109,16 +132,30 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
         </div>})}</div>
     </section>}
 
+    <button className="apRow apCard" style={{marginTop:10}} onClick={()=>onGo("cal")}><span style={{fontSize:22,flex:"none",width:30}}>📅</span><span style={{flex:1,minWidth:0}}><b>Графік робіт</b><small>{free?`Я найближче вільний: ${dayLabel(free)}`:"Календар на місяць: зайняті й вільні дні"}</small></span><Chevron/></button>
+
+    {deposits.length>0&&<div className="apCard" style={{marginTop:10}}>
+      <div className="apRow" style={{display:"block"}}><b>Чекаємо завдаток</b></div>
+      {deposits.map((j,i)=>{const late=!!j.depDue&&j.depDue<t;return <button key={i} className="apRow" onClick={()=>onGo("cal")}><span style={{flex:1,minWidth:0}}><b>{j.client}</b><small>{j.title||""}</small><small style={{display:"block",color:late?"#b42318":undefined}}>{j.depDue?(late?`⚠ строк минув ${dayLabel(j.depDue)}`:`до ${dayLabel(j.depDue)}`):"без дати"} · початок {dayLabel(String(j.start))}</small></span><span className="apAmt"><b className={late?"apWarn":""}>{money(j.depAmount||0)}</b></span><Chevron/></button>})}
+    </div>}
+
     {v.warns.length>0&&<div className="apCard apNotice" style={{marginTop:10}}>{v.warns.map(w=><button key={w.id} className="apRow" onClick={()=>onOpenProject(w.sid,w.tab)}><span style={{flex:1,minWidth:0}}><b>⚠ {w.text}</b><small>{w.sub}</small></span><Chevron/></button>)}</div>}
 
+    <button className="apStat" style={{width:"100%",marginTop:10}} onClick={()=>setOpen(open==="due"?"":"due")}><small>До сплати зараз</small><b className={v.dueSum>0.5?"apWarn":"apGood"}>{money(v.dueSum)}</b><em>{v.dueNow.length?`${v.dueNow.length} · закінчені роботи й етапи оплати, де настав строк · натисни`:"нікому зараз нагадувати не треба"}</em></button>
+    {open==="due"&&<div className="apCard" style={{marginTop:10}}>
+      <div className="apRow" style={{display:"block"}}><b>Кому пора нагадати про оплату</b><small style={{display:"block"}}>Сюди потрапляє проєкт зі статусом «Чекаю оплату» і етапи з «Графіка оплат» у проєкті, в яких уже настав строк. Щоб етап з'явився тут — постав йому дату у вкладці «Оплати».</small></div>
+      {v.dueNow.length===0&&<div className="apRow"><small>Зараз нічого.</small></div>}
+      {v.dueNow.map(x=><button key={x.id} className="apRow" onClick={()=>onOpenProject(x.sid,"pay")}><span style={{flex:1,minWidth:0}}><b>{x.client}</b><small>{x.what}</small></span><span className="apAmt"><b className="apWarn">{money(x.amount)}</b></span><Chevron/></button>)}
+    </div>}
     <div className="apStats">
       <button className="apStat" onClick={()=>setOpen(open==="help"?"":"help")}><small>Винен помічникам</small><b className={v.helpOwed>0.5?"apWarn":"apGood"}>{money(v.helpOwed)}</b><em>{v.helpers.length?v.helpers.map(r=>`${r.name}: робота ${money(r.work)}${r.receipts>0?` + чеки ${money(r.receipts)}`:""}`).join(" · "):"нічого не винен"} · натисни</em></button>
       <button className="apStat" onClick={()=>setOpen(open==="owed"?"":"owed")}><small>Ще не оплачено по проєктах</small><b className={v.owed>0?"apWarn":""}>{money(v.owed)}</b><em>{v.owedList.length} проєкт(ів) · вся сума до кінця робіт · натисни</em></button>
-      <button className="apStat" onClick={()=>onGo("saved")}><small>Чекають відповіді</small><b>{awaiting.n}</b>{awaiting.n>0&&<em>{awaiting.viewed} відкрили</em>}</button>
+      <button className="apStat" onClick={()=>awaitingSlot?setOpen(open==="await"?"":"await"):onGo("saved")}><small>Чекають відповіді</small><b>{awaiting.n}</b>{awaiting.n>0&&<em>{awaiting.viewed} відкрили · натисни</em>}</button>
       <button className="apStat" onClick={()=>setOpen(open==="recv"?"":"recv")}><small>Клієнти заплатили за {month}</small><b className="apGood">{money(v.received)}</b><em>{v.recvList.length} оплат(и) · робота + матеріали · натисни</em></button>
     </div>
     <button className="apStat" style={{width:"100%",marginTop:10}} onClick={()=>setOpen(open==="earn"?"":"earn")}><small>Мій заробіток за {month} (робота, без матеріалів)</small><b style={{color:earn.net<0?"#b42318":undefined}} className={earn.net<0?"":"apGood"}>{money(earn.net)}</b><em>{earn.myHours>0?`${earn.myHours} год · ${money(earn.perHour)}/год · `:""}після помічників і моїх витрат · натисни</em></button>
-    {open==="help"&&(v.helpers.length?<CrewOwed list={statements}/>:<div className="apCard apEmpty" style={{marginTop:10}}>Помічникам нічого не винен.</div>)}
+    {open==="await"&&<div style={{marginTop:10}}>{awaitingSlot}</div>}
+    {open==="help"&&(v.helpers.length?<CrewOwed list={statements} onPay={onStatements?payHelper:undefined}/>:<div className="apCard apEmpty" style={{marginTop:10}}>Помічникам нічого не винен.</div>)}
     {open==="earn"&&<MonthEarnings list={statements}/>}
     {open==="owed"&&<div className="apCard" style={{marginTop:10}}>
       <div className="apRow" style={{display:"block"}}><b>Хто скільки ще не заплатив</b><small style={{display:"block"}}>Це залишок по кожному проєкту: вся сума (робота + матеріали) мінус те, що клієнт уже дав. Не обов'язково до сплати сьогодні — частина за ще не зроблену роботу.</small></div>
@@ -132,7 +169,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
 
     {soon.length>0&&<section className="apGroup">
       <h2>Найближчі роботи</h2>
-      <div className="apCard">{soon.map((j,i)=><div key={i} className="apRow"><span><b>{j.client||"Робота"}</b><small>{j.title||""}</small></span><span className="apTag">{dayLabel(String(j.start))}</span></div>)}</div>
+      <div className="apCard">{soon.map((j,i)=><div key={i} className="apRow"><span><b>{j.client||"Робота"}</b><small>{j.title||""}</small></span><span className="apTag">{dayLabel(String(j.start))}{j.time?` · ${j.time}`:""}</span></div>)}</div>
     </section>}
 
     <section className="apGroup">

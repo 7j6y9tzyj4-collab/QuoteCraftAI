@@ -173,6 +173,9 @@ export default function QuoteCraftApp(){
  const [calcItems,setCalcItems]=useState<CalcItem[]>([]);
  const [calcClient,setCalcClient]=useState("");
  const [calcProject,setCalcProject]=useState("");
+ // 🔄 повернувся в програму → підтягнути свіже з акаунта (клієнти, естімейти, проєкти, графік)
+ const [syncTick,setSyncTick]=useState(0);
+ useEffect(()=>{let last=Date.now();const f=()=>{if(document.visibilityState!=="visible"||Date.now()-last<20000)return;last=Date.now();setSyncTick(x=>x+1);window.dispatchEvent(new Event("qc-sync"))};document.addEventListener("visibilitychange",f);window.addEventListener("focus",f);return()=>{document.removeEventListener("visibilitychange",f);window.removeEventListener("focus",f)}},[]);
  const [calcShareToken,setCalcShareToken]=useState<string>("");
  const [ownerPrefs,setOwnerPrefs]=useState<OwnerPrefs>(EMPTY_PREFS);
  // Оплати для головної («Чекають оплати») — свіжі щоразу, коли повертаєшся на головну
@@ -182,7 +185,7 @@ export default function QuoteCraftApp(){
    supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{if(on&&Array.isArray(data?.statements))setPayStatements(data.statements)});
    return()=>{on=false};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[screen,user?.id]);
+ },[screen,user?.id,syncTick]);
  const [calcQuote,setCalcQuote]=useState<{status:QuoteStatus;viewed_at:string|null;accepted_at:string|null;accepted_name:string|null;chosenTier?:number;chosenOptions?:number[]}|null>(null);
  const [payIncoming,setPayIncoming]=useState<Statement|null>(null);
  const [prefsOpen,setPrefsOpen]=useState(false);
@@ -202,6 +205,7 @@ export default function QuoteCraftApp(){
  const [needSetup,setNeedSetup]=useState(false); // 🚀 новий майстер: профіль ще не заповнено
  useEffect(()=>{if(!user)return;supabase.from("user_settings").select("company").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{const c=cleanCompany(data?.company);setCompany(c);setCompanyTick(t=>t+1);setNeedSetup(!c.name.trim())})},[user]); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null);
+ const [payOpenCal,setPayOpenCal]=useState(false);
  const [payOpenTab,setPayOpenTab]=useState<"over"|"rec"|"pay"|"crew"|"photo"|null>(null); // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
@@ -231,7 +235,7 @@ export default function QuoteCraftApp(){
    supabase.from("user_statements").select("statements").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{if(on&&Array.isArray(data?.statements))setPayStatements(data.statements)});
    return()=>{on=false};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[user,screen==="clients"]);
+ },[user,screen==="clients",syncTick]);
  function pushClient(c:Client){
    if(!user)return;
    supabase.from("user_clients").upsert({id:c.id,user_id:user.id,data:c,updated_at:c.updatedAt},{onConflict:"id"})
@@ -675,7 +679,7 @@ export default function QuoteCraftApp(){
    });
    return()=>{on=false};
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[user]);
+ },[user,syncTick]);
  function pushCalc(s:SavedCalc){
    if(!user)return;
    supabase.from("user_calc_estimates").upsert({id:s.id,user_id:user.id,data:s,updated_at:s.updatedAt},{onConflict:"id"})
@@ -1852,10 +1856,10 @@ export default function QuoteCraftApp(){
  return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}${apple?" apple":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz||apple}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
   <header><div><strong>{(biz||apple)&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
-   {screen==="home"&&apple&&<AppleHome user={user} statements={payStatements} inbox={inbox} clients={clients}
+   {screen==="home"&&apple&&<AppleHome user={user} statements={payStatements} inbox={inbox} clients={clients} onStatements={setPayStatements} awaitingSlot={<AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/>}
       draftLabel={calcItems.length>0&&!calcSavedId?(calcClient||calcProject||"поточний розрахунок"):""}
       onNew={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}
-      onContinue={()=>setScreen("calc")} onOpenProject={(id,tab)=>{setPayOpenTab(tab||null);setPayOpenId(id);setScreen("pay")}} onGo={s=>setScreen(s)}/>}
+      onContinue={()=>setScreen("calc")} onOpenProject={(id,tab)=>{setPayOpenTab(tab||null);setPayOpenId(id);setScreen("pay")}} onGo={s=>{if(s==="cal"){setPayOpenCal(true);setScreen("pay")}else setScreen(s)}}/>}
    {screen==="home"&&apple&&<div className="apHomeExtra"><SiteLeads user={user}/><PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/></div>}
    {screen==="home"&&!apple&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
@@ -2056,7 +2060,7 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openTab={payOpenTab} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
+   {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openCal={payOpenCal} onCalOpened={()=>setPayOpenCal(false)} openTab={payOpenTab} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
    {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onShareBundle={shareClientBundle} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
      user={user} tasks={calcTasks}
      onSurveyToEstimate={(c:Client,s:Survey)=>{
