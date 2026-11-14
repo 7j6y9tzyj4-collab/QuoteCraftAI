@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       const tr = await openai.audio.transcriptions.create({
         file,
         model: "whisper-1",
-        prompt: "Home renovation site visit: contractor and client. Bathroom, shower, tub, vanity, tile, grout, drywall, baseboard, crown molding, closet, pantry, basement, backsplash, niche, sq ft, inches, estimate, deposit.",
+        prompt: "Home renovation site visit: contractor and client. Bathroom, shower, tub, vanity, tile, grout, drywall, baseboard, crown molding, closet, pantry, basement, backsplash, niche, sq ft, inches, estimate, deposit. Розмова може бути українською: ванна, душ врівень з підлогою, без порогу, з порогом, плитка, умивальник, унітаз, підлога, стеля, вентилятор, дзеркало, фарбування, фути, дюйми.",
       });
       return NextResponse.json({ text: tr.text || "" });
     }
