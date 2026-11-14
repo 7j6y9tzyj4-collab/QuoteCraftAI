@@ -132,6 +132,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
         </div>})}</div>
     </section>}
 
+    <button className="apRow apCard" style={{marginTop:10}} onClick={()=>onGo("clients")}><span style={{fontSize:22,flex:"none",width:30}}>🎙</span><span style={{flex:1,minWidth:0}}><b>Записати зустріч з клієнтом</b><small>Вибери клієнта → «＋ Записати зустріч»: підсумок, роботи, питання, повідомлення</small></span><Chevron/></button>
     <button className="apRow apCard" style={{marginTop:10}} onClick={()=>onGo("cal")}><span style={{fontSize:22,flex:"none",width:30}}>📅</span><span style={{flex:1,minWidth:0}}><b>Графік робіт</b><small>{free?`Я найближче вільний: ${dayLabel(free)}`:"Календар на місяць: зайняті й вільні дні"}</small></span><Chevron/></button>
 
     {deposits.length>0&&<div className="apCard" style={{marginTop:10}}>

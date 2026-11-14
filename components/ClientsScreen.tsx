@@ -1,4 +1,5 @@
 "use client";
+import MeetingRecorder from "@/components/MeetingRecorder";
 import {useMemo,useState} from "react";
 import type {SavedCalc} from "@/lib/calcTypes";
 import type {Statement} from "@/lib/statement";
@@ -13,7 +14,8 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const d=(iso:string)=>iso?new Date(iso).toLocaleDateString("uk-UA"):"";
 
 // Клієнти: список, картка з телефоном/адресою, уся історія (естімейти, розрахунки, оплачено, винен).
-export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate,user,tasks,onSurveyToEstimate,onShareBundle}:{
+export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,onOpenCalc,onOpenStatement,onNewEstimate,user,tasks,onSurveyToEstimate,onShareBundle,onMeetingToEstimate}:{
+  onMeetingToEstimate?:(c:Client,m:import("@/lib/meeting").Meeting)=>void;
   onShareBundle?:(c:Client,ests:SavedCalc[])=>Promise<string>;
   clients:Client[];calcs:SavedCalc[];statements:Statement[];user:User|null;tasks:CalcTask[];onSurveyToEstimate:(c:Client,s:Survey)=>void;
   onSave:(c:Client)=>void;onDelete:(id:string)=>void;
@@ -58,6 +60,7 @@ export default function ClientsScreen({clients,calcs,statements,onSave,onDelete,
         {cur.address&&<a className="secondary" style={{textAlign:"center",textDecoration:"none",padding:12,borderRadius:13,fontWeight:800,flex:1}} href={mapHref(cur.address)} target="_blank" rel="noreferrer">📍 Карта</a>}
         <button className="primary" style={{flex:1}} onClick={()=>onNewEstimate(cur)}>＋ Новий естімейт</button>
       </div>
+      <MeetingRecorder key={"m"+cur.id} client={cur} onSave={onSave} onEstimate={m=>onMeetingToEstimate?.(cur,m)}/>
       <section className="panel"><div className="head"><h2>📋 Огляди об'єкта</h2><button className="add" onClick={()=>{const s=newSurvey(cur.address);onSave({...cur,surveys:[s,...(cur.surveys||[])],updatedAt:new Date().toISOString()});setSurveyId(s.id)}}>＋ Огляд</button></div>
         {!(cur.surveys||[]).length&&<p className="muted" style={{fontSize:14}}>Приїхав на об'єкт → «＋ Огляд»: кімнати, розміри в дюймах, фото, що треба зробити → AI складе план → одним натиском в естімейт.</p>}
         {(cur.surveys||[]).map(s=><div key={s.id} style={{display:"flex",gap:6,alignItems:"stretch"}}>

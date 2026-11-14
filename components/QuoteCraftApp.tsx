@@ -2063,6 +2063,12 @@ export default function QuoteCraftApp(){
    {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openCal={payOpenCal} onCalOpened={()=>setPayOpenCal(false)} openTab={payOpenTab} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
    {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onShareBundle={shareClientBundle} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
      user={user} tasks={calcTasks}
+     onMeetingToEstimate={(c,m)=>{
+       if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий з розмови?"))return;
+       clearCalc();setCalcClient(c.name);setCalcProject(m.title||"");
+       const text=m.estimatePrompt||m.scope.join("; ");setCalcPrompt(text);setScreen("calc");
+       void generateCalc(undefined,text);
+     }}
      onSurveyToEstimate={(c:Client,s:Survey)=>{
        if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий з огляду?"))return;
        clearCalc();setCalcClient(c.name);setCalcProject(s.title.replace(/^Огляд\s*/,"")||s.rooms.map(r=>r.name).filter(Boolean).join(", "));

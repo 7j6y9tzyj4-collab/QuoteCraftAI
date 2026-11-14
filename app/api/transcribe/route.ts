@@ -10,7 +10,9 @@ export const runtime = "nodejs";
 // unreliable (Safari on iOS and macOS). The client records audio with
 // MediaRecorder and uploads it here; Whisper handles Ukrainian reliably.
 export async function POST(req: NextRequest) {
-  const _ai=await aiGuard(req,"transcribe",0.006);if(!_ai.ok)return _ai.res;
+  // mode=meeting — фрагмент запису розмови з клієнтом (до ~3 хв): мова визначається автоматично
+  const meeting=req.nextUrl.searchParams.get("mode")==="meeting";
+  const _ai=await aiGuard(req,meeting?"meeting-audio":"transcribe",meeting?0.02:0.006);if(!_ai.ok)return _ai.res;
   try {
     if(!process.env.OPENAI_API_KEY){
       return NextResponse.json({error:"Голосове розпізнавання ще не налаштоване на сервері."},{status:503});
@@ -21,6 +23,17 @@ export async function POST(req: NextRequest) {
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "Аудіо не отримано." }, { status: 400 });
+    }
+
+    if (meeting) {
+      if (file.size > 4.2 * 1024 * 1024) return NextResponse.json({ error: "Фрагмент запису завеликий." }, { status: 400 });
+      if (file.size < 1500) return NextResponse.json({ text: "" });
+      const tr = await openai.audio.transcriptions.create({
+        file,
+        model: "whisper-1",
+        prompt: "Home renovation site visit: contractor and client. Bathroom, shower, tub, vanity, tile, grout, drywall, baseboard, crown molding, closet, pantry, basement, backsplash, niche, sq ft, inches, estimate, deposit.",
+      });
+      return NextResponse.json({ text: tr.text || "" });
     }
 
     if (file.size > 3 * 1024 * 1024) {
