@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {smsHref,type Client} from "@/lib/clients";
-import {fmtDur,type Meeting} from "@/lib/meeting";
+import {fmtDur,linesToPrompt,type Meeting,type ScopeLine} from "@/lib/meeting";
 import {ownerFirst} from "@/lib/company";
 
 // 🎙 Запис зустрічі з клієнтом на об'єкті.
@@ -12,6 +12,12 @@ const pickMime=()=>{const c=["audio/webm;codecs=opus","audio/mp4","audio/webm","
   try{return c.find(t=>(window as any).MediaRecorder?.isTypeSupported?.(t))||""}catch{return ""}};
 const extOf=(m:string)=>/mp4|aac|m4a/.test(m)?"m4a":/ogg/.test(m)?"ogg":"webm";
 const uiLang=()=>{try{return JSON.parse(localStorage.getItem("qc_ui")||"{}").lang==="en"?"en":"uk"}catch{return "uk"}};
+// відповідь AI → поля зустрічі (рядки обсягу з галочками; старий формат — просто список)
+function fromAi(d:any):Partial<Meeting>{
+  const raw=Array.isArray(d?.scope)?d.scope:[];
+  const lines:ScopeLine[]=raw.filter((x:any)=>x&&typeof x==="object"&&x.item).map((x:any)=>({id:crypto.randomUUID(),room:String(x.room||""),item:String(x.item||""),qty:String(x.qty||""),category:String(x.category||""),note:String(x.note||""),verify:!!x.verify,on:true}));
+  return {title:String(d?.title||"Зустріч"),summary:String(d?.summary||""),lines,scope:lines.length?lines.map(l=>`${l.item}${l.qty?` — ${l.qty}`:""}`):raw.map(String),checks:Array.isArray(d?.checks)?d.checks.map(String):[],questions:Array.isArray(d?.questions)?d.questions.map(String):[],tasks:Array.isArray(d?.tasks)?d.tasks.map(String):[],followup:String(d?.followup||""),when:String(d?.when||""),estimatePrompt:String(d?.estimate_prompt||"")};
+}
 const fmtDate=(s:string)=>new Date(s).toLocaleDateString("uk-UA",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 
 export default function MeetingRecorder({client,onSave,onEstimate}:{client:Client;onSave:(c:Client)=>void;onEstimate:(m:Meeting)=>void}){
@@ -95,7 +101,7 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
     try{
       const res=await fetch("/api/meeting",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transcript,client:c.name,contractor:ownerFirst(),lang:uiLang(),today:new Date().toLocaleDateString("sv-SE")})});
       const d=await res.json();if(!res.ok)throw new Error(d?.error||"AI error");
-      m={...base,title:String(d.title||"Зустріч"),summary:String(d.summary||""),scope:Array.isArray(d.scope)?d.scope.map(String):[],questions:Array.isArray(d.questions)?d.questions.map(String):[],tasks:Array.isArray(d.tasks)?d.tasks.map(String):[],followup:String(d.followup||""),when:String(d.when||""),estimatePrompt:String(d.estimate_prompt||"")};
+      m={...base,...fromAi(d)};
       setStatus("");
     }catch(e){setErr(`Підсумок зробити не вдалося (${e instanceof Error?e.message:e}). Текст розмови збережено — підсумок можна зробити ще раз.`);setStatus("")}
     // текст розмови зберігаємо в будь-якому разі — щоб запис не пропав
@@ -107,10 +113,11 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
     try{
       const res=await fetch("/api/meeting",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transcript:m.transcript,client:client.name,contractor:ownerFirst(),lang:uiLang(),today:String(m.date).slice(0,10)})});
       const d=await res.json();if(!res.ok)throw new Error(d?.error||"AI error");
-      const n:Meeting={...m,title:String(d.title||m.title),summary:String(d.summary||""),scope:(d.scope||[]).map(String),questions:(d.questions||[]).map(String),tasks:(d.tasks||[]).map(String),followup:String(d.followup||""),when:String(d.when||""),estimatePrompt:String(d.estimate_prompt||"")};
+      const n:Meeting={...m,...fromAi(d)};
       onSave({...client,meetings:list.map(x=>x.id===m.id?n:x),updatedAt:new Date().toISOString()});setStatus("");
     }catch(e){setErr(`Не вдалося: ${e instanceof Error?e.message:e}`);setStatus("")}
   }
+  const patchMeeting=(m:Meeting,p:Partial<Meeting>)=>onSave({...client,meetings:list.map(x=>x.id===m.id?{...x,...p}:x),updatedAt:new Date().toISOString()});
   const copy=async(id:string,t:string)=>{try{await navigator.clipboard.writeText(t);setCopied(id);setTimeout(()=>setCopied(""),1800)}catch{}};
   const Block=({title,items}:{title:string;items:string[]})=>items.length?<div style={{marginTop:10}}><b>{title}</b><ul style={{margin:"4px 0 0",paddingLeft:20}}>{items.map((x,i)=><li key={i} style={{marginTop:2}}>{x}</li>)}</ul></div>:null;
 
@@ -145,7 +152,20 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
       {on&&<div style={{marginTop:8}}>
         {m.summary?<p style={{margin:0}}>{m.summary}</p>:<p className="muted" style={{margin:0}}>Підсумку ще немає — є тільки текст розмови.</p>}
         {m.when&&<p style={{margin:"8px 0 0"}}><b>Дати:</b> {m.when}</p>}
-        <Block title="Обсяг робіт" items={m.scope}/>
+        {(m.checks||[]).length>0&&<div style={{marginTop:10,padding:10,borderRadius:10,background:"#fffaeb",border:"1px solid #fedf89",fontSize:14}}><b>Перевір:</b> {(m.checks||[]).join(" · ")}</div>}
+        {(m.lines||[]).length>0?<div style={{marginTop:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}><b>Обсяг робіт · {m.lines!.filter(l=>l.on).length} з {m.lines!.length}</b>
+            <button style={{border:"none",background:"none",color:"#2563eb",padding:0,fontSize:13}} onClick={()=>{const all=m.lines!.every(l=>l.on);patchMeeting(m,{lines:m.lines!.map(l=>({...l,on:!all}))})}}>{m.lines!.every(l=>l.on)?"зняти всі":"позначити всі"}</button></div>
+          {Array.from(new Set(m.lines!.map(l=>l.room))).map(room=><div key={room} style={{marginTop:8}}>
+            {room&&<div style={{fontSize:12,fontWeight:700,letterSpacing:".04em",textTransform:"uppercase",color:"#667085"}}>{room}</div>}
+            {m.lines!.filter(l=>l.room===room).map(l=><label key={l.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 0",borderTop:"1px solid #f2f4f7",cursor:"pointer"}}>
+              <input type="checkbox" style={{width:20,height:20,flex:"none",marginTop:2}} checked={l.on} onChange={e=>patchMeeting(m,{lines:m.lines!.map(x=>x.id===l.id?{...x,on:e.target.checked}:x)})}/>
+              <span style={{minWidth:0}}><span style={{display:"block",fontWeight:600,color:l.on?"#101828":"#98a2b3"}}>{l.item}</span>
+                <small style={{display:"block",color:"#667085"}}>{l.qty||"кількість не названа"}{l.verify&&<span style={{marginLeft:6,padding:"1px 6px",borderRadius:6,background:"#fef0c7",color:"#b54708",fontWeight:700}}>перевірити</span>}{l.category?` · ${l.category}`:""}</small>
+                {l.note&&<small style={{display:"block",color:"#475467"}}>{l.note}</small>}</span>
+            </label>)}
+          </div>)}
+        </div>:<Block title="Обсяг робіт" items={m.scope}/>}
         <Block title="Питання до клієнта" items={m.questions}/>
         <Block title="Що зробити мені" items={m.tasks}/>
         {m.followup&&<div style={{marginTop:10}}><b>Повідомлення клієнту</b>
@@ -154,7 +174,7 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
             {client.phone&&<a className="secondary" style={{textAlign:"center",textDecoration:"none",padding:12,borderRadius:13,fontWeight:800}} href={smsHref(client.phone,m.followup)}>💬 Відкрити в SMS</a>}</div>
           <small className="muted">Програма нічого не відправляє сама — перечитай текст і відправ сам.</small></div>}
         <div className="actions" style={{marginTop:10,flexWrap:"wrap"}}>
-          {(m.estimatePrompt||m.scope.length>0)&&<button className="primary" onClick={()=>onEstimate(m)}>＋ Естімейт з цієї розмови</button>}
+          {(m.estimatePrompt||m.scope.length>0)&&<button className="primary" disabled={(m.lines||[]).length>0&&!m.lines!.some(l=>l.on)} onClick={()=>onEstimate({...m,estimatePrompt:linesToPrompt(m)})}>{(m.lines||[]).length?`＋ Естімейт з ${m.lines!.filter(l=>l.on).length} позначених рядків`:"＋ Естімейт з цієї розмови"}</button>}
           <button className="secondary" disabled={!!status} onClick={()=>void redo(m)}>↻ Підсумок ще раз</button>
           <button className="secondary" style={{color:"#b42318"}} onClick={()=>{if(confirm("Видалити цю зустріч разом з текстом розмови?"))onSave({...client,meetings:list.filter(x=>x.id!==m.id),updatedAt:new Date().toISOString()})}}>Видалити</button>
         </div>
