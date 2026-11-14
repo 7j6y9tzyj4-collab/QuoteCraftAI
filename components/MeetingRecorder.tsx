@@ -10,7 +10,7 @@ import {ownerFirst} from "@/lib/company";
 const SEG=150; // секунд на шматок
 const pickMime=()=>{const c=["audio/webm;codecs=opus","audio/mp4","audio/webm","audio/ogg;codecs=opus"];
   try{return c.find(t=>(window as any).MediaRecorder?.isTypeSupported?.(t))||""}catch{return ""}};
-const extOf=(m:string)=>/mp4|aac|m4a/.test(m)?"m4a":/ogg/.test(m)?"ogg":"webm";
+const extOf=(m:string)=>/wav/.test(m)?"wav":/mp4|aac|m4a/.test(m)?"m4a":/ogg/.test(m)?"ogg":"webm";
 const uiLang=()=>{try{return JSON.parse(localStorage.getItem("qc_ui")||"{}").lang==="en"?"en":"uk"}catch{return "uk"}};
 // відповідь AI → поля зустрічі (рядки обсягу з галочками; старий формат — просто список)
 function fromAi(d:any):Partial<Meeting>{
@@ -92,6 +92,10 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
     await new Promise<void>(res=>{if(!r||r.state==="inactive")return res();const prev=r.onstop;r.onstop=ev=>{try{(prev as any)?.call(r,ev)}catch{}res()};try{r.stop()}catch{res()}});
     cleanup();
     await Promise.all(pending.current);
+    await finish(dur);
+  }
+  // з розпізнаних шматків → підсумок AI → запис у картку клієнта (спільне для запису і для файлу)
+  async function finish(dur:number){
     const transcript=texts.current.filter(Boolean).join(" ").replace(/\s+/g," ").trim();
     if(transcript.length<40){setPhase("idle");setErr("У записі майже немає мови — нема з чого робити підсумок. Нічого не збережено.");setStatus("");return}
     setStatus("AI робить підсумок розмови…");
@@ -107,6 +111,42 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
     // текст розмови зберігаємо в будь-якому разі — щоб запис не пропав
     onSave({...clientRef.current,meetings:[m,...(clientRef.current.meetings||[])],updatedAt:new Date().toISOString()});
     setOpenId(m.id);setPhase("idle");
+  }
+  // 📁 Готовий аудіофайл (Диктофон iPhone, PLAUD тощо): розкодовуємо в браузері, ріжемо на шматки по ~2 хв (WAV 16 кГц моно) і розпізнаємо по черзі.
+  async function importFile(file:File){
+    setErr("");setPhase("work");setStatus("Читаю файл…");
+    texts.current=[];pending.current=[];setDone(0);
+    try{
+      if(file.size>300*1024*1024)throw new Error("Файл завеликий (понад 300 МБ).");
+      const data=await file.arrayBuffer();
+      const W=window as any;const OAC=W.OfflineAudioContext||W.webkitOfflineAudioContext;const AC=W.AudioContext||W.webkitAudioContext;
+      let ctx:any=null;try{ctx=new OAC(1,1,16000)}catch{ctx=null}
+      if(!ctx){if(!AC)throw new Error("Цей браузер не вміє читати аудіофайли.");ctx=new AC()}
+      const buf:AudioBuffer=await new Promise((res,rej)=>{try{const p=ctx.decodeAudioData(data,res,rej);if(p&&p.catch)p.catch(rej)}catch(e){rej(e)}});
+      try{ctx.close?.()}catch{}
+      const dur=Math.round(buf.duration);
+      if(dur>3*3600)throw new Error("Запис довший за 3 години — розділи його на частини.");
+      const RATE=16000,CH=120,ratio=buf.sampleRate/RATE,chans=Array.from({length:buf.numberOfChannels},(_,c)=>buf.getChannelData(c));
+      const total=Math.floor(buf.length/ratio),n=Math.max(1,Math.ceil(total/(CH*RATE)));
+      for(let i=0;i<n;i++){
+        setStatus(`Розпізнаю запис: частина ${i+1} з ${n}…`);
+        const from=i*CH*RATE,len=Math.min(CH*RATE,total-from);
+        const ab=new ArrayBuffer(44+len*2),v=new DataView(ab);
+        const wr=(o:number,t:string)=>{for(let k=0;k<t.length;k++)v.setUint8(o+k,t.charCodeAt(k))};
+        wr(0,"RIFF");v.setUint32(4,36+len*2,true);wr(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,RATE,true);v.setUint32(28,RATE*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);wr(36,"data");v.setUint32(40,len*2,true);
+        for(let j=0;j<len;j++){
+          const a=Math.floor((from+j)*ratio),b=Math.min(buf.length,Math.max(a+1,Math.floor((from+j+1)*ratio)));
+          let sum=0;for(const ch of chans)for(let k=a;k<b;k++)sum+=ch[k];
+          const x=Math.max(-1,Math.min(1,sum/((b-a)*chans.length||1)));
+          v.setInt16(44+j*2,x<0?x*0x8000:x*0x7fff,true);
+        }
+        await upload(new Blob([ab],{type:"audio/wav"}),i);
+      }
+      await finish(dur);
+    }catch(e){
+      const msg=e instanceof Error?e.message:String(e||"");
+      setPhase("idle");setStatus("");setErr(/decod|EncodingError|Unable/i.test(msg)||!msg?"Не вдалося прочитати цей аудіофайл. Підходять m4a, mp3, wav.":`Не вдалося обробити файл: ${msg}`);
+    }
   }
   async function redo(m:Meeting){
     setErr("");setStatus("AI робить підсумок розмови…");
@@ -131,6 +171,11 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
       <small>Попередь клієнта, що записуєш розмову, і отримай згоду — наприклад: «I'd like to record our conversation so I don't miss anything. Is that okay?» В Іллінойсі для запису потрібна згода всіх учасників розмови.</small>
       <small>Під час запису не блокуй екран і не згортай програму — інакше телефон зупинить мікрофон.</small>
       <div className="actions"><button className="primary" onClick={()=>void start()}>Клієнт згоден — почати запис</button><button className="secondary" onClick={()=>setPhase("idle")}>Скасувати</button></div>
+      <div style={{borderTop:"1px solid #eaecf0",paddingTop:8,display:"grid",gap:6}}>
+        <small><b>Або завантаж готовий запис.</b> Запиши розмову в «Диктофон» на iPhone (він працює і з заблокованим екраном), потім у Диктофоні: «…» → «Зберегти у Файли» і вибери цей файл тут.</small>
+        <label className="secondary" style={{textAlign:"center",padding:12,borderRadius:13,fontWeight:800,cursor:"pointer"}}>📁 Вибрати аудіофайл
+          <input type="file" accept="audio/*,.m4a,.mp3,.wav,.aac,.mp4,.caf" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)void importFile(f)}}/></label>
+      </div>
     </div>}
 
     {phase==="rec"&&<div style={{marginTop:8,padding:14,borderRadius:12,background:"#fef3f2",border:"1px solid #fda29b",textAlign:"center"}}>
