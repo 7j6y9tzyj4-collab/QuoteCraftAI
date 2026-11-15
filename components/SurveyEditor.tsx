@@ -6,6 +6,7 @@ import {prepareJobPhoto} from "@/lib/jobPhotos";
 import {shrinkImage,dataUrlToBlob} from "@/lib/receiptImage";
 import type {CalcTask} from "@/lib/calcTypes";
 import {roomAreas,parseInches,fmtInches,newRoom,DOOR,WINDOW,FIXTURES,FIXTURE_MODELS,type Survey,type Room,type SurveyPhoto,type RoomPlan,type PlanTask,type Part,type Fixture} from "@/lib/survey";
+import RoomDraw from "./RoomDraw";
 import RoomSketch from "@/components/RoomSketch";
 import {importScan,type ScanPayload} from "@/lib/scanImport";
 
@@ -132,6 +133,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   // 📡 LiDAR-скан з iPhone: веб створює токен → відкриває додаток QuoteCraft Scan → чекає payload у scan_inbox
   const [scanWait,setScanWait]=useState<{rid:string;token:string;pin:string}|null>(null);
   const [scanMsg,setScanMsg]=useState("");
+  const [drawRoom,setDrawRoom]=useState("");
   const scanTimer=useRef<ReturnType<typeof setInterval>|null>(null);
   function stopScanWait(){if(scanTimer.current)clearInterval(scanTimer.current);scanTimer.current=null;setScanWait(null)}
   async function startScan(rid:string){
@@ -295,6 +297,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
             <button type="button" style={{display:"block",marginTop:6,padding:"6px 10px",borderRadius:10,fontWeight:800,background:"#f79009",color:"#fff"}}
               onClick={()=>setRoom(r.id,{length:ft(r.length),width:ft(r.width),height:ft(r.height),parts:(r.parts||[]).map(p=>({...p,length:ft(p.length),depth:ft(p.depth)}))})}>Перевести фути → дюйми</button>
           </div>})()}
+        <div style={{marginTop:8,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button type="button" className="secondary" style={{padding:"8px 12px",fontSize:14}} onClick={()=>setDrawRoom(r.id)}>✏️ Намалювати форму пальцем</button>
+          {r.outline&&a.floorSqft!==null&&<small className="muted">форма з малюнка: {r.outline.pts.length} стін <button type="button" style={{border:"none",background:"none",color:"#b42318",padding:0,fontSize:12}} onClick={()=>setRoom(r.id,{outline:undefined})}>прибрати</button></small>}
+        </div>
+        {drawRoom===r.id&&<RoomDraw room={r} onSave={patch=>setRoom(r.id,patch)} onClose={()=>setDrawRoom("")}/>}
         <details style={{marginTop:8}} open={!!r.parts?.length}>
           <summary style={{fontSize:13,color:"#175cd3",fontWeight:700}}>Нестандартна форма (ніша, короб чи шафа в кутку)</summary>
           <small className="muted">Головний прямокутник — вище. Тут додай ділянки: <b>ніша/виступ</b> — додається до підлоги й стін; <b>вирізаний кут</b> (Г-подібна кімната) — віднімається від підлоги.</small>

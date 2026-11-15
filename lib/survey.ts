@@ -11,7 +11,7 @@ export type PlanTask={name:string;qty:number;unit:string;basis:string;note?:stri
 export type RoomPlan={summary:string;condition:string;tasks:PlanTask[];questions:string[];en?:{summary:string;tasks:PlanTask[]};createdAt:string;seen?:{type:string;wall:string;t:number;style?:string;note:string}[];floorTile?:{w:number;h:number}|null};
 /** додаткова ділянка нестандартної кімнати: ніша/виступ (додати) або вирізаний кут (відняти). depth — глибина від стіни */
 export type Part={id:string;name:string;kind:"add"|"cut";length:string;depth:string;/** ніша: стіна A–D; виріз: кут AB/BC/CD/DA */wall?:string;/** ніша: start|middle|end */pos?:string};
-export type Room={id:string;name:string;length:string;width:string;height:string;openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[];fixtures?:Fixture[];/** плитка на підлозі з фото, дюйми */floorTile?:{w:number;h:number}|null;/** фотореалістичні рендери (AI) */renders?:SurveyPhoto[];/** побажання до рендеру: плитка, кольори, стиль */renderWish?:string;/** кольори з фото (hex): стіни, підлога, тумба */look?:{wall?:string;floor?:string;vanity?:string};/** 3D-скан (хмара точок LiDAR, файл .qcpc у сховищі) + перетворення ARKit → кімната */scanCloud?:{path:string;n:number;th:number;minX:number;minZ:number;floorY:number};/** 3D-фото: сітка LiDAR (.qcms) + ключові кадри з позою камери (ARKit) — текстурована кімната */scanMesh?:{path:string;frames:ScanFrame[];th:number;minX:number;minZ:number;floorY:number}};
+export type Room={id:string;name:string;length:string;width:string;height:string;/** ✏️ контур, намальований пальцем: вершини в дюймах (0,0 — верхній лівий кут), за годинниковою. Діє, поки довжина й ширина не змінені вручну. */outline?:{pts:[number,number][]};openings:Opening[];photos:SurveyPhoto[];notes:string;plan?:RoomPlan;parts?:Part[];fixtures?:Fixture[];/** плитка на підлозі з фото, дюйми */floorTile?:{w:number;h:number}|null;/** фотореалістичні рендери (AI) */renders?:SurveyPhoto[];/** побажання до рендеру: плитка, кольори, стиль */renderWish?:string;/** кольори з фото (hex): стіни, підлога, тумба */look?:{wall?:string;floor?:string;vanity?:string};/** 3D-скан (хмара точок LiDAR, файл .qcpc у сховищі) + перетворення ARKit → кімната */scanCloud?:{path:string;n:number;th:number;minX:number;minZ:number;floorY:number};/** 3D-фото: сітка LiDAR (.qcms) + ключові кадри з позою камери (ARKit) — текстурована кімната */scanMesh?:{path:string;frames:ScanFrame[];th:number;minX:number;minZ:number;floorY:number}};
 export type ScanFrame={path:string;T:number[];fx:number;fy:number;cx:number;cy:number;w:number;h:number};
 export type Survey={id:string;date:string;title:string;address?:string;rooms:Room[];notes:string;createdAt:string;updatedAt:string;estimateId?:string};
 
@@ -55,6 +55,15 @@ export function roomAreas(r:Room){
     const a=parseInches(p.length),d=parseInches(p.depth);
     if(!ok(a)||!ok(d)||floor===null||perimIn===null)continue;
     if(p.kind==="add"){floor+=a*d/144;perimIn+=2*d}else{floor=Math.max(0,floor-a*d/144)}
+  }
+  // ✏️ намальований контур точніший за «прямокутник ± ділянки» — беремо площу й периметр з нього (якщо довжину/ширину після малювання не міняли)
+  const o=r.outline?.pts;
+  if(o&&o.length>=4&&ok(L)&&ok(W)){
+    const xs=o.map(p=>p[0]),ys=o.map(p=>p[1]);
+    if(Math.abs(Math.max(...xs)-Math.min(...xs)-L)<0.2&&Math.abs(Math.max(...ys)-Math.min(...ys)-W)<0.2){
+      let ar=0,pe=0;for(let i=0;i<o.length;i++){const u=o[i],v=o[(i+1)%o.length];ar+=u[0]*v[1]-v[0]*u[1];pe+=Math.abs(v[0]-u[0])+Math.abs(v[1]-u[1])}
+      floor=Math.abs(ar)/2/144;perimIn=pe;
+    }
   }
   const perimeter=perimIn!==null?perimIn/12:null;
   let openings=0;
