@@ -1,4 +1,5 @@
 "use client";
+import HelperFresh from "@/components/HelperFresh";
 import {useEffect,useMemo,useRef,useState} from "react";
 import type {Estimate,EstimateStatus,Item,PriceRule,Unit} from "@/lib/types";
 import {prepareJobPhoto,type JobPhoto} from "@/lib/jobPhotos";
@@ -1863,7 +1864,7 @@ export default function QuoteCraftApp(){
    {screen==="home"&&apple&&<div className="apHomeExtra"><SiteLeads user={user}/><PaymentsDue user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/></div>}
    {screen==="home"&&!apple&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
-    {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/></>}
+    {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/><HelperFresh list={payStatements} onOpen={(id,tab)=>{setPayOpenTab(tab);setPayOpenId(id);setScreen("pay")}}/></>}
     {ui.home.push&&<><PushSetup user={user} compact/></>}
     {ui.home.leads&&<><SiteLeads user={user}/></>}
     {ui.home.awaiting&&<><AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/></>}

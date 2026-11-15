@@ -15,6 +15,7 @@ import ChangeOrders from "@/components/ChangeOrders";
 import ClientDecisions from "@/components/ClientDecisions";
 import PaymentSchedule from "@/components/PaymentSchedule";
 import CrewPanel from "@/components/CrewPanel";
+import HelperFresh,{freshRows} from "@/components/HelperFresh";
 import HoursCalendar from "@/components/HoursCalendar";
 import MonthEarnings from "@/components/MonthEarnings";
 import VoiceLog,{type VoiceAction} from "@/components/VoiceLog";
@@ -729,7 +730,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  if(!cur&&hoursCal)return <HoursCalendar list={list} onPatch={patchStatement} onClose={()=>setHoursCal(false)}/>;
  if(!cur&&report)return <YearReport list={list} calcs={calcs} onClose={()=>setReport(false)}/>;
  if(!cur){
-   return <>{batchView}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+   return <>{batchView}<HelperFresh list={list} onOpen={(sid,tab)=>{setOpenId(sid);setPtab(tab);if(!apple)setTimeout(()=>document.getElementById(tab==="crew"?"crew-panel":"")?.scrollIntoView({behavior:"smooth",block:"start"}),250)}}/><section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
      {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
        <small className="muted">Для кого чек? «📷 Фото» — камера; «📋 Скріншот» — вставити скопійований скріншот з програми магазину.</small>
@@ -931,7 +932,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <div className="apQuick" style={{gridTemplateColumns:"1fr"}}>
          <button onClick={()=>pdf(false)} disabled={busy}>📄 PDF для клієнта</button>
        </div>
-       <div className="apSeg">{tabs.map(([k,l,n])=><button key={k} className={ptab===k?"on":""} onClick={()=>setPtab(k)}>{l}{n?<i>{n}</i>:null}</button>)}</div>
+       <div className="apSeg">{tabs.map(([k,l,n])=><button key={k} className={ptab===k?"on":""} onClick={()=>setPtab(k)}>{l}{n?<i>{n}</i>:null}{freshRows([cur]).some(f=>f.tab===k)&&<b style={{marginLeft:4,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</button>)}</div>
      </div>})()}
    {show("over")&&<section className="panel grid">
      <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
@@ -1023,7 +1024,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    {show("pay")&&<PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>}
 
-   {show("crew")&&<CrewPanel st={cur} all={list} onPatch={update} forceOpen={apple}/>}
+   {show("crew")&&<div id="crew-panel"><CrewPanel st={cur} all={list} onPatch={update} forceOpen={apple}/></div>}
    {show("crew")&&<WorkerLinks user={user} st={cur}/>}
    {show("rec")&&<section className="panel"><ShopList key={cur.id} call={shopCall}/></section>}
    {show("crew")&&<section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>}

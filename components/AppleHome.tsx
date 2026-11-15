@@ -1,4 +1,5 @@
 "use client";
+import HelperFresh from "@/components/HelperFresh";
 import {useEffect,useMemo,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
@@ -18,7 +19,7 @@ const Chevron=()=><svg width="8" height="14" viewBox="0 0 8 14" fill="none" aria
 
 export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo,awaitingSlot,onStatements}:{
   awaitingSlot?:React.ReactNode;onStatements?:(next:Statement[])=>void;
-  user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string};
+  user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string;detail?:{text:string;sid:string}[]};
   onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab)=>void;onGo:(s:"pay"|"saved"|"clients"|"cal")=>void}){
   const jobs=useScheduleJobs(user) as Job[];
   const [awaiting,setAwaiting]=useState<{n:number;sum:number;viewed:number}>({n:0,sum:0,viewed:0});
@@ -99,7 +100,8 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     </button>
     {draftLabel&&<button className="apRow apCard" onClick={onContinue} style={{marginTop:10}}><span><b>Продовжити чернетку</b><small>{draftLabel}</small></span><Chevron/></button>}
 
-    {inbox.total>0&&<button className="apRow apCard apNotice" onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.text}</small></span><Chevron/></button>}
+    {inbox.total>0&&<button className="apRow apCard apNotice" onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.detail?.length?inbox.detail.map(d=>`${d.text} → ${(()=>{const st=statements.find(x=>x.id===d.sid);return st?`${st.client||"Без імені"}${st.project?` — ${st.project}`:""}`:"проєкт"})()}`).join(" · "):inbox.text}</small><small style={{color:"#175cd3",fontWeight:700}}>Натисни, щоб додати в розрахунки</small></span><Chevron/></button>}
+    <div style={{marginTop:10}}><HelperFresh list={statements} onOpen={(sid,tab)=>onOpenProject(sid,tab)}/></div>
 
     <div className="apHomeQuick">
       {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{setMoreP(false);if(k!=="rec"&&v.active.length===1&&!v.rest.length){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
