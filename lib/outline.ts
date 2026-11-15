@@ -21,18 +21,24 @@ export function strokeToEdges(raw:Pt[]):Edge[]|null{
     acc+=d;
   }
   if(pts.length<12)return null;
+  { // палець рідко повертається точно в початок: шукаємо, де кінець лінії найближче підходить до її початку, і відрізаємо зайве з обох боків
+    const n=pts.length,hN=Math.floor(n*0.2),tN=Math.floor(n*0.8);let bi=0,bj=n-1,bd=Infinity;
+    for(let i=0;i<=hN;i++)for(let j=tN;j<n;j++){const d=Math.hypot(pts[i][0]-pts[j][0],pts[i][1]-pts[j][1]);if(d<bd){bd=d;bi=i;bj=j}}
+    if(bd<big*0.18&&(bi>0||bj<n-1))pts.splice(bj+1),pts.splice(0,bi);
+  }
   // напрямок у кожній точці (згладжено) → відрізки одного напрямку
-  const w=3;type Run={dir:Dir;len:number};const runs:Run[]=[];
+  const w=3;type Run={dir:Dir;len:number;/** s — тут лінія почалась, e — тут закінчилась */tag?:string};const runs:Run[]=[];
   for(let i=0;i<pts.length-1;i++){
     const a=pts[Math.max(0,i-w)],b=pts[Math.min(pts.length-1,i+w)];const dx=b[0]-a[0],dy=b[1]-a[1];
     const dir:Dir=Math.abs(dx)>=Math.abs(dy)?(dx>=0?"R":"L"):(dy>=0?"D":"U");
     const last=runs[runs.length-1];if(last&&last.dir===dir)last.len+=step;else runs.push({dir,len:step});
   }
+  if(runs.length){runs[0].tag="s";runs[runs.length-1].tag=(runs[runs.length-1].tag||"")+"e"}
   const merge=()=>{ // сусіди одного напрямку зливаються; протилежні на одній осі — віднімаються
     let ch=true;while(ch&&runs.length>1){ch=false;
       for(let i=0;i<runs.length;i++){const j=(i+1)%runs.length;if(i===j)break;const a=runs[i],b=runs[j];
-        if(a.dir===b.dir){a.len+=b.len;runs.splice(j,1);ch=true;break}
-        if(a.dir===OPP[b.dir]){if(a.len>=b.len){a.len-=b.len;runs.splice(j,1)}else{b.len-=a.len;runs.splice(i,1)}ch=true;break}
+        if(a.dir===b.dir){a.len+=b.len;a.tag=(a.tag||"")+(b.tag||"");runs.splice(j,1);ch=true;break}
+        if(a.dir===OPP[b.dir]){if(a.len>=b.len){a.len-=b.len;a.tag=(a.tag||"")+(b.tag||"");runs.splice(j,1)}else{b.len-=a.len;b.tag=(a.tag||"")+(b.tag||"");runs.splice(i,1)}ch=true;break}
       }
     }
   };
@@ -41,9 +47,20 @@ export function strokeToEdges(raw:Pt[]):Edge[]|null{
   for(let guard=0;guard<400;guard++){
     merge();
     let k=-1;for(let i=0;i<runs.length;i++)if(runs[i].len<minLen&&(k<0||runs[i].len<runs[k].len))k=i;
-    if(k<0)break;runs.splice(k,1);
+    if(k<0)break;const nb=runs[(k+1)%runs.length];if(runs[k].tag&&nb)nb.tag=(nb.tag||"")+runs[k].tag;runs.splice(k,1);
   }
   merge();
+  // місце, де лінія зійшлась (початок = кінець): палець там часто робить зайвий «гачок» або сходинку — прибираємо їх
+  for(let guard=0;guard<4&&runs.length>4;guard++){
+    const n=runs.length,near=(i:number)=>[-2,-1,0,1,2].some(d=>!!runs[((i+d)%n+n)%n].tag);
+    let hit=-1;
+    for(let i=0;i<n&&hit<0;i++){const a=runs[((i-1)%n+n)%n],b=runs[i],c=runs[(i+1)%n];if(!near(i))continue;
+      if(a.dir===OPP[c.dir]&&b.len<big*0.2&&Math.min(a.len,c.len)<big*0.25)hit=i;       // гачок: туди–вбік–назад
+      else if(a.dir===c.dir&&b.len<big*0.12)hit=i;                                     // маленька сходинка
+    }
+    if(hit<0)break;
+    const nb=runs[(hit+1)%n];nb.tag=(nb.tag||"")+(runs[hit].tag||"")+"x";runs.splice(hit,1);merge();
+  }
   if(runs.length<4||runs.length%2)return null;
   for(let i=0;i<runs.length;i++)if(AX(runs[i].dir)===AX(runs[(i+1)%runs.length].dir))return null;
   let edges:Edge[]=runs.map(r=>({dir:r.dir,sketch:r.len}));
@@ -103,4 +120,47 @@ export function outlineToRect(pts:Pt[]){
   push("CD",Math.min(...bottom)-x0,y1-Math.max(...left));     // низ-ліво: вздовж C, вздовж D
   push("DA",Math.min(...left)-y0,Math.min(...top)-x0);        // верх-ліво: вздовж D, вздовж A
   return {L:x1-x0,W:y1-y0,cuts,norm:pts.map(p=>[p[0]-x0,p[1]-y0] as Pt)};
+}
+
+/** стіна з вписаним розміром (текст, як набрав користувач) */
+export type EdgeV=Edge&{val:string};
+const TURN_OUT:Record<Dir,Dir>={R:"U",D:"R",L:"D",U:"L"},TURN_IN:Record<Dir,Dir>={R:"D",D:"L",L:"U",U:"R"};
+/** сусідні стіни одного напрямку зливаємо, протилежні — віднімаємо; контур лишається замкнутим ламаним під 90° */
+function tidy(list:EdgeV[]):EdgeV[]{
+  const e=list.map(x=>({...x}));let ch=true;
+  while(ch&&e.length>4){ch=false;
+    for(let i=0;i<e.length;i++){const j=(i+1)%e.length,a=e[i],b=e[j];
+      if(a.dir===b.dir){a.sketch+=b.sketch;a.val="";e.splice(j,1);ch=true;break}
+      if(a.dir===OPP[b.dir]){if(a.sketch>=b.sketch){a.sketch-=b.sketch;a.val="";e.splice(j,1);if(a.sketch<1e-6)e.splice(e.indexOf(a),1)}else{b.sketch-=a.sketch;b.val="";e.splice(i,1)}ch=true;break}
+    }
+  }
+  return e;
+}
+/** прибрати стіну (зайвий виступ): дві сусідні стіни стають однією. null — якщо вийшла б не кімната */
+export function removeEdge(list:EdgeV[],i:number):EdgeV[]|null{
+  if(list.length<=4)return null;
+  const out=tidy(list.filter((_,k)=>k!==i));
+  if(out.length<4||out.length%2)return null;
+  for(let k=0;k<out.length;k++)if(AX(out[k].dir)===AX(out[(k+1)%out.length].dir))return null;
+  return out;
+}
+/** додати кут посеред стіни: стіна ділиться навпіл, між половинами — сходинка назовні або всередину */
+export function addJog(list:EdgeV[],i:number,inward:boolean):EdgeV[]{
+  const e=list[i],half=e.sketch/2,jog:Dir=(inward?TURN_IN:TURN_OUT)[e.dir];
+  const out=[...list.slice(0,i),{dir:e.dir,sketch:half,val:""},{dir:jog,sketch:Math.max(Math.min(half*0.5,Math.max(...list.map(x=>x.sketch))*0.15),1),val:""},{dir:e.dir,sketch:half,val:""},...list.slice(i+1)];
+  return out;
+}
+/** довжини для малюнка: вписані — справжні, решта — за пропорцією ескізу; невписані підганяємо, щоб контур замкнувся */
+export function displayLens(edges:Edge[],solved:(number|null)[]):number[]{
+  const ratios=edges.map((e,i)=>solved[i]!==null?(solved[i] as number)/e.sketch:null).filter((x):x is number=>x!==null).sort((a,b)=>a-b);
+  const k=ratios.length?ratios[Math.floor(ratios.length/2)]:1;
+  const lens=edges.map((e,i)=>solved[i]??e.sketch*k);
+  for(const [pos,neg] of [["R","L"],["D","U"]] as [Dir,Dir][]){
+    const sum=(d:Dir,free:boolean)=>edges.reduce((a,e,i)=>a+(e.dir===d&&(solved[i]===null)===free?lens[i]:0),0);
+    const P=sum(pos,false)+sum(pos,true),N=sum(neg,false)+sum(neg,true);if(Math.abs(P-N)<1e-6)continue;
+    // тягнемо невписані стіни того боку, де їх можна змінити
+    const fix=(d:Dir,target:number)=>{const fixed=sum(d,false),free=sum(d,true);if(free<=0||target-fixed<=0)return false;const f=(target-fixed)/free;edges.forEach((e,i)=>{if(e.dir===d&&solved[i]===null)lens[i]*=f});return true};
+    if(!fix(neg,P))fix(pos,N);
+  }
+  return lens;
 }
