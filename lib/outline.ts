@@ -84,13 +84,16 @@ export function verts(lens:number[],edges:{dir:Dir}[]):Pt[]{
 }
 
 export type Solved={lens:(number|null)[];auto:boolean[];errors:string[];ok:boolean};
-/** Довжини стін: вписані користувачем (null — порожньо). Якщо на осі порожня рівно одна стіна — рахуємо її самі. */
-export function solve(edges:{dir:Dir}[],entered:(number|null)[]):Solved{
+/** Довжини стін: вписані користувачем (null — порожньо). Якщо на осі порожня рівно одна стіна — рахуємо її самі.
+ *  legs[i] — скіс 45° після стіни i: катет (діагональ / √2), що йде вздовж стіни i і вздовж наступної. */
+export function solve(edges:{dir:Dir}[],entered:(number|null)[],legs?:number[]):Solved{
   const lens=entered.slice(),auto=edges.map(()=>false),errors:string[]=[];
+  const n=edges.length;
+  const legSum=(d:Dir)=>legs?legs.reduce((a,l,i)=>a+(l>0?(edges[i].dir===d?l:0)+(edges[(i+1)%n].dir===d?l:0):0),0):0;
   for(const [pos,neg,label] of [["R","L","Горизонтальні"],["D","U","Вертикальні"]] as const){
     const idx=edges.map((e,i)=>i).filter(i=>edges[i].dir===pos||edges[i].dir===neg);
     const empty=idx.filter(i=>lens[i]===null);
-    const sum=(d:Dir)=>idx.filter(i=>edges[i].dir===d&&lens[i]!==null).reduce((a,i)=>a+(lens[i] as number),0);
+    const sum=(d:Dir)=>idx.filter(i=>edges[i].dir===d&&lens[i]!==null).reduce((a,i)=>a+(lens[i] as number),0)+legSum(d);
     if(empty.length===1){const i=empty[0];const v=edges[i].dir===pos?sum(neg)-sum(pos):sum(pos)-sum(neg);
       if(v>0.01){lens[i]=Math.round(v*16)/16;auto[i]=true}else errors.push(`${label} стіни не сходяться: остання виходить ${v<=0?"нульова або від'ємна":"замала"}. Перевір цифри.`)}
     else if(empty.length===0){const a=sum(pos),b=sum(neg);if(Math.abs(a-b)>0.5)errors.push(`${label} стіни не сходяться: в один бік ${fmt(a)}, у другий ${fmt(b)} (різниця ${fmt(Math.abs(a-b))}).`)}
@@ -102,12 +105,13 @@ const fmt=(n:number)=>`${Math.round(n*100)/100}"`;
 /** площа (кв. дюйми) і периметр (дюйми) контуру */
 export function outlineStats(pts:Pt[]){
   let a=0,p=0;
-  for(let i=0;i<pts.length;i++){const u=pts[i],v=pts[(i+1)%pts.length];a+=u[0]*v[1]-v[0]*u[1];p+=Math.abs(v[0]-u[0])+Math.abs(v[1]-u[1])}
+  for(let i=0;i<pts.length;i++){const u=pts[i],v=pts[(i+1)%pts.length];a+=u[0]*v[1]-v[0]*u[1];p+=Math.hypot(v[0]-u[0],v[1]-u[1])}
   return {areaIn2:Math.abs(a)/2,perimIn:p};
 }
 
 /** Контур → головний прямокутник (довжина × ширина) і вирізані кути для плану та 3D. */
-export function outlineToRect(pts:Pt[]){
+export function outlineToRect(drawn:Pt[],pts:Pt[]=drawn){
+  // pts — контур без скосів (для вирізів у плані й 3D), drawn — справжній контур зі скосами
   const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
   const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
   const eq=(a:number,b:number)=>Math.abs(a-b)<0.01;
@@ -119,18 +123,41 @@ export function outlineToRect(pts:Pt[]){
   push("BC",y1-Math.max(...right),x1-Math.max(...bottom));    // низ-право: вздовж B, вздовж C
   push("CD",Math.min(...bottom)-x0,y1-Math.max(...left));     // низ-ліво: вздовж C, вздовж D
   push("DA",Math.min(...left)-y0,Math.min(...top)-x0);        // верх-ліво: вздовж D, вздовж A
-  return {L:x1-x0,W:y1-y0,cuts,norm:pts.map(p=>[p[0]-x0,p[1]-y0] as Pt)};
+  return {L:x1-x0,W:y1-y0,cuts,norm:drawn.map(p=>[p[0]-x0,p[1]-y0] as Pt)};
 }
 
-/** стіна з вписаним розміром (текст, як набрав користувач) */
-export type EdgeV=Edge&{val:string};
+/** стіна з вписаним розміром (текст, як набрав користувач); ch — скіс 45° у куті після цієї стіни (довжина скосу, текст; "" — ще не вписано) */
+export type EdgeV=Edge&{val:string;ch?:string};
+/** вершини зі скосами: lens — прямі частини стін, legs — катети скосів після кожної стіни */
+export function vertsCh(lens:number[],edges:{dir:Dir}[],legs:number[]):Pt[]{
+  const out:Pt[]=[];let x=0,y=0;const n=edges.length;
+  for(let i=0;i<n;i++){
+    out.push([x,y]);const d=VEC[edges[i].dir];x+=d[0]*lens[i];y+=d[1]*lens[i];
+    const l=legs[i]||0;if(l>0){out.push([x,y]);const e=VEC[edges[(i+1)%n].dir];x+=(d[0]+e[0])*l;y+=(d[1]+e[1])*l}
+  }
+  return out;
+}
+/** повні довжини стін до кута (пряма частина + катети скосів з обох кінців) — для контуру без скосів */
+export const fullLens=(lens:number[],legs:number[])=>lens.map((l,i)=>l+(legs[i]||0)+(legs[(i-1+lens.length)%lens.length]||0));
+/** перетягування стіни i на mv (одиниці, вздовж перпендикуляра): на скільки зміниться попередня і наступна стіна */
+export function dragDelta(edges:{dir:Dir}[],i:number,mv:number){
+  const n=edges.length,e=edges[i],p=edges[(i-1+n)%n],q=edges[(i+1)%n];
+  const m:Pt=AX(e.dir)==="h"?[0,mv]:[mv,0];
+  const dot=(a:Pt,b:Pt)=>a[0]*b[0]+a[1]*b[1];
+  return {prev:(i-1+n)%n,dp:dot(m,VEC[p.dir]),next:(i+1)%n,dn:-dot(m,VEC[q.dir])};
+}
+/** масштаб ескізу: дюймів на одиницю малюнка (медіана по вписаних стінах) */
+export function sketchScale(edges:Edge[],solved:(number|null)[]){
+  const ratios=edges.map((e,i)=>solved[i]!==null?(solved[i] as number)/e.sketch:null).filter((x):x is number=>x!==null).sort((a,b)=>a-b);
+  return ratios.length?ratios[Math.floor(ratios.length/2)]:1;
+}
 const TURN_OUT:Record<Dir,Dir>={R:"U",D:"R",L:"D",U:"L"},TURN_IN:Record<Dir,Dir>={R:"D",D:"L",L:"U",U:"R"};
 /** сусідні стіни одного напрямку зливаємо, протилежні — віднімаємо; контур лишається замкнутим ламаним під 90° */
 function tidy(list:EdgeV[]):EdgeV[]{
   const e=list.map(x=>({...x}));let ch=true;
   while(ch&&e.length>4){ch=false;
     for(let i=0;i<e.length;i++){const j=(i+1)%e.length,a=e[i],b=e[j];
-      if(a.dir===b.dir){a.sketch+=b.sketch;a.val="";e.splice(j,1);ch=true;break}
+      if(a.dir===b.dir){a.sketch+=b.sketch;a.val="";a.ch=b.ch;e.splice(j,1);ch=true;break}
       if(a.dir===OPP[b.dir]){if(a.sketch>=b.sketch){a.sketch-=b.sketch;a.val="";e.splice(j,1);if(a.sketch<1e-6)e.splice(e.indexOf(a),1)}else{b.sketch-=a.sketch;b.val="";e.splice(i,1)}ch=true;break}
     }
   }
@@ -147,16 +174,17 @@ export function removeEdge(list:EdgeV[],i:number):EdgeV[]|null{
 /** додати кут посеред стіни: стіна ділиться навпіл, між половинами — сходинка назовні або всередину */
 export function addJog(list:EdgeV[],i:number,inward:boolean):EdgeV[]{
   const e=list[i],half=e.sketch/2,jog:Dir=(inward?TURN_IN:TURN_OUT)[e.dir];
-  const out=[...list.slice(0,i),{dir:e.dir,sketch:half,val:""},{dir:jog,sketch:Math.max(Math.min(half*0.5,Math.max(...list.map(x=>x.sketch))*0.15),1),val:""},{dir:e.dir,sketch:half,val:""},...list.slice(i+1)];
+  const out=[...list.slice(0,i),{dir:e.dir,sketch:half,val:""},{dir:jog,sketch:Math.max(Math.min(half*0.5,Math.max(...list.map(x=>x.sketch))*0.15),1),val:""},{dir:e.dir,sketch:half,val:"",ch:e.ch},...list.slice(i+1)];
   return out;
 }
 /** довжини для малюнка: вписані — справжні, решта — за пропорцією ескізу; невписані підганяємо, щоб контур замкнувся */
-export function displayLens(edges:Edge[],solved:(number|null)[]):number[]{
-  const ratios=edges.map((e,i)=>solved[i]!==null?(solved[i] as number)/e.sketch:null).filter((x):x is number=>x!==null).sort((a,b)=>a-b);
-  const k=ratios.length?ratios[Math.floor(ratios.length/2)]:1;
+export function displayLens(edges:Edge[],solved:(number|null)[],legs?:number[]):number[]{
+  const k=sketchScale(edges,solved);
   const lens=edges.map((e,i)=>solved[i]??e.sketch*k);
+  const n=edges.length;
+  const legOn=(d:Dir)=>legs?legs.reduce((a,l,i)=>a+(l>0?(edges[i].dir===d?l:0)+(edges[(i+1)%n].dir===d?l:0):0),0):0;
   for(const [pos,neg] of [["R","L"],["D","U"]] as [Dir,Dir][]){
-    const sum=(d:Dir,free:boolean)=>edges.reduce((a,e,i)=>a+(e.dir===d&&(solved[i]===null)===free?lens[i]:0),0);
+    const sum=(d:Dir,free:boolean)=>edges.reduce((a,e,i)=>a+(e.dir===d&&(solved[i]===null)===free?lens[i]:0),0)+(free?0:legOn(d));
     const P=sum(pos,false)+sum(pos,true),N=sum(neg,false)+sum(neg,true);if(Math.abs(P-N)<1e-6)continue;
     // тягнемо невписані стіни того боку, де їх можна змінити
     const fix=(d:Dir,target:number)=>{const fixed=sum(d,false),free=sum(d,true);if(free<=0||target-fixed<=0)return false;const f=(target-fixed)/free;edges.forEach((e,i)=>{if(e.dir===d&&solved[i]===null)lens[i]*=f});return true};

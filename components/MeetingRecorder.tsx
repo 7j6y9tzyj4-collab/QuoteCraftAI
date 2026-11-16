@@ -1,7 +1,8 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import {smsHref,type Client} from "@/lib/clients";
-import {fmtDur,linesToPrompt,type Meeting,type ScopeLine} from "@/lib/meeting";
+import {fmtDur,linesToPrompt,dialogue,type Meeting,type ScopeLine,type MeetingEvent} from "@/lib/meeting";
+import {buildIcs,googleCalUrl} from "@/lib/ics";
 import {ownerFirst} from "@/lib/company";
 
 // 🎙 Запис зустрічі з клієнтом на об'єкті.
@@ -16,7 +17,9 @@ const uiLang=()=>{try{return JSON.parse(localStorage.getItem("qc_ui")||"{}").lan
 function fromAi(d:any):Partial<Meeting>{
   const raw=Array.isArray(d?.scope)?d.scope:[];
   const lines:ScopeLine[]=raw.filter((x:any)=>x&&typeof x==="object"&&x.item).map((x:any)=>({id:crypto.randomUUID(),room:String(x.room||""),item:String(x.item||""),qty:String(x.qty||""),category:String(x.category||""),note:String(x.note||""),verify:!!x.verify,on:true}));
-  return {title:String(d?.title||"Зустріч"),summary:String(d?.summary||""),lines,scope:lines.length?lines.map(l=>`${l.item}${l.qty?` — ${l.qty}`:""}`):raw.map(String),checks:Array.isArray(d?.checks)?d.checks.map(String):[],questions:Array.isArray(d?.questions)?d.questions.map(String):[],tasks:Array.isArray(d?.tasks)?d.tasks.map(String):[],followup:String(d?.followup||""),when:String(d?.when||""),estimatePrompt:String(d?.estimate_prompt||"")};
+  const speakers:Record<string,string>={};for(const x of Array.isArray(d?.speakers)?d.speakers:[])if(x?.label&&x?.who)speakers[String(x.label).replace(/[[\]]/g,"")]=String(x.who);
+  const events:MeetingEvent[]=(Array.isArray(d?.events)?d.events:[]).filter((x:any)=>x&&/^\d{4}-\d{2}-\d{2}$/.test(String(x.date||""))).map((x:any)=>({id:crypto.randomUUID(),title:String(x.title||"Подія"),date:String(x.date),time:/^\d{1,2}:\d{2}$/.test(String(x.time||""))?String(x.time):"",minutes:Math.max(0,Number(x.minutes)||0),note:String(x.note||"")}));
+  return {speakers,events,title:String(d?.title||"Зустріч"),summary:String(d?.summary||""),lines,scope:lines.length?lines.map(l=>`${l.item}${l.qty?` — ${l.qty}`:""}`):raw.map(String),checks:Array.isArray(d?.checks)?d.checks.map(String):[],questions:Array.isArray(d?.questions)?d.questions.map(String):[],tasks:Array.isArray(d?.tasks)?d.tasks.map(String):[],followup:String(d?.followup||""),when:String(d?.when||""),estimatePrompt:String(d?.estimate_prompt||"")};
 }
 const fmtDate=(s:string)=>new Date(s).toLocaleDateString("uk-UA",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 
@@ -56,7 +59,9 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
         const f=new FormData();f.append("audio",new File([blob],`meeting-${i}.${extOf(blob.type||mime.current)}`,{type:blob.type||mime.current||"audio/webm"}));
         const r=await fetch("/api/transcribe?mode=meeting",{method:"POST",body:f});const d=await r.json();
         if(!r.ok)throw new Error(d?.error||"transcribe error");
-        texts.current[i]=String(d.text||"").trim();setDone(x=>x+1);return;
+        // з розділенням мовців: «[1A] текст» по рядку на репліку (мітки A/B — свої в кожному фрагменті)
+        const turns:{s:string;t:string}[]=Array.isArray(d.turns)?d.turns:[];
+        texts.current[i]=turns.length?turns.map(x=>`[${i+1}${x.s}] ${String(x.t).replace(/\s+/g," ").trim()}`).join("\n"):String(d.text||"").trim();setDone(x=>x+1);return;
       }catch(e){if(attempt===1){texts.current[i]="";setErr(`Один фрагмент не розпізнався: ${e instanceof Error?e.message:e}`);setDone(x=>x+1)}}
     }
   }
@@ -96,7 +101,9 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
   }
   // з розпізнаних шматків → підсумок AI → запис у картку клієнта (спільне для запису і для файлу)
   async function finish(dur:number){
-    const transcript=texts.current.filter(Boolean).join(" ").replace(/\s+/g," ").trim();
+    const parts=texts.current.filter(Boolean);
+    const labeled=parts.some(t=>/^\[\d+/.test(t));
+    const transcript=labeled?parts.map(t=>/^\[\d+/.test(t)?t:t.replace(/\s+/g," ")).join("\n").trim():parts.join(" ").replace(/\s+/g," ").trim();
     if(transcript.length<40){setPhase("idle");setErr("У записі майже немає мови — нема з чого робити підсумок. Нічого не збережено.");setStatus("");return}
     setStatus("AI робить підсумок розмови…");
     const c=clientRef.current;
@@ -158,6 +165,11 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
     }catch(e){setErr(`Не вдалося: ${e instanceof Error?e.message:e}`);setStatus("")}
   }
   const patchMeeting=(m:Meeting,p:Partial<Meeting>)=>onSave({...client,meetings:list.map(x=>x.id===m.id?{...x,...p}:x),updatedAt:new Date().toISOString()});
+  function addToCalendar(ev:MeetingEvent){
+    const ics=buildIcs({title:ev.title,date:ev.date,time:ev.time,minutes:ev.minutes,note:ev.note,location:client.address||""});
+    const file=new File([ics],`${ev.title.replace(/[\\/:*?"<>|]+/g," ").slice(0,60)||"event"}.ics`,{type:"text/calendar"});
+    const url=URL.createObjectURL(file);const a=document.createElement("a");a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),20000);
+  }
   const copy=async(id:string,t:string)=>{try{await navigator.clipboard.writeText(t);setCopied(id);setTimeout(()=>setCopied(""),1800)}catch{}};
   const Block=({title,items}:{title:string;items:string[]})=>items.length?<div style={{marginTop:10}}><b>{title}</b><ul style={{margin:"4px 0 0",paddingLeft:20}}>{items.map((x,i)=><li key={i} style={{marginTop:2}}>{x}</li>)}</ul></div>:null;
 
@@ -211,6 +223,15 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
             </label>)}
           </div>)}
         </div>:<Block title="Обсяг робіт" items={m.scope}/>}
+        {(m.events||[]).length>0&&<div style={{marginTop:10}}><b>📅 У календар</b>
+          {m.events!.map(ev=><div key={ev.id} style={{marginTop:6,padding:"8px 10px",borderRadius:10,background:"#eff8ff",border:"1px solid #b2ddff",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{flex:1,minWidth:160}}><b style={{display:"block"}}>{ev.title}</b><small className="muted">{new Date(ev.date+"T12:00:00").toLocaleDateString("uk-UA",{weekday:"short",day:"numeric",month:"long"})}{ev.time?` · ${ev.time}`:" · весь день"}{ev.note?` · ${ev.note}`:""}</small></span>
+            <button className="secondary" style={{padding:"8px 10px",fontSize:13}} onClick={()=>addToCalendar(ev)}>＋ Календар</button>
+            <a className="secondary" style={{padding:"8px 10px",fontSize:13,textDecoration:"none",borderRadius:10}} href={googleCalUrl({title:ev.title,date:ev.date,time:ev.time,minutes:ev.minutes,note:ev.note,location:client.address||""})} target="_blank" rel="noreferrer">Google</a>
+            <button style={{border:"none",background:"none",color:"#98a2b3",fontSize:16}} title="Прибрати" onClick={()=>patchMeeting(m,{events:m.events!.filter(x=>x.id!==ev.id)})}>×</button>
+          </div>)}
+          <small className="muted">«＋ Календар» відкриває подію в Календарі iPhone / Mac — там натисни «Додати». Нагадування за годину.</small>
+        </div>}
         <Block title="Питання до клієнта" items={m.questions}/>
         <Block title="Що зробити мені" items={m.tasks}/>
         {m.followup&&<div style={{marginTop:10}}><b>Повідомлення клієнту</b>
@@ -224,7 +245,17 @@ export default function MeetingRecorder({client,onSave,onEstimate}:{client:Clien
           <button className="secondary" style={{color:"#b42318"}} onClick={()=>{if(confirm("Видалити цю зустріч разом з текстом розмови?"))onSave({...client,meetings:list.filter(x=>x.id!==m.id),updatedAt:new Date().toISOString()})}}>Видалити</button>
         </div>
         <details style={{marginTop:10}}><summary style={{fontSize:13,color:"#667085"}}>Текст розмови ({Math.round(m.transcript.length/1000)} тис. знаків)</summary>
-          <div style={{marginTop:6,fontSize:13,color:"#475467",whiteSpace:"pre-wrap",maxHeight:320,overflow:"auto"}}>{m.transcript}</div>
+          {(()=>{const dl=dialogue(m.transcript);const labels=Array.from(new Set(dl.map(x=>x.label).filter(Boolean)));
+            if(!labels.length)return <div style={{marginTop:6,fontSize:13,color:"#475467",whiteSpace:"pre-wrap",maxHeight:320,overflow:"auto"}}>{m.transcript}</div>;
+            const sp=m.speakers||{};const names=Array.from(new Set([ownerFirst()||"Я",client.name||"Клієнт",...Object.values(sp),"Інший"].filter(Boolean)));
+            const me=(n:string)=>n===(ownerFirst()||"Я");
+            return <>
+              <div style={{marginTop:6,display:"flex",gap:6,flexWrap:"wrap",fontSize:12}}>{labels.map(l=><label key={l} style={{display:"flex",gap:4,alignItems:"center",background:"#f2f4f7",borderRadius:8,padding:"2px 6px"}}>голос {l}:
+                <select value={sp[l]||""} onChange={e=>patchMeeting(m,{speakers:{...sp,[l]:e.target.value}})} style={{padding:"2px 4px",fontSize:12}}><option value="">?</option>{names.map(n=><option key={n}>{n}</option>)}</select></label>)}</div>
+              <div style={{marginTop:6,display:"grid",gap:4,maxHeight:360,overflow:"auto"}}>{dl.map((x,i)=>{const n=x.label?sp[x.label]||`Голос ${x.label}`:"";const mine=me(n);
+                return <div key={i} style={{fontSize:13,padding:"4px 8px",borderRadius:10,background:mine?"#eff8ff":"#f9fafb",borderLeft:`3px solid ${mine?"#2563eb":/інш|other/i.test(n)?"#98a2b3":"#f79009"}`}}>{n&&<b style={{color:mine?"#175cd3":"#b54708"}}>{n}: </b>}{x.text}</div>})}</div>
+              <small className="muted" style={{display:"block",marginTop:4}}>Хто говорить — визначено автоматично; якщо переплутано, виправ у списку «голос».</small>
+            </>})()}
           <button className="secondary" style={{marginTop:6}} onClick={()=>void copy("t"+m.id,m.transcript)}>{copied==="t"+m.id?"✓ Скопійовано":"Скопіювати текст"}</button>
         </details>
       </div>}

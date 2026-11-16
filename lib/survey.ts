@@ -61,7 +61,7 @@ export function roomAreas(r:Room){
   if(o&&o.length>=4&&ok(L)&&ok(W)){
     const xs=o.map(p=>p[0]),ys=o.map(p=>p[1]);
     if(Math.abs(Math.max(...xs)-Math.min(...xs)-L)<0.2&&Math.abs(Math.max(...ys)-Math.min(...ys)-W)<0.2){
-      let ar=0,pe=0;for(let i=0;i<o.length;i++){const u=o[i],v=o[(i+1)%o.length];ar+=u[0]*v[1]-v[0]*u[1];pe+=Math.abs(v[0]-u[0])+Math.abs(v[1]-u[1])}
+      let ar=0,pe=0;for(let i=0;i<o.length;i++){const u=o[i],v=o[(i+1)%o.length];ar+=u[0]*v[1]-v[0]*u[1];pe+=Math.hypot(v[0]-u[0],v[1]-u[1])}
       floor=Math.abs(ar)/2/144;perimIn=pe;
     }
   }

@@ -28,6 +28,31 @@ export async function POST(req: NextRequest) {
     if (meeting) {
       if (file.size > 4.2 * 1024 * 1024) return NextResponse.json({ error: "Фрагмент запису завеликий." }, { status: 400 });
       if (file.size < 1500) return NextResponse.json({ text: "" });
+      // 🗣 хто говорить: модель з розділенням мовців (мітки A, B… — свої в кожному фрагменті). Не вийшло — звичайний Whisper.
+      if (process.env.MEETING_DIARIZE !== "off") {
+        try {
+          const f = new FormData();
+          f.append("file", file);
+          f.append("model", "gpt-4o-transcribe-diarize");
+          f.append("response_format", "diarized_json");
+          f.append("chunking_strategy", "auto");
+          const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: f });
+          const d = await r.json().catch(() => null);
+          const segs: { speaker?: string; text?: string }[] = Array.isArray(d?.segments) ? d.segments : [];
+          if (r.ok && segs.length) {
+            const turns: { s: string; t: string }[] = [];
+            for (const g of segs) {
+              const s = String(g.speaker || "?").replace(/[^A-Za-z0-9_]/g, "").slice(0, 12) || "?";
+              const t = String(g.text || "").trim();
+              if (!t) continue;
+              const last = turns[turns.length - 1];
+              if (last && last.s === s) last.t += " " + t; else turns.push({ s, t });
+            }
+            return NextResponse.json({ text: turns.map(x => x.t).join(" "), turns });
+          }
+          console.warn("diarize failed", r.status, JSON.stringify(d)?.slice(0, 300));
+        } catch (e) { console.warn("diarize error", e); }
+      }
       const tr = await openai.audio.transcriptions.create({
         file,
         model: "whisper-1",

@@ -11,7 +11,16 @@ export type Meeting={
   /** дати/строки, які прозвучали в розмові */ when:string;
   /** опис робіт для калькулятора естімейту */ estimatePrompt:string;
   transcript:string;
+  /** хто говорить: мітка з тексту розмови ([1A], [2B]…) → «Vasyl» / ім'я клієнта / «Інший» */ speakers?:Record<string,string>;
+  /** події для календаря, що прозвучали в розмові */ events?:MeetingEvent[];
 };
+export type MeetingEvent={id:string;title:string;/** YYYY-MM-DD */date:string;/** HH:MM або порожньо — на весь день */time:string;minutes:number;note:string};
+/** рядки розмови з мітками мовців: «[1A] текст» → {label, text}; без міток — один рядок */
+export function dialogue(transcript:string):{label:string;text:string}[]{
+  const out:{label:string;text:string}[]=[];
+  for(const line of String(transcript||"").split(/\n+/)){const m=line.match(/^\[(\d+[A-Za-z0-9_?]*)\]\s*(.*)$/);if(m)out.push({label:m[1],text:m[2]});else if(line.trim())out.push({label:"",text:line.trim()})}
+  return out;
+}
 /** текст для калькулятора естімейту з позначених рядків */
 export function linesToPrompt(m:Meeting){
   const on=(m.lines||[]).filter(l=>l.on);if(!on.length)return m.estimatePrompt||m.scope.join("; ");
