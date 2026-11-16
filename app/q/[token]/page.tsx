@@ -57,7 +57,9 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
     if(paths.length){const {data:su}=await supabaseAdmin.storage.from("receipts").createSignedUrls(paths,3600);for(const x of su||[])if(x.path&&x.signedUrl)signed.set(x.path,x.signedUrl)}
     const t=statementTotals(st);
     const d:InvoiceData={company:inv.company,contact:inv.contact,client:st.client,project:st.project,date:new Date().toLocaleDateString("en-US"),
-      labor:st.labor.filter(l=>Number(l.amount)).map(l=>({description:l.description,amount:Number(l.amount)||0})),
+      labor:st.labor.filter(l=>Number(l.amount)).map(l=>{const co=(st.changes||[]).find(c=>c.laborLineId===l.id&&c.status==="accepted");
+        return {description:l.description,amount:Number(l.amount)||0,details:co?co.lines.filter(x=>Number(x.amount)).map(x=>({description:x.description,amount:Number(x.amount)||0})):undefined}}),
+      pending:(st.changes||[]).filter(c=>c.status==="sent"||c.status==="viewed").map(c=>({no:c.no,title:c.title,total:c.lines.reduce((a,x)=>a+(Number(x.amount)||0),0),lines:c.lines.filter(x=>Number(x.amount)).map(x=>({description:x.description,amount:Number(x.amount)||0}))})),
       receipts:[...st.receipts].filter(r=>Number(r.amount)&&r.kind!=="deposit").map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
       payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||"",logo};
     return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><InvoiceView d={d}/></div></main>;

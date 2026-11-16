@@ -250,6 +250,7 @@
 "Zelle (телефон або email)",
 "Zelle для завдатку (телефон або email, необов'язково)",
 "Zelle, завдаток, умови в естімейті",
+"[]; /** change orders, надіслані клієнту, але ще не погоджені — в суму не входять */pending?:",
 "[q(\"\"),q(\"\"),q(\"\"),q(x.c),x.sum.toFixed(2)].join(\",\")),[q(\"\"),q(\"\"),q(\"\"),q(\"Разом\"),total.toFixed(2)].join(\",\")]; const blob=new Blob([\"\\ufeff\"+lines.join(\"\\n\")],",
 "\\nу «$",
 "]=buildMonthXlsx(list,ym); onProgress?.(\"Роблю PDF…\"); const fake:Statement={id:\"month\",client:",
