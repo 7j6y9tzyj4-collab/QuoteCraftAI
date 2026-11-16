@@ -1,7 +1,8 @@
 "use client";
 import {useMemo,useState} from "react";
 import type {Statement} from "@/lib/statement";
-import {buildMonthZip,receiptsInMonth,monthLabel} from "@/lib/monthExport";
+import {buildMonthZip,receiptsInMonth,monthLabel,buildMonthXlsx,monthXlsxName} from "@/lib/monthExport";
+import {recAmt} from "@/lib/statement";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const ymOf=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -13,7 +14,7 @@ export default function MonthReceiptsButton({list}:{list:Statement[]}){
   const [busy,setBusy]=useState("");
   const [ready,setReady]=useState<File|null>(null); // iPhone: «Поділитися» дозволено лише одразу після натискання — тому другою кнопкою
   const rows=receiptsInMonth(list,ym);
-  const total=rows.reduce((a,x)=>a+(Number(x.r.amount)||0),0);
+  const total=rows.reduce((a,x)=>a+recAmt(x.r),0);
   function save(file:File){
     const nav=navigator as Navigator&{canShare?:(d:ShareData)=>boolean};
     const mobile=typeof matchMedia!=="undefined"&&matchMedia("(pointer:coarse)").matches;
@@ -34,16 +35,24 @@ export default function MonthReceiptsButton({list}:{list:Statement[]}){
       else save(file);
     }catch(e){setBusy("Не вдалося: "+(e instanceof Error?e.message:String(e)))}
   }
+  function xlsx(){
+    setReady(null);
+    try{
+      const file=new File([buildMonthXlsx(list,ym) as BlobPart],monthXlsxName(ym),{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      save(file);
+    }catch(e){setBusy("Не вдалося: "+(e instanceof Error?e.message:String(e)))}
+  }
   const working=!!busy&&!busy.startsWith("✓")&&!busy.startsWith("Не вдалося");
   return <div className="estimate" style={{background:"#fdf4ff",display:"block"}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
-      <span><b>📦 Чеки за місяць</b><small>Фото по папках проєктів + таблиця + PDF — одним файлом на Mac</small></span>
+      <span><b>📦 Чеки за місяць</b><small>Фото по папках проєктів + таблиця Excel + PDF — одним файлом на Mac</small></span>
       <span style={{textAlign:"right"}}><strong>{money(total)}</strong><small className="muted">{rows.length} чеків</small></span>
     </div>
     <div style={{display:"flex",gap:8,marginTop:8}}>
       <select value={ym} onChange={e=>{setYm(e.target.value);setBusy("");setReady(null)}} style={{flex:1,padding:8}}>{months.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select>
       <button className="primary" disabled={working||!rows.length} onClick={go} style={{padding:"8px 14px"}}>{working?"…":"⬇ Завантажити"}</button>
     </div>
+    <button className="secondary" disabled={working} onClick={xlsx} style={{width:"100%",marginTop:8,fontSize:13}}>📊 Тільки таблиця місяця (Excel): підсумок, чеки, оплати, помічники</button>
     {ready&&<button className="primary" onClick={()=>save(ready)} style={{width:"100%",marginTop:8,background:"#067647"}}>💾 Зберегти файл</button>}
     {busy&&<small className="muted" style={{display:"block",marginTop:6}}>{busy}</small>}
   </div>;

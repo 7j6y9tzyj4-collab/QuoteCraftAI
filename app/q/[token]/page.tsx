@@ -58,7 +58,7 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
     const t=statementTotals(st);
     const d:InvoiceData={company:inv.company,contact:inv.contact,client:st.client,project:st.project,date:new Date().toLocaleDateString("en-US"),
       labor:st.labor.filter(l=>Number(l.amount)).map(l=>({description:l.description,amount:Number(l.amount)||0})),
-      receipts:[...st.receipts].filter(r=>Number(r.amount)).map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
+      receipts:[...st.receipts].filter(r=>Number(r.amount)&&r.kind!=="deposit").map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
       payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||"",logo};
     return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><InvoiceView d={d}/></div></main>;
   }

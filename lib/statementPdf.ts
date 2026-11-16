@@ -42,10 +42,11 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
   };
 
   section("Labor",["Description","Amount"],s.labor.filter(l=>l.description||l.amount).map(l=>[l.description,money(Number(l.amount)||0)]),"Total labor",t.labor,{});
+  const recs=s.receipts.filter(r=>r.kind!=="deposit");
   if(t.included){/* ціна «під ключ»: чеки клієнту не показуємо */}
   else if(t.fixed){
-    if(t.matOver>0&&s.receipts.length)section(`Materials — store receipts (estimate ${money(t.matPlan)}, over by ${money(t.matOver)})`,["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total receipts",t.receipts,{0:{cellWidth:66},1:{cellWidth:80}});
-  }else if(s.receipts.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
+    if(t.matOver>0&&recs.length)section(`Materials — store receipts (estimate ${money(t.matPlan)}, over by ${money(t.matOver)})`,["Date","Store","Items","Amount"],recs.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total receipts",t.receipts,{0:{cellWidth:66},1:{cellWidth:80}});
+  }else if(recs.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],recs.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
   if(s.schedule?.length){
     let left=t.paid;
     const rows=s.schedule.map(st=>{const a=Number(st.amount)||0;const got=Math.max(0,Math.min(left,a));left-=got;return [st.label||"Payment",st.due||"",got>=a-0.009?"Paid":got>0?`Paid ${money(got)}`:"Due",money(a)]});
@@ -121,7 +122,7 @@ export async function buildReceiptsPdf(s:Statement,photos:ReceiptPhoto[]):Promis
   doc.setFont(font,"bold");doc.setFontSize(14);doc.setTextColor(0);
   doc.text("Receipts summary",M,M+6);
   let y=M+30;doc.setFont(font,"normal");doc.setFontSize(9.5);
-  for(const r of s.receipts){
+  for(const r of s.receipts.filter(x=>x.kind!=="deposit")){
     if(y>H-M-30){doc.addPage();y=M}
     doc.text(`${r.date}   ${r.store||"Receipt"}`,M,y);doc.text(money(Number(r.amount)||0),W-M,y,{align:"right"});y+=14;
   }

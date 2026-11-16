@@ -46,6 +46,11 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
       if(unk.length)warns.push({id:"u"+s.id,sid:s.id,tab:"rec",text:`Чек без платника · ${unk.length}`,sub:`${nm} — познач, хто платив (${money(unk.reduce((a,r)=>a+(Number(r.amount)||0),0))})`});
       if(t.matOver>0.5)warns.push({id:"m"+s.id,sid:s.id,tab:"rec",text:`Матеріали понад естімейт на ${money(t.matOver)}`,sub:`${nm} — чеки ${money(t.receipts)} при плані ${money(t.matPlan)}`});
     }
+    // ⏳ депозити (оренда траку, тара), що ще не повернулись — нагадати через 3 дні
+    for(const s of list)for(const r of (s.receipts||[]).filter(x=>x.kind==="deposit"&&!x.back)){
+      const m=String(r.date).match(/^(\d{2})\/(\d{2})\/(\d{4})/);const d=m?new Date(`${m[3]}-${m[1]}-${m[2]}T12:00:00`):new Date(String(r.date));
+      if(!isNaN(d.getTime())&&Date.now()-d.getTime()>3*864e5)warns.push({id:"d"+r.id,sid:s.id,tab:"rec",text:`Депозит ${money(Number(r.amount)||0)} ще не повернувся`,sub:`${s.own?"Мої витрати":`${s.client||"Без імені"}${s.project?` — ${s.project}`:""}`} — ${r.store||"магазин"}, ${r.date}. Перевір банк і познач «✓ Гроші повернулись»`});
+    }
     const rest=rows.filter(r=>!active.includes(r));
     // 💵 «До сплати зараз»: закінчені роботи з залишком + етапи оплати, в яких уже настав строк
     const tdy=todayISO();const dueNow:{id:string;sid:string;client:string;what:string;amount:number}[]=[];

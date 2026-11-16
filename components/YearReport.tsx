@@ -2,7 +2,7 @@
 import {companyName} from "@/lib/company";
 import {useMemo,useState} from "react";
 import type {Statement} from "@/lib/statement";
-import {statementTotals,OWN_CATS,guessOwnCategory} from "@/lib/statement";
+import {recAmt,statementTotals,OWN_CATS,guessOwnCategory} from "@/lib/statement";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {normDate} from "@/lib/receiptBatch";
 import {findCalcFor} from "@/lib/priceHistory";
@@ -30,7 +30,7 @@ export default function YearReport({list,calcs,onClose}:{list:Statement[];calcs:
     const own=list.find(s=>s.own);
     const rows=clients.map(s=>{
       const paid=sum(s.payments.filter(p=>inY(p.date)).map(p=>p.amount));
-      const receipts=sum(s.receipts.filter(r=>inY(r.date)).map(r=>r.amount));
+      const receipts=sum(s.receipts.filter(r=>inY(r.date)).map(recAmt));
       const t=statementTotals(s);
       return {s,paid,receipts,labor:t.labor,balance:t.balance,earned:r2(paid-receipts)};
     }).filter(x=>x.paid||x.receipts).sort((a,b)=>b.paid-a.paid);
@@ -39,11 +39,11 @@ export default function YearReport({list,calcs,onClose}:{list:Statement[];calcs:
       const at=(d:string)=>normDate(d).startsWith(m);
       return {
         paid:sum(clients.flatMap(s=>s.payments.filter(p=>at(p.date)).map(p=>p.amount))),
-        receipts:sum(clients.flatMap(s=>s.receipts.filter(r=>at(r.date)).map(r=>r.amount))),
-        own:sum((own?.receipts||[]).filter(r=>at(r.date)).map(r=>r.amount)),
+        receipts:sum(clients.flatMap(s=>s.receipts.filter(r=>at(r.date)).map(recAmt))),
+        own:sum((own?.receipts||[]).filter(r=>at(r.date)).map(recAmt)),
       };
     });
-    const ownCats=OWN_CATS.map(c=>({c,sum:sum((own?.receipts||[]).filter(r=>inY(r.date)&&(r.category||guessOwnCategory(r.items))===c).map(r=>r.amount))}));
+    const ownCats=OWN_CATS.map(c=>({c,sum:sum((own?.receipts||[]).filter(r=>inY(r.date)&&(r.category||guessOwnCategory(r.items))===c).map(recAmt))}));
     // типи робіт: праця з естімейтів, прив'язаних до клієнтів цього року
     const types:Record<string,number>={};
     for(const x of rows){

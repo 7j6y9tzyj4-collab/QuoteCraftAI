@@ -11,7 +11,15 @@ export type Receipt={id:string;date:string;store:string;items:string;amount:numb
   /** хто додав (помічник за посиланням) */ by?:string;
   /** коли додав помічник (ISO) — для позначки «нове» */ at?:string;
   /** звідки: "mail" — прийшов з пошти */ src?:string;
-  /** чому чек саме тут (назва роботи на чеку / за графіком / AI / вручну) */ why?:string};
+  /** чому чек саме тут (назва роботи на чеку / за графіком / AI / вручну) */ why?:string;
+  /** "return" — повернення в магазин (сума мінусова); "deposit" — застава (оренда траку, тара), що має повернутись — не йде в рахунок і витрати */
+  kind?:"return"|"deposit";
+  /** повернення: id чека, з якого повертали */ of?:string;
+  /** депозит: коли гроші повернулись (дата) */ back?:string};
+/** сума чека для підрахунків: депозит (застава) не є витратою */
+export const recAmt=(r:Receipt)=>r.kind==="deposit"?0:(Number(r.amount)||0);
+/** депозити, що ще не повернулись */
+export const pendingDeposits=(s:Statement)=>(s.receipts||[]).filter(r=>r.kind==="deposit"&&!r.back);
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
 export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string;/** хто записав (помічник за посиланням); нема — записав власник */by?:string;at?:string};
 /** запис від помічника, доданий за останні 36 год */
@@ -75,7 +83,7 @@ const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
 export function statementTotals(s:Statement){
   const labor=r2(s.labor.reduce((a,l)=>a+(Number(l.amount)||0),0));
   // receipts — реально витрачено за чеками; materials — скільки матеріалів у рахунку клієнту
-  const receipts=r2(s.receipts.reduce((a,r)=>a+(Number(r.amount)||0),0));
+  const receipts=r2(s.receipts.reduce((a,r)=>a+recAmt(r),0));
   const plan=r2(Number(s.matPlan)||0);const fixed=s.matMode==="estimate"&&plan>0&&!s.own;
   const included=s.matMode==="included"&&!s.own;
   const materials=included?0:fixed?Math.max(plan,receipts):receipts;

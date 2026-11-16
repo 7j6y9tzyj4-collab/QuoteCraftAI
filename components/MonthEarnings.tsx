@@ -1,7 +1,7 @@
 "use client";
 import {useMemo,useState} from "react";
 import type {Statement} from "@/lib/statement";
-import {statementTotals,statementStatus} from "@/lib/statement";
+import {statementTotals,statementStatus,recAmt} from "@/lib/statement";
 import {normDate} from "@/lib/receiptBatch";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
@@ -14,7 +14,7 @@ export function workEarnings(list:Statement[],month:string){
     let earned=0,helpers=0,own=0,myHours=0,unpaid=0;
     const rows:{name:string;hours:number;share:number;earned:number;helpers:number;cash:boolean;rate?:number}[]=[];
     for(const s of list){
-      if(s.own){own=r2(own+s.receipts.filter(r=>ym(r.date)===month).reduce((a,r)=>a+(Number(r.amount)||0),0));continue}
+      if(s.own){own=r2(own+s.receipts.filter(r=>ym(r.date)===month).reduce((a,r)=>a+recAmt(r),0));continue}
       const t=statementTotals(s);const crew=s.crew||[];
       const me=new Set(crew.filter(c=>isMe(c.name,c.self)).map(c=>c.id));
       const log=s.workLog||[];const all=log.reduce((a,x)=>a+(Number(x.hours)||0),0);
@@ -57,7 +57,7 @@ export default function MonthEarnings({list}:{list:Statement[]}){
     const rows:{name:string;got:number;mat:number;out:number;hours:number}[]=[];
     for(const s of list){
       const g=r2(s.payments.filter(p=>ym(p.date)===month).reduce((a,p)=>a+(Number(p.amount)||0),0));
-      const m=r2(s.receipts.filter(r=>ym(r.date)===month).reduce((a,r)=>a+(Number(r.amount)||0),0));
+      const m=r2(s.receipts.filter(r=>ym(r.date)===month).reduce((a,r)=>a+recAmt(r),0));
       const crew=s.crew||[];
       const me=new Set(crew.filter(c=>isMe(c.name,c.self)).map(c=>c.id));
       const o=r2((s.payouts||[]).filter(p=>ym(p.date)===month&&!me.has(p.workerId)).reduce((a,p)=>a+(Number(p.amount)||0),0));

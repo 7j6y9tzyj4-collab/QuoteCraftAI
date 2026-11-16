@@ -33,9 +33,10 @@ import SignoffBox from "@/components/SignoffBox";
 import StatementPhotos from "@/components/StatementPhotos";
 import YearReport from "@/components/YearReport";
 import MonthReceiptsButton from "@/components/MonthReceiptsButton";
+import StoreImport from "@/components/StoreImport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
-import {payerFor,isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {recAmt,pendingDeposits,payerFor,isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -378,6 +379,22 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const setLine=<T extends {id:string},>(key:"labor"|"receipts"|"payments",id:string,patch:Partial<T>)=>{
    if(!cur)return;update({[key]:(cur[key] as unknown as T[]).map(x=>x.id===id?{...x,...patch}:x)} as any);
  };
+ // 🏬 імпорт файлу з магазину: чеки в проєкти (і «Мої витрати», якщо треба — створюємо)
+ function importStore(items:{sid:string;r:Receipt}[]){
+   let next=[...listRef.current];
+   if(items.some(x=>x.sid===OWN_ID)&&!next.some(s=>s.id===OWN_ID))next=[newOwnStatement(),...next];
+   const now=new Date().toISOString();
+   next=next.map(s=>{const add=items.filter(x=>x.sid===s.id).map(x=>x.r);return add.length?{...s,receipts:[...s.receipts,...add].sort(byDate),updatedAt:now}:s});
+   persist(next);
+ }
+ // ↩ повернення в магазин: новий мінусовий чек, прив'язаний до цього
+ function addReturn(r:Receipt){
+   if(!cur)return;
+   const ans=prompt(`Скільки повернули по чеку ${r.store||""} ${money(Number(r.amount)||0)}? (з податком, як на чеку повернення)`,String(Number(r.amount)||0));
+   if(ans===null)return;const a=Math.round(Math.abs(Number(String(ans).replace(/[$,\s]/g,""))||0)*100)/100;if(!a)return;
+   update({receipts:[...cur.receipts,{id:uid(),date:today(),store:r.store,items:`Return: ${r.items||""}`.trim(),amount:-a,kind:"return",of:r.id,paidBy:r.paidBy,card:r.card} as Receipt].sort(byDate)});
+   setMsg(`↩ Додано повернення −${money(a)}. Якщо гроші пішли на іншу картку — зміни «Оплата».`);
+ }
  const delLine=(key:"labor"|"receipts"|"payments",id:string)=>{
    if(!cur)return;
    if(key==="receipts"){const r=cur.receipts.find(x=>x.id===id);if(r?.photoPath&&!confirm("Видалити чек разом з фото?"))return;removeFiles([r?.photoPath])}
@@ -724,7 +741,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const ownSt=list.find(s=>s.id===OWN_ID);
  const inMonth=(r:Receipt,m:string)=>normDate(r.date).slice(0,7)===m;
  const catOf=(r:Receipt)=>r.category||guessOwnCategory(r.items);
- function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}
+ function ownTotal(m:string){return Math.round((ownSt?.receipts||[]).filter(r=>inMonth(r,m)).reduce((a,r)=>a+recAmt(r),0)*100)/100}
 
  if(!cur&&jobsCal)return <JobsSchedule user={user} list={list} onClose={()=>setJobsCal(false)}/>;
  if(!cur&&hoursCal)return <HoursCalendar list={list} onPatch={patchStatement} onClose={()=>setHoursCal(false)}/>;
@@ -782,6 +799,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
+     <StoreImport list={list} onAdd={importStore}/>
      <MonthReceiptsButton list={list}/>
      </>}
      {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
@@ -812,6 +830,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
        <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
      </button>
+     <StoreImport list={list} onAdd={importStore}/>
      <MonthReceiptsButton list={list}/>
      </>}
    </section>{inputs}</>;
@@ -820,10 +839,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  // ---- 🧰 Мої витрати: свої інструменти й матеріали, підсумок за місяць ----
  if(cur.own){
    const rs=cur.receipts.filter(r=>inMonth(r,ownMonth)||!normDate(r.date));
-   const byCat=OWN_CATS.map(c=>({c,sum:Math.round(rs.filter(r=>normDate(r.date)&&catOf(r)===c).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100}));
+   const byCat=OWN_CATS.map(c=>({c,sum:Math.round(rs.filter(r=>normDate(r.date)&&catOf(r)===c).reduce((a,r)=>a+recAmt(r),0)*100)/100}));
    const total=ownTotal(ownMonth);
    const year=ownMonth.slice(0,4);
-   const yearTotal=Math.round(cur.receipts.filter(r=>normDate(r.date).startsWith(year)).reduce((a,r)=>a+(Number(r.amount)||0),0)*100)/100;
+   const yearTotal=Math.round(cur.receipts.filter(r=>normDate(r.date).startsWith(year)).reduce((a,r)=>a+recAmt(r),0)*100)/100;
    const monthName=new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long",year:"numeric"});
    const summary=[`Мої витрати на роботу — ${monthName}`,...byCat.filter(x=>x.sum).map(x=>`${x.c}: ${money(x.sum)}`),`Разом: ${money(total)}`].join("\n");
    const copySummary=async()=>{try{await navigator.clipboard.writeText(summary);setMsg("Скопійовано — встав у свою таблицю.")}catch{setMsg(summary)}};
@@ -862,6 +881,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
              {(r.src==="mail"||r.why)&&<small style={{color:"#175cd3",fontWeight:700}}>{r.src==="mail"?"📧 з пошти":""}{r.src==="mail"&&r.why?" · ":""}{r.why||""}</small>}
              <select value="" onChange={e=>{if(e.target.value)moveReceipt(r.id,cur.id,e.target.value)}} style={{padding:"6px 8px",fontSize:13,color:"#475467"}}><option value="">↪ Це для клієнта…</option>{list.filter(s=>!s.own).map(s=><option key={s.id} value={s.id}>{s.client}{s.project?` — ${s.project}`:""}</option>)}</select>
            </div>
+           <ReceiptKind r={r} all={cur.receipts} onPatch={p=>setLine<Receipt>("receipts",r.id,p)} onReturn={()=>addReturn(r)}/>
            {!normDate(r.date)&&<small style={{color:"#b42318"}}>Виправ дату (MM/DD/YYYY), інакше чек не потрапить у місяць.</small>}
          </div>
          <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
@@ -971,7 +991,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {show("rec")&&<MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>}
    {show("rec")&&batchView}
    {show("rec")&&<section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
-     <div className="head"><FoldTitle open={fRec||apple} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
+     <div className="head"><FoldTitle open={fRec||apple} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}${pendingDeposits(cur).length?` · ⏳ депозит ${money(pendingDeposits(cur).reduce((a,r)=>a+(Number(r.amount)||0),0))}`:""}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
        <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет чеків (фото / PDF)</button>
@@ -993,6 +1013,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <div style={{display:"grid",gap:6,gridColumn:"1/-1"}}>
          <input placeholder="Магазин" value={r.store} onChange={e=>setLine<Receipt>("receipts",r.id,{store:e.target.value})}/>
          <input placeholder="Що купив" value={r.items} onChange={e=>setLine<Receipt>("receipts",r.id,{items:e.target.value})}/>
+         <ReceiptKind r={r} all={cur.receipts} onPatch={p=>setLine<Receipt>("receipts",r.id,p)} onReturn={()=>addReturn(r)}/>
          {r.by?<small style={{color:"#7a5af8",fontWeight:700}}>👷 додав {r.by}{isFresh(r)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</small>:r.src!=="mail"&&<small style={{color:"#98a2b3"}}>✍️ додав ти</small>}
          {!cur.own&&(()=>{const helpers=(cur.crew||[]).filter(c=>!c.self&&c.name);const names=[...new Set([...helpers.map(c=>c.name),...(r.by?[r.by]:[]),...(r.paidBy&&r.paidBy!=="biz"&&r.paidBy!=="other"?[r.paidBy]:[])])];
            const v=r.paidBy===undefined?(r.card&&!cardList().includes(r.card)?"":"biz"):r.paidBy;
@@ -1055,4 +1076,30 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={receiptsPdf}>📥 Скачати всі чеки проєкту (PDF)</button></div>}
    {inputs}
  </>;
+}
+
+// Тип чека: покупка / ↩ повернення / 🔒 депозит (застава, що має повернутись)
+function ReceiptKind({r,all,onPatch,onReturn}:{r:Receipt;all:Receipt[];onPatch:(p:Partial<Receipt>)=>void;onReturn:()=>void}){
+  const k=r.kind||"";const a=Number(r.amount)||0;
+  const returned=all.filter(x=>x.kind==="return"&&x.of===r.id).reduce((s,x)=>s+Math.abs(Number(x.amount)||0),0);
+  const orig=r.of?all.find(x=>x.id===r.of):undefined;
+  const td=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});
+  const btn={padding:"5px 9px",fontSize:12,borderRadius:8} as const;
+  return <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",fontSize:13}}>
+    <select value={k} onChange={e=>{const v=e.target.value as ""|"return"|"deposit";onPatch({kind:v||undefined,amount:v==="return"?-Math.abs(a):Math.abs(a),...(v!=="deposit"?{back:undefined}:{}),...(v!=="return"?{of:undefined}:{})})}} style={{padding:"5px 8px",fontSize:13,color:k?"#b54708":"#475467"}}>
+      <option value="">🧾 Покупка</option>
+      <option value="return">↩ Повернення</option>
+      <option value="deposit">🔒 Депозит (застава)</option>
+    </select>
+    {k===""&&a>0&&<button className="secondary" style={btn} onClick={onReturn}>↩ Повернув товар</button>}
+    {k===""&&returned>0&&<small style={{color:"#b54708",fontWeight:700}}>повернено −${returned.toFixed(2)}</small>}
+    {k==="return"&&<select value={r.of||""} onChange={e=>onPatch({of:e.target.value||undefined})} style={{padding:"5px 8px",fontSize:12,flex:1,minWidth:140}}>
+      <option value="">до якого чека? (необов'язково)</option>
+      {all.filter(x=>x.id!==r.id&&x.kind!=="return"&&x.kind!=="deposit").map(x=><option key={x.id} value={x.id}>{x.date} · {x.store||"чек"} · ${(Number(x.amount)||0).toFixed(2)}</option>)}
+    </select>}
+    {k==="return"&&orig&&<small className="muted">з чека {orig.store} {orig.date}</small>}
+    {k==="deposit"&&(r.back
+      ?<><small style={{color:"#067647",fontWeight:700}}>✓ повернули {r.back}</small><button className="secondary" style={btn} onClick={()=>onPatch({back:undefined})}>скасувати</button></>
+      :<><small style={{color:"#b54708",fontWeight:700}}>⏳ чекає повернення · не йде в рахунок</small><button className="secondary" style={btn} onClick={()=>onPatch({back:td})}>✓ Гроші повернулись</button></>)}
+  </div>;
 }
