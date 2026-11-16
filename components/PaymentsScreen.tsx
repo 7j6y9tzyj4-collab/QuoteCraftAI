@@ -1037,7 +1037,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {msg&&<MsgBox msg={msg}/>}
    <section className="total">
      <div><span>Робота</span><span>{money(t.labor)}</span></div>
-     {t.fixed?<><div><span>Матеріали (за естімейтом)</span><span>{money(t.matPlan)}</span></div>{t.matOver>0&&<div><span>+ Матеріали понад естімейт</span><span>{money(t.matOver)}</span></div>}</>
+     {t.included?<div><span>Матеріали входять у ціну <small className="muted">(чеки {money(t.receipts)} — твої витрати)</small></span><span>—</span></div>
+       :t.fixed?<><div><span>Матеріали (за естімейтом)</span><span>{money(t.matPlan)}</span></div>{t.matOver>0&&<div><span>+ Матеріали понад естімейт</span><span>{money(t.matOver)}</span></div>}</>
        :<div><span>Матеріали за чеками</span><span>{money(t.materials)}</span></div>}
      <div><span>Разом</span><b>{money(t.total)}</b></div>
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>

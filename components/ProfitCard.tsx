@@ -12,9 +12,10 @@ export default function ProfitCard({st}:{st:Statement}){
     <div className="head"><h2>💰 Прибуток</h2>{p.margin!==null&&<b style={{color,fontSize:20}}>{p.margin}%</b>}</div>
     {row("Робота за контрактом",money(p.labor))}
     {p.matKeep>0&&row("+ Матеріали дешевше за естімейт","+"+money(p.matKeep))}
+    {p.matKeep<0&&row("− Матеріали (входять у ціну)","−"+money(-p.matKeep))}
     {p.cost>0?row(`− Помічники (${p.helperHours} год)`,"−"+money(p.cost)):<small className="muted" style={{display:"block"}}>Помічників не записано — уся робота твоя.</small>}
     {row("= Твій прибуток",money(p.profit),true)}
-    <small className="muted" style={{display:"block",marginTop:2}}>Матеріали клієнт оплачує окремо (за чеками або фіксовано за естімейтом), тому чеки не зменшують прибуток. Вже на руках зараз: <b>{money(p.cash)}</b> (отримано − чеки − помічники).</small>
+    <small className="muted" style={{display:"block",marginTop:2}}>{p.matKeep<0?"Ціна «під ключ»: матеріали входять у ціну, тому чеки зменшують прибуток.":"Матеріали клієнт оплачує окремо (за чеками або фіксовано за естімейтом), тому чеки не зменшують прибуток."} Вже на руках зараз: <b>{money(p.cash)}</b> (отримано − чеки − помічники).</small>
     {p.low&&<p style={{margin:"8px 0 0",padding:10,borderRadius:10,background:"#fef3f2",color:"#b42318",fontSize:14}}>⚠ Помічники вже забирають {100-(p.margin??0)}% роботи. Перевір години або домовся про доплату (change order), поки не пішов у мінус.</p>}
   </section>;
 }

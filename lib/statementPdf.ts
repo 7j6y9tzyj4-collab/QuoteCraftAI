@@ -42,7 +42,8 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
   };
 
   section("Labor",["Description","Amount"],s.labor.filter(l=>l.description||l.amount).map(l=>[l.description,money(Number(l.amount)||0)]),"Total labor",t.labor,{});
-  if(t.fixed){
+  if(t.included){/* ціна «під ключ»: чеки клієнту не показуємо */}
+  else if(t.fixed){
     if(t.matOver>0&&s.receipts.length)section(`Materials — store receipts (estimate ${money(t.matPlan)}, over by ${money(t.matOver)})`,["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total receipts",t.receipts,{0:{cellWidth:66},1:{cellWidth:80}});
   }else if(s.receipts.length)section("Materials (reimbursed per store receipts)",["Date","Store","Items","Amount"],s.receipts.map(r=>[r.date,r.store,r.items,money(Number(r.amount)||0)]),"Total materials",t.materials,{0:{cellWidth:66},1:{cellWidth:80}});
   if(s.schedule?.length){
@@ -58,7 +59,8 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
     doc.text(label,W-M-260,y);doc.text(value,W-M,y,{align:"right"});y+=big?20:15;
   };
   line("Labor",money(t.labor));
-  if(t.fixed){line("Materials (per estimate)",money(t.matPlan));if(t.matOver>0)line("Additional materials (over estimate)",money(t.matOver))}
+  if(t.included)line("Materials","Included");
+  else if(t.fixed){line("Materials (per estimate)",money(t.matPlan));if(t.matOver>0)line("Additional materials (over estimate)",money(t.matOver))}
   else if(t.materials)line("Materials",money(t.materials));
   line("Total",money(t.total),true);
   if(t.paid)line("Payments received","-"+money(t.paid));

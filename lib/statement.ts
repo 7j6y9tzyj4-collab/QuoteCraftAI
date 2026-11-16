@@ -55,8 +55,9 @@ export type Statement={
   /** фото роботи (від мене або помічника за посиланням) */
   photos?:{id:string;path:string;date:string;by?:string;note?:string;at?:string}[];
   /** матеріали в рахунку: "receipts" — клієнт платить рівно за чеками (за замовчуванням);
-   *  "estimate" — фіксовано за естімейтом (matPlan): більше — доплата клієнту, менше — різниця моя */
-  matMode?:"receipts"|"estimate";
+   *  "estimate" — фіксовано за естімейтом (matPlan): більше — доплата клієнту, менше — різниця моя;
+   *  "included" — ціна «під ключ»: матеріали вже в ціні роботи, клієнту не додаються, чеки — мої витрати */
+  matMode?:"receipts"|"estimate"|"included";
   matPlan?:number;
   /** коли попросив клієнта про відгук у Google */
   reviewAsked?:string;
@@ -76,10 +77,13 @@ export function statementTotals(s:Statement){
   // receipts — реально витрачено за чеками; materials — скільки матеріалів у рахунку клієнту
   const receipts=r2(s.receipts.reduce((a,r)=>a+(Number(r.amount)||0),0));
   const plan=r2(Number(s.matPlan)||0);const fixed=s.matMode==="estimate"&&plan>0&&!s.own;
-  const materials=fixed?Math.max(plan,receipts):receipts;
+  const included=s.matMode==="included"&&!s.own;
+  const materials=included?0:fixed?Math.max(plan,receipts):receipts;
   const total=r2(labor+materials);
   const paid=r2(s.payments.reduce((a,p)=>a+(Number(p.amount)||0),0));
-  return {labor,materials,receipts,fixed,matPlan:fixed?plan:0,matOver:fixed?r2(Math.max(0,receipts-plan)):0,matKeep:fixed?r2(Math.max(0,plan-receipts)):0,total,paid,balance:r2(total-paid)};
+  // matKeep: на скільки матеріали змінюють мій заробіток (+ дешевше за естімейт; − при «під ключ» усі чеки — мої)
+  const matKeep=included?r2(-receipts):fixed?r2(Math.max(0,plan-receipts)):0;
+  return {labor,materials,receipts,fixed,included,matPlan:fixed?plan:0,matOver:fixed?r2(Math.max(0,receipts-plan)):0,matKeep,total,paid,balance:r2(total-paid)};
 }
 
 // ---- Мої витрати (інструменти й матеріали для себе) ----
