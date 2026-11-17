@@ -10,11 +10,14 @@ export type WorkerProject={sid:string;client:string;project:string;address:strin
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
   myReceipts:{id:string;date:string;store:string;amount:number;pending:boolean;mine:boolean;card:string;items:string;photo:boolean;payer:"mine"|"biz"|"none"}[];reimb:number;
   materials:{name:string;qty:number;unit:string;note:string}[];
-  days:WorkerDay[];hours:number;receipts:number;photos:number};
+  days:WorkerDay[];hours:number;receipts:number;photos:number;
+  /** гроші по цьому об'єкту: ставка, заробив, чеки з його картки, виплачено, винні */
+  rate:number;earned:number;paid:number;owed:number;payouts:{date:string;amount:number;method:string}[]};
 export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;reimb:number;owed:number;
   /** головна помічника: цей тиждень, де сьогодні, найближчі роботи, остання виплата */
   week:{hours:number;earned:number};today:{sid:string;client:string;title:string;address:string;phone:string;time?:string}[];
-  soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number;method?:string}|null};
+  soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number;method?:string}|null;
+  /** понеділок цього тижня (YYYY-MM-DD) — для перегляду по тижнях */weekFrom:string};
 
 const n=(s:string)=>String(s||"").trim().toLowerCase();
 
@@ -60,7 +63,9 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     for(const d of days)if(d.date>=weekFrom&&d.date<=tISO){wkH+=d.hours;wkE+=d.hours*rate}
     if(me)for(const x of s.payouts||[])if(x.workerId===me.id){const dt=normDate(x.date);if(!lastPaid||dt>lastPaid.date)lastPaid={date:dt,amount:Number(x.amount)||0,method:x.method}}
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
-    projects.push({reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
+    const myPay=me?(s.payouts||[]).filter(x=>x.workerId===me.id).map(x=>({date:normDate(x.date),amount:Number(x.amount)||0,method:String(x.method||"")})).sort((a,b)=>b.date.localeCompare(a.date)):[];
+    const r2p=(x:number)=>Math.round(x*100)/100;
+    projects.push({rate,earned:r2p(h*rate),paid:r2p(p),owed:r2p(h*rate+rb-p),payouts:myPay,reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
       // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати
       scope:items.length?items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional}))
         :[...s.labor.filter(l=>String(l.description||"").trim()&&!/^Agreed work \(per estimate\)$/i.test(String(l.description).trim())).map(l=>({name:String(l.description).replace(/^Change order #\d+:\s*/i,""),qty:1,unit:"each",note:"",optional:false})),
@@ -89,5 +94,5 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
   const from3=shift(tISO,-3);
   for(const p of projects)if(!today.some(x=>x.sid===p.sid)&&p.days.some(d=>d.date>=from3&&d.date<=tISO))today.push({sid:p.sid,client:p.client,title:p.project,address:p.address,phone:p.phone});
   const soon=jobs.filter(j=>String(j.start)>tISO&&String(j.start)<=shift(tISO,14)).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4).map(j=>({client:String(j.client||""),title:String(j.title||""),start:String(j.start),time:j.time||undefined}));
-  return {week:{hours:r2(wkH),earned:r2(wkE)},today,soon,lastPaid,company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
+  return {weekFrom,week:{hours:r2(wkH),earned:r2(wkE)},today,soon,lastPaid,company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
 }

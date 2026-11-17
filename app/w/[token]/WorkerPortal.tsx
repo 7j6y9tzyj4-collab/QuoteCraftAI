@@ -221,7 +221,59 @@ function MyReceipts({token,v,lang}:{token:string;v:WorkerView;lang:Lang}){
   </>;
 }
 
+// 📊 Розбивка грошей помічника: тиждень по днях, години по об'єктах, хто скільки винен, усі виплати
+type Det="week"|"hours"|"owed"|"paid";
+function MoneyDetail({v,kind,lang,onClose}:{v:WorkerView;kind:Det;lang:Lang;onClose:()=>void}){
+  const en=lang==="en";const loc=en?"en-US":"uk-UA";
+  const [wk,setWk]=useState(v.weekFrom);
+  const shift=(iso:string,k:number)=>{const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+k);return d.toLocaleDateString("sv-SE")};
+  const name=(p:WorkerProject)=>`${p.client}${p.project?` — ${p.project}`:""}`;
+  const row:React.CSSProperties={display:"flex",justifyContent:"space-between",gap:10,padding:"9px 0",borderTop:"1px solid #f2f2f7",fontSize:15};
+  const sub:React.CSSProperties={display:"block",color:"#8e8e93",fontSize:12,marginTop:1};
+  const tot=(l:string,val:string,c?:string)=><div style={{...row,fontWeight:800,fontSize:16,borderTop:"2px solid #e5e5ea",color:c}}><span>{l}</span><span>{val}</span></div>;
+  let title="",body:React.ReactNode=null;
+  if(kind==="week"){
+    const to=shift(wk,6);
+    const days=v.projects.flatMap(p=>p.days.filter(d=>d.date>=wk&&d.date<=to).map(d=>({...d,p}))).sort((a,b)=>a.date.localeCompare(b.date));
+    const h=days.reduce((a,d)=>a+d.hours,0),e=days.reduce((a,d)=>a+d.hours*d.p.rate,0);
+    const fmt=(d:string)=>new Date(d+"T12:00:00").toLocaleDateString(loc,{day:"numeric",month:"short"});
+    title=en?"Week":"Тиждень";
+    body=<>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"4px 0 6px"}}>
+        <button onClick={()=>setWk(shift(wk,-7))} style={{border:"none",background:"#f2f2f7",borderRadius:10,padding:"8px 12px",fontWeight:700}}>‹</button>
+        <b>{fmt(wk)} – {fmt(to)}{wk===v.weekFrom?(en?" · this week":" · цей тиждень"):""}</b>
+        <button disabled={wk>=v.weekFrom} onClick={()=>setWk(shift(wk,7))} style={{border:"none",background:"#f2f2f7",borderRadius:10,padding:"8px 12px",fontWeight:700,opacity:wk>=v.weekFrom?.3:1}}>›</button>
+      </div>
+      {!days.length&&<div style={{color:"#8e8e93",padding:"10px 0"}}>{en?"No hours this week.":"Цього тижня годин немає."}</div>}
+      {days.map((d,k)=><div key={k} style={row}><span style={{minWidth:0}}><b>{fmtL(d.date,loc)}</b> · {name(d.p)}{d.pending&&<b style={{color:"#b54708",fontSize:12}}> · {en?"not confirmed yet":"ще не підтверджено"}</b>}{d.note&&<small style={sub}>{d.note}</small>}</span><span style={{whiteSpace:"nowrap",textAlign:"right"}}>{d.hours} {en?"h":"год"}<small style={sub}>{money(d.hours*d.p.rate)}</small></span></div>)}
+      {days.length>0&&tot(en?`Total: ${h} h`:`Разом: ${h} год`,money(e),"#079455")}
+    </>;
+  }else if(kind==="hours"){
+    title=en?"Hours by job":"Години по об'єктах";
+    const ps=v.projects.filter(p=>p.hours>0);
+    body=<>{ps.map(p=><div key={p.sid} style={row}><span style={{minWidth:0}}><b>{name(p)}</b><small style={sub}>{p.hours} {en?"h":"год"} × ${p.rate}{p.days.length?` · ${fmtL(p.days[p.days.length-1].date,loc)} – ${fmtL(p.days[0].date,loc)}`:""}</small></span><b style={{whiteSpace:"nowrap"}}>{money(p.earned)}</b></div>)}
+      {tot(en?`Total: ${v.hours} h`:`Разом: ${v.hours} год`,money(v.earned))}</>;
+  }else if(kind==="owed"){
+    title=en?"What you are owed":"Що тобі винні";
+    const ps=v.projects.filter(p=>Math.abs(p.owed)>0.005||p.earned||p.paid);
+    body=<>{ps.map(p=><div key={p.sid} style={row}><span style={{minWidth:0}}><b>{name(p)}</b><small style={sub}>{en?"work":"робота"} {money(p.earned)}{p.reimb>0?` + ${en?"receipts":"чеки"} ${money(p.reimb)}`:""}{p.paid>0?` − ${en?"paid":"виплачено"} ${money(p.paid)}`:""}</small></span><b style={{whiteSpace:"nowrap",color:p.owed>0.5?"#c2410c":p.owed<-0.5?"#2f6df6":"#079455"}}>{money(p.owed)}</b></div>)}
+      {tot(en?"Total owed":"Разом винні",money(v.owed),v.owed>0.5?"#c2410c":"#079455")}
+      {ps.some(p=>p.owed<-0.5)&&<small style={sub}>{en?"A negative amount means you were paid ahead for that job.":"Мінус — тобі заплатили наперед за цей об'єкт."}</small>}</>;
+  }else{
+    title=en?"Payouts":"Виплати";
+    const all=v.projects.flatMap(p=>p.payouts.map(x=>({...x,p}))).sort((a,b)=>b.date.localeCompare(a.date));
+    body=<>{!all.length&&<div style={{color:"#8e8e93",padding:"10px 0"}}>{en?"No payouts yet.":"Виплат ще не було."}</div>}
+      {all.map((x,k)=><div key={k} style={row}><span style={{minWidth:0}}><b>{fmtL(x.date,loc)}</b>{x.method?` · ${x.method}`:""}<small style={sub}>{en?"for":"за"} {name(x.p)} · {en?"from":"від"} {v.company||(en?"the company":"компанії")}</small></span><b style={{whiteSpace:"nowrap"}}>{money(x.amount)}</b></div>)}
+      {all.length>0&&tot(en?"Total paid":"Разом виплачено",money(v.paid))}</>;
+  }
+  return <div style={{...card,marginTop:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:18}}>{title}</b><button onClick={onClose} style={{border:"none",background:"#f2f2f7",borderRadius:999,width:30,height:30,fontWeight:800}}>✕</button></div>
+    {body}
+  </div>;
+}
+
 export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
+  const [det,setDet]=useState<Det|null>(null);
   const [i,setI]=useState(0);
   const [lang,setLang]=useState<Lang>("uk");
   useEffect(()=>{try{const l=localStorage.getItem("qc_w_lang");if(l==="en"||l==="uk")setLang(l)}catch{}},[]);
@@ -244,12 +296,13 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
       <h1 style={{margin:"2px 0 0",fontSize:30,letterSpacing:"-.02em"}}>{hello}, {v.worker}</h1>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10,marginTop:12}}>
-      <div style={tile}><small style={tl}>{en?"This week":"Цей тиждень"}</small><b style={{...tb,color:"#079455"}}>{money(v.week.earned)}</b><small style={ts}>{v.week.hours} {L.h} × ${v.rate}</small></div>
-      <div style={tile}><small style={tl}>{en?"Owed to you":"Тобі винні"}</small><b style={{...tb,color:v.owed>0.5?"#c2410c":"#079455"}}>{money(v.owed)}</b>
+      <div style={{...tile,cursor:"pointer",outline:det==="week"?"2px solid #2f6df6":"none"}} onClick={()=>setDet(det==="week"?null:"week")}><small style={tl}>{en?"This week":"Цей тиждень"} ›</small><b style={{...tb,color:"#079455"}}>{money(v.week.earned)}</b><small style={ts}>{v.week.hours} {L.h} × ${v.rate}</small></div>
+      <div style={{...tile,cursor:"pointer",outline:det==="owed"?"2px solid #2f6df6":"none"}} onClick={()=>setDet(det==="owed"?null:"owed")}><small style={tl}>{en?"Owed to you":"Тобі винні"} ›</small><b style={{...tb,color:v.owed>0.5?"#c2410c":"#079455"}}>{money(v.owed)}</b>
         <small style={ts}>{en?"work":"робота"} {money(Math.max(0,v.owed-v.reimb))}{v.reimb>0?<> + {en?"receipts":"чеки"} {money(v.reimb)}</>:null}</small></div>
-      <div style={tile}><small style={tl}>{en?"All hours":"Усього годин"}</small><b style={tb}>{v.hours}</b><small style={ts}>{en?"earned":"заробив"} {money(v.earned)}</small></div>
-      <div style={tile}><small style={tl}>{en?"Paid out":"Виплачено"}</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)}${v.lastPaid.method?` (${v.lastPaid.method})`:""} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
+      <div style={{...tile,cursor:"pointer",outline:det==="hours"?"2px solid #2f6df6":"none"}} onClick={()=>setDet(det==="hours"?null:"hours")}><small style={tl}>{en?"All hours":"Усього годин"} ›</small><b style={tb}>{v.hours}</b><small style={ts}>{en?"earned":"заробив"} {money(v.earned)}</small></div>
+      <div style={{...tile,cursor:"pointer",outline:det==="paid"?"2px solid #2f6df6":"none"}} onClick={()=>setDet(det==="paid"?null:"paid")}><small style={tl}>{en?"Paid out":"Виплачено"} ›</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)}${v.lastPaid.method?` (${v.lastPaid.method})`:""} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
     </div>
+    {det?<MoneyDetail key={det} v={v} kind={det} lang={lang} onClose={()=>setDet(null)}/>:<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Tap a tile to see where the numbers come from.":"Натисни на плитку — побачиш, звідки ці цифри."}</small>}
     <MyReceipts token={token} v={v} lang={lang}/>
     {v.reimb>0&&<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Receipts paid with your own card are added to what you are owed.":"Чеки, оплачені твоєю карткою, додаються до того, що тобі винні."}</small>}
 
