@@ -14,7 +14,7 @@ export type WorkerProject={sid:string;client:string;project:string;address:strin
 export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;reimb:number;owed:number;
   /** головна помічника: цей тиждень, де сьогодні, найближчі роботи, остання виплата */
   week:{hours:number;earned:number};today:{sid:string;client:string;title:string;address:string;phone:string;time?:string}[];
-  soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number}|null};
+  soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number;method?:string}|null};
 
 const n=(s:string)=>String(s||"").trim().toLowerCase();
 
@@ -36,7 +36,7 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
   const tISO=new Date().toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const shift=(iso:string,k:number)=>{const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+k);return d.toLocaleDateString("sv-SE")};
   const wd=new Date(tISO+"T12:00:00").getDay();const weekFrom=shift(tISO,-((wd+6)%7)); // з понеділка
-  let wkH=0,wkE=0;let lastPaid:{date:string;amount:number}|null=null;
+  let wkH=0,wkE=0;let lastPaid:{date:string;amount:number;method?:string}|null=null;
   const list=((st?.statements||[]) as Statement[]);
   const saved=((calcs||[]) as {id:string;data:SavedCalc}[]).map(r=>({...r.data,id:r.id}));
   const cl=((clients||[]) as {data:any}[]).map(r=>r.data||{});
@@ -58,7 +58,7 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const rb=s.receipts.filter(r=>n(r.paidBy||"")===n(link.worker)).reduce((a,r)=>a+(Number(r.amount)||0),0);
     hours+=h;earned+=h*rate;paid+=p;reimbAll+=rb;
     for(const d of days)if(d.date>=weekFrom&&d.date<=tISO){wkH+=d.hours;wkE+=d.hours*rate}
-    if(me)for(const x of s.payouts||[])if(x.workerId===me.id){const dt=normDate(x.date);if(!lastPaid||dt>lastPaid.date)lastPaid={date:dt,amount:Number(x.amount)||0}}
+    if(me)for(const x of s.payouts||[])if(x.workerId===me.id){const dt=normDate(x.date);if(!lastPaid||dt>lastPaid.date)lastPaid={date:dt,amount:Number(x.amount)||0,method:x.method}}
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
     projects.push({reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
       // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати

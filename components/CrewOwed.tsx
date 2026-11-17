@@ -1,6 +1,6 @@
 "use client";
 import {useState} from "react";
-import {crewSummary,type Statement} from "@/lib/statement";
+import {crewSummary,PAYOUT_METHODS,type Statement} from "@/lib/statement";
 
 // 👷 Скільки я винен помічникам по всіх проєктах: окремо за роботу і за чеки з їхньої картки.
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}).format(n||0);
@@ -25,9 +25,9 @@ export function crewOwedAll(list:Statement[]):Row[]{
     }}
   return [...m.values()].filter(r=>Math.abs(r.owed)>0.5||r.receipts>0);
 }
-export default function CrewOwed({list,onPay}:{list:Statement[];onPay?:(parts:{sid:string;workerId:string;amount:number}[],name:string,amount:number)=>Promise<string|void>|string|void}){
+export default function CrewOwed({list,onPay}:{list:Statement[];onPay?:(parts:{sid:string;workerId:string;amount:number;method?:string}[],name:string,amount:number)=>Promise<string|void>|string|void}){
   const rows=crewOwedAll(list);
-  const [payFor,setPayFor]=useState("");const [amt,setAmt]=useState("");const [busy,setBusy]=useState(false);const [note,setNote]=useState("");
+  const [payFor,setPayFor]=useState("");const [amt,setAmt]=useState("");const [busy,setBusy]=useState(false);const [note,setNote]=useState("");const [method,setMethod]=useState("Zelle");
   if(!rows.length)return null;
   const line=(l:string,v:string,b=false,c?:string)=><div style={{display:"flex",justifyContent:"space-between",fontSize:b?16:14,fontWeight:b?800:400,color:c,padding:"2px 0"}}><span>{l}</span><span>{v}</span></div>;
   return <section className="panel" style={{border:"1px solid #d9d6fe",background:"#fcfcff"}}>
@@ -40,8 +40,9 @@ export default function CrewOwed({list,onPay}:{list:Statement[];onPay?:(parts:{s
       {line("= Винен разом",money(r.owed),true,r.owed>0.5?"#b42318":"#067647")}
       {onPay&&(payFor===r.name?<div style={{marginTop:8,padding:10,borderRadius:10,background:"#f4f3ff",display:"grid",gap:8}}>
         <label style={{fontSize:14}}>Скільки виплатив, $<input type="number" inputMode="decimal" autoFocus value={amt} onChange={e=>setAmt(e.target.value)} placeholder={String(Math.max(0,r.owed))}/></label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{PAYOUT_METHODS.map(m=><button key={m} type="button" onClick={()=>setMethod(m)} style={{padding:"6px 12px",borderRadius:999,fontSize:13,fontWeight:700,border:"1px solid "+(method===m?"#6941c6":"#d0d5dd"),background:method===m?"#f4f3ff":"#fff",color:method===m?"#6941c6":"#667085"}}>{m==="Cash"?"💵 Cash":m==="Check"?"🧾 Check":m==="Zelle"?"⚡ Zelle":m==="Card"?"💳 Card":"Other"}</button>)}</div>
         {Number(amt)>0&&<small className="muted">Піде в: {splitPayout(r,Number(amt)).map(p=>`${r.projects.find(x=>x.sid===p.sid)?.label||""} ${money(p.amount)}`).join(" · ")}{Number(amt)>r.owed+0.5?` · це на ${money(Number(amt)-r.owed)} більше, ніж винен`:""}</small>}
-        <div className="actions"><button className="primary" disabled={busy||!(Number(amt)>0)} onClick={async()=>{setBusy(true);const a=Number(amt);const e=await onPay(splitPayout(r,a),r.name,a);setBusy(false);if(e){setNote(String(e))}else{setNote(`Записано виплату ${money(a)} — ${r.name}.`);setPayFor("");setAmt("")}}}>{busy?"…":"Записати виплату"}</button>
+        <div className="actions"><button className="primary" disabled={busy||!(Number(amt)>0)} onClick={async()=>{setBusy(true);const a=Number(amt);const e=await onPay(splitPayout(r,a).map(p=>({...p,method})),r.name,a);setBusy(false);if(e){setNote(String(e))}else{setNote(`Записано виплату ${money(a)} (${method}) — ${r.name}.`);setPayFor("");setAmt("")}}}>{busy?"…":"Записати виплату"}</button>
           <button className="secondary" onClick={()=>{setPayFor("");setAmt("")}}>Скасувати</button></div>
       </div>:<button className="secondary" style={{marginTop:8}} onClick={()=>{setPayFor(r.name);setAmt(r.owed>0?String(r.owed):"");setNote("")}}>💵 Виплатив {r.name}</button>)}
       <details style={{marginTop:4}}><summary style={{fontSize:13,color:"#667085"}}>По проєктах ({r.projects.length})</summary>

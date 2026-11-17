@@ -1,5 +1,5 @@
 "use client";
-import type {Statement,CrewMember,WorkEntry,Payout} from "@/lib/statement";
+import {PAYOUT_METHODS,type Statement,type CrewMember,type WorkEntry,type Payout} from "@/lib/statement";
 import {crewSummary,isFresh} from "@/lib/statement";
 import FoldTitle from "@/components/FoldTitle";
 import {useFold} from "@/lib/useFold";
@@ -64,12 +64,13 @@ export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement
       </div>)}
 
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Виплати помічникам</h3>
-        <button className="add" onClick={()=>onPatch({payouts:[...pay,{id:uid(),date:today(),workerId:(crew.find(c=>!c.self)||crew[0]).id,amount:0}]})}>＋ Виплата</button></div>
+        <button className="add" onClick={()=>onPatch({payouts:[...pay,{id:uid(),date:today(),workerId:(crew.find(c=>!c.self)||crew[0]).id,amount:0,method:"Zelle"}]})}>＋ Виплата</button></div>
       {pay.map(x=><div key={x.id} style={{display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 84px 42px",gap:6,marginTop:8}}>
         <DateInput value={x.date} onChange={v=>setPay(x.id,{date:v})}/>
         <select value={x.workerId} onChange={e=>setPay(x.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
         <input type="number" min="0" step="0.01" value={x.amount||""} placeholder="$" onChange={e=>setPay(x.id,{amount:Math.max(0,Number(e.target.value)||0)})}/>
         <button className="remove" onClick={()=>onPatch({payouts:pay.filter(y=>y.id!==x.id)})}>×</button>
+        <div style={{gridColumn:"1/5",display:"flex",gap:6,flexWrap:"wrap",marginTop:-2}}>{PAYOUT_METHODS.map(m=><button key={m} type="button" onClick={()=>setPay(x.id,{method:m})} style={{padding:"4px 10px",borderRadius:999,fontSize:12,fontWeight:700,border:"1px solid "+((x.method||"")===m?"#175cd3":"#d0d5dd"),background:(x.method||"")===m?"#eff8ff":"#fff",color:(x.method||"")===m?"#175cd3":"#667085"}}>{m==="Cash"?"💵 Cash":m==="Check"?"🧾 Check":m==="Zelle"?"⚡ Zelle":m==="Card"?"💳 Card":"Other"}</button>)}{!x.method&&<small style={{color:"#b54708",alignSelf:"center"}}>як виплатив?</small>}</div>
       </div>)}
 
       <div style={{marginTop:16,background:"#f8fafc",border:"1px solid #e4e7ec",borderRadius:14,padding:"10px 12px"}}>

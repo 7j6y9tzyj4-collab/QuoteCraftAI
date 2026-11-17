@@ -248,7 +248,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
       <div style={tile}><small style={tl}>{en?"Owed to you":"Тобі винні"}</small><b style={{...tb,color:v.owed>0.5?"#c2410c":"#079455"}}>{money(v.owed)}</b>
         <small style={ts}>{en?"work":"робота"} {money(Math.max(0,v.owed-v.reimb))}{v.reimb>0?<> + {en?"receipts":"чеки"} {money(v.reimb)}</>:null}</small></div>
       <div style={tile}><small style={tl}>{en?"All hours":"Усього годин"}</small><b style={tb}>{v.hours}</b><small style={ts}>{en?"earned":"заробив"} {money(v.earned)}</small></div>
-      <div style={tile}><small style={tl}>{en?"Paid out":"Виплачено"}</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
+      <div style={tile}><small style={tl}>{en?"Paid out":"Виплачено"}</small><b style={tb}>{money(v.paid)}</b><small style={ts}>{v.lastPaid?`${en?"last":"остання"}: ${money(v.lastPaid.amount)}${v.lastPaid.method?` (${v.lastPaid.method})`:""} · ${fmtL(v.lastPaid.date,L.loc)}`:(en?"no payouts yet":"виплат ще не було")}</small></div>
     </div>
     <MyReceipts token={token} v={v} lang={lang}/>
     {v.reimb>0&&<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Receipts paid with your own card are added to what you are owed.":"Чеки, оплачені твоєю карткою, додаються до того, що тобі винні."}</small>}

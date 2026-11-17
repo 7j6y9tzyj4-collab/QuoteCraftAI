@@ -24,7 +24,8 @@ export type CrewMember={id:string;name:string;rate:number;/** це я — мої
 export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string;/** хто записав (помічник за посиланням); нема — записав власник */by?:string;at?:string};
 /** запис від помічника, доданий за останні 36 год */
 export const isFresh=(x:{by?:string;at?:string})=>!!x.by&&!!x.at&&Date.now()-new Date(x.at).getTime()<36*3600e3;
-export type Payout={id:string;date:string;workerId:string;amount:number};
+export type Payout={id:string;date:string;workerId:string;amount:number;/** як виплатив: Zelle / Cash / Check / … */method?:string};
+export const PAYOUT_METHODS=["Zelle","Cash","Check","Card","Other"];
 export type StatusKey="planned"|"active"|"waiting"|"done";
 export type Payment={id:string;date:string;amount:number;method:string};
 /** рішення клієнта: питання → відповідь; history — що було до того, як передумав */

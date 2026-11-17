@@ -66,10 +66,10 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
   const free=useMemo(()=>nextFreeDay(jobs as any),[jobs]);
   const deposits=(jobs||[]).filter(j=>(j.depAmount||0)>0&&!j.depGot).sort((a,b)=>String(a.depDue||"9").localeCompare(String(b.depDue||"9")));
   // 💵 одна виплата помічнику → сама розкидається по проєктах і зберігається в акаунт
-  async function payHelper(parts:{sid:string;workerId:string;amount:number}[]){
+  async function payHelper(parts:{sid:string;workerId:string;amount:number;method?:string}[]){
     const dt=new Date().toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"});const now=new Date().toISOString();
     const changed:Statement[]=[];
-    const next=statements.map(s=>{const ps=parts.filter(p=>p.sid===s.id&&p.amount>0);if(!ps.length)return s;const n={...s,payouts:[...(s.payouts||[]),...ps.map(p=>({id:crypto.randomUUID(),date:dt,workerId:p.workerId,amount:p.amount}))],updatedAt:now};changed.push(n);return n});
+    const next=statements.map(s=>{const ps=parts.filter(p=>p.sid===s.id&&p.amount>0);if(!ps.length)return s;const n={...s,payouts:[...(s.payouts||[]),...ps.map(p=>({id:crypto.randomUUID(),date:dt,workerId:p.workerId,amount:p.amount,...(p.method?{method:p.method}:{})}))],updatedAt:now};changed.push(n);return n});
     if(!changed.length)return "Немає куди записати виплату.";
     const {error}=await supabase.rpc("save_statements",{p_changed:changed,p_deleted:[]});
     if(error)return "Не вдалося зберегти: "+error.message;
