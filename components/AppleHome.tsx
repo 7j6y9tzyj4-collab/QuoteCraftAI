@@ -32,12 +32,15 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     const list=statements.filter(s=>!s.own);
     const rows=list.map(s=>{const t=statementTotals(s);const st=statementStatus(s,upcomingStart(s,jobs as any,list));return {s,t,st}});
     const active=rows.filter(r=>r.st==="active"||r.st==="waiting").sort((a,b)=>b.t.balance-a.t.balance);
-    const owed=rows.reduce((a,r)=>a+Math.max(0,r.t.balance),0);
+    // ще не початі (у графіку на майбутнє, або нічого не зроблено й не заплачено) — це не борг, а майбутній контракт
+    const notStarted=(r:typeof rows[number])=>r.st==="planned"||(!r.s.status&&r.t.paid<0.005&&r.t.receipts<0.005&&!(r.s.workLog||[]).length);
+    const future=rows.filter(r=>r.t.balance>0.5&&notStarted(r)).sort((a,b)=>b.t.total-a.t.total);
+    const owed=rows.filter(r=>!notStarted(r)).reduce((a,r)=>a+Math.max(0,r.t.balance),0);
     const ym=new Date().toISOString().slice(0,7);
     const received=list.reduce((a,s)=>a+s.payments.filter(p=>{const m=String(p.date).match(/^(\d{2})\/\d{2}\/(\d{4})/);return m?`${m[2]}-${m[1]}`===ym:String(p.date).slice(0,7)===ym}).reduce((x,p)=>x+(Number(p.amount)||0),0),0);
     const inMonth=(d:any)=>{const m=String(d).match(/^(\d{2})\/\d{2}\/(\d{4})/);return m?`${m[2]}-${m[1]}`===ym:String(d).slice(0,7)===ym};
     const recvList=list.flatMap(s=>s.payments.filter(p=>inMonth(p.date)).map(p=>({id:p.id,sid:s.id,client:s.client||"Без імені",project:s.project||"",date:String(p.date),method:(p as any).method||"",amount:Number(p.amount)||0}))).sort((a,b)=>b.date.localeCompare(a.date));
-    const owedList=rows.filter(r=>r.t.balance>0.5).sort((a,b)=>b.t.balance-a.t.balance);
+    const owedList=rows.filter(r=>r.t.balance>0.5&&!notStarted(r)).sort((a,b)=>b.t.balance-a.t.balance);
     const helpers=crewOwedAll(list);const helpOwed=helpers.reduce((a,r)=>a+Math.max(0,r.owed),0);
     const biz=cardList();
     const warns:{id:string;sid:string;tab:PTab;text:string;sub:string}[]=[];
@@ -60,7 +63,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
         if(!step.done&&d&&d<=tdy)dueNow.push({id:"s"+s.id+step.id,sid:s.id,client:s.client||"Без імені",what:`${step.label||"Етап оплати"} · строк ${d.slice(8)}.${d.slice(5,7)}`,amount:Math.max(0,(Number(step.amount)||0)-step.got)})}
     }
     const dueSum=dueNow.reduce((a,x)=>a+x.amount,0);
-    return {active,rest,dueNow,dueSum,owed,received,recvList,owedList,helpers,helpOwed,warns};
+    return {future,active,rest,dueNow,dueSum,owed,received,recvList,owedList,helpers,helpOwed,warns};
   },[statements,jobs]);
   const [open,setOpen]=useState<""|"owed"|"recv"|"earn"|"help"|"await"|"due">("");
   const free=useMemo(()=>nextFreeDay(jobs as any),[jobs]);
@@ -163,6 +166,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
       {dueSlot}
       {v.dueNow.filter(x=>x.id.startsWith("s")).map(x=><button key={x.id} className="apRow" onClick={()=>onOpenProject(x.sid,"pay")}><span style={{flex:1,minWidth:0}}><b>{x.client}</b><small>{x.what}</small></span><span className="apAmt"><b className="apWarn">{money(x.amount)}</b></span><Chevron/></button>)}
       <div className="apRow" style={{display:"block",borderTop:"6px solid #f2f2f7"}}><b>Усі залишки по проєктах</b><small style={{display:"block"}}>Вся сума (робота + матеріали) мінус те, що клієнт уже заплатив.</small></div>
+      {v.future.length>0&&<div className="apRow" style={{display:"block",background:"#f9fafb"}}><small style={{display:"block"}}>Не рахуються — роботу ще не почали: {v.future.map(({s,t})=>`${s.client||"Без імені"} ${money(t.total)}`).join(" · ")}</small></div>}
       {v.owedList.map(({s,t})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small><small style={{display:"block"}}>всього {money(t.total)} · заплатили {money(t.paid)}</small></span><span className="apAmt"><b className="apWarn">{money(t.balance)}</b><small>залишок</small></span><Chevron/></button>)}
     </div>}
     {open==="recv"&&<div className="apCard" style={{marginTop:10}}>
