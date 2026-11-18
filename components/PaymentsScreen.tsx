@@ -352,6 +352,15 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    onIncomingDone?.();
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[incoming,ready]);
+ // 🔒 рядок «Change order #N» у «Роботі» завжди = сумі погодженого change order (щоб не розходилось)
+ useEffect(()=>{
+   if(!cur||!ready)return;
+   let changed=false;
+   const labor=cur.labor.map(l=>{const co=(cur.changes||[]).find(c=>c.status==="accepted"&&c.laborLineId===l.id);if(!co)return l;
+     const tot=Math.round(co.lines.reduce((a,x)=>a+(Number(x.amount)||0),0)*100)/100;if(Math.abs((Number(l.amount)||0)-tot)<0.005)return l;changed=true;return {...l,amount:tot}});
+   if(changed)patchStatement(cur.id,{labor});
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[openId,cur?.changes,ready]);
  function update(patch:Partial<Statement>){
    if(!cur)return;
    const id=cur.id;
@@ -747,7 +756,31 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  if(!cur&&hoursCal)return <HoursCalendar list={list} onPatch={patchStatement} onClose={()=>setHoursCal(false)}/>;
  if(!cur&&report)return <YearReport list={list} calcs={calcs} onClose={()=>setReport(false)}/>;
  if(!cur){
-   return <>{batchView}<HelperFresh list={list} onOpen={(sid,tab)=>{setOpenId(sid);setPtab(tab);if(!apple)setTimeout(()=>document.getElementById(tab==="crew"?"crew-panel":"")?.scrollIntoView({behavior:"smooth",block:"start"}),250)}}/><section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+   // 🧰 «Інструменти» під списком проєктів (один блок для обох режимів вигляду)
+   const toolsBlock=<>
+     {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
+     {!apple&&list.length>0&&<MonthEarnings list={list}/>}
+     {!apple&&list.length>0&&<CrewOwed list={list}/>}
+     <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
+       <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
+       <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
+       <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
+       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
+     </button>
+     <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
+       <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
+       <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
+     </button>
+     <StoreImport list={list} onAdd={importStore}/>
+     <MonthReceiptsButton list={list}/>
+   </>;
+   return <>{batchView}{!apple&&<HelperFresh list={list} onOpen={(sid,tab)=>{setOpenId(sid);setPtab(tab);if(!apple)setTimeout(()=>document.getElementById(tab==="crew"?"crew-panel":"")?.scrollIntoView({behavior:"smooth",block:"start"}),250)}}/>}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
      {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
        <small className="muted">Для кого чек? «📷 Фото» — камера; «📋 Скріншот» — вставити скопійований скріншот з програми магазину.</small>
@@ -780,27 +813,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <p className="muted" style={{marginTop:6}}>Робота + чеки на матеріали − оплати клієнта = залишок. PDF для клієнта однією кнопкою.</p>
      <p className="muted" style={{marginTop:4,fontSize:13}}>{dragOn?"Відпусти — прочитаю всі чеки":"📦 Пакет чеків: PDF з Нотаток, назва файлу = ім'я клієнта («Uzma.pdf») — сам знайду проєкт. Можна перетягнути файли сюди."}</p>
      {!apple&&<>
-     {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
-     {!apple&&list.length>0&&<MonthEarnings list={list}/>}
-     {!apple&&list.length>0&&<CrewOwed list={list}/>}
-     <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
-       <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
-       <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
-       <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
-       <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
-       <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
-     </button>
-     <StoreImport list={list} onAdd={importStore}/>
-     <MonthReceiptsButton list={list}/>
+     {toolsBlock}
      </>}
      {clients.length>0&&<div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
        {([["all","Всі"],["active","В роботі"],["planned","Заплановані"],["done","Завершені"]] as const).map(([k,l])=>{const n=clients.filter(s=>inTab(s,k)).length;if(k==="planned"&&!n)return null;return <button key={k} onClick={()=>setStatusFilter(k)} style={{borderRadius:999,padding:"7px 13px",fontWeight:700,fontSize:13,background:statusFilter===k?"#101828":"#eef2f7",color:statusFilter===k?"#fff":"#344054"}}>{l} · {n}</button>})}
@@ -811,27 +824,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <span style={{textAlign:"right"}}><strong>{money(t.balance)}</strong><small className="muted">залишок</small></span>
        </button>)})}
      {apple&&<><h2 style={{margin:"22px 0 6px",fontSize:20}}>Інструменти</h2>
-     {list.some(x=>!x.own)&&<VoiceLog list={list} onApply={applyVoice}/>}
-     {!apple&&list.length>0&&<MonthEarnings list={list}/>}
-     {!apple&&list.length>0&&<CrewOwed list={list}/>}
-     <button className="estimate" onClick={()=>setJobsCal(true)} style={{background:"#eff8ff"}}>
-       <span><b>📅 Графік робіт</b><small>Хто, з якого дня і скільки днів · найближчий вільний день</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={()=>setHoursCal(true)} style={{background:"#f0fdf4"}}>
-       <span><b>🗓 Години по днях і тижнях</b><small>Календар: хто, де й скільки годин працював, підсумок тижня</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={()=>setReport(true)} style={{background:"#f5f3ff"}}>
-       <span><b>📊 Річний звіт</b><small>Дохід по клієнтах і місяцях, мої витрати, CSV для бухгалтера</small></span>
-       <span style={{textAlign:"right",alignSelf:"center"}}>›</span>
-     </button>
-     <button className="estimate" onClick={openOwn} style={{background:"#f0f9ff"}}>
-       <span><b>🧰 Мої витрати</b><small>Інструменти й матеріали для себе — {new Date(ownMonth+"-15").toLocaleDateString("uk-UA",{month:"long"})}</small></span>
-       <span style={{textAlign:"right"}}><strong>{money(ownTotal(ownMonth))}</strong><small className="muted">цей місяць</small></span>
-     </button>
-     <StoreImport list={list} onAdd={importStore}/>
-     <MonthReceiptsButton list={list}/>
+     {toolsBlock}
      </>}
    </section>{inputs}</>;
  }
@@ -902,40 +895,9 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  // ---- план / факт ----
  const linked=findCalcFor(cur,calcs);
  const plan=linked?planFromCalc(linked):null;
- const matDiff=plan&&plan.materials>0?Math.round((t.receipts/plan.materials-1)*1000)/10:null;
- const crewSm=crewSummary(cur);
  const show=(k:typeof ptab)=>!apple||ptab===k;
  const shopCall=async(x:any)=>{const r=await fetch("/api/shop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...x,sid:cur.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);return j};
- const earned=Math.round((t.paid-t.receipts-crewSm.cost)*100)/100;
- const hours=crewSm.hours>0?crewSm.hours:(Number(cur.hours)||0);
- const pf=(label:string,planV:number|null,fact:number,warn=false,note?:string)=><div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,padding:"6px 0",borderBottom:"1px solid #f2f4f7",fontSize:14}}>
-   <span>{label}{note&&<small className="muted" style={{display:"block"}}>{note}</small>}</span>
-   <span style={{textAlign:"right"}}>{planV===null?"—":money(planV)}</span>
-   <b style={{textAlign:"right",color:warn?"#b42318":undefined}}>{money(fact)}</b>
- </div>;
- const planView=<section className="panel">
-   <div className="head"><h2>📊 План / факт</h2></div>
-   <label style={{marginTop:6}}><small className="muted">Естімейт для порівняння</small>
-     <select value={linked?.id||(cur.calcId==="none"?"none":"")} onChange={e=>update({calcId:e.target.value||undefined})}>
-       <option value="">{linked?"":"— вибери естімейт —"}</option>
-       {calcs.map(c=><option key={c.id} value={c.id}>{c.client||"Без імені"}{c.project?` — ${c.project}`:""} · {money(c.total)} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</option>)}
-       <option value="none">Без естімейту</option>
-     </select>
-   </label>
-   <div style={{display:"grid",gridTemplateColumns:"1fr 100px 100px",gap:6,marginTop:10,fontSize:12,color:"#667085"}}><span/><span style={{textAlign:"right"}}>за естімейтом</span><span style={{textAlign:"right"}}>факт</span></div>
-   {pf("Матеріали (чеки)",plan?plan.materials:null,t.receipts,matDiff!==null&&matDiff>=15,matDiff!==null?`чеки ${matDiff>=0?"+":""}${matDiff}% від естімейту${matDiff>=15?" ⚠":""}`:undefined)}
-   {pf("Робота",plan?plan.labor:null,t.labor,false,"у розрахунку")}
-   {pf("Отримано від клієнта",null,t.paid)}
-   {pf(t.balance>=0?"Залишок до оплати":"Переплата",null,Math.abs(t.balance))}
-   <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,padding:"10px 0 4px",fontSize:15}}>
-     <span><b>Твій заробіток</b><small className="muted" style={{display:"block"}}>отримано − чеки{crewSm.cost>0?` − помічники ${money(crewSm.cost)}`:""}</small></span>
-     <b style={{textAlign:"right",color:earned>=0?"#067647":"#b42318"}}>{money(earned)}</b>
-   </div>
-   <div style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:6,alignItems:"center",marginTop:6}}>
-     {crewSm.hours>0?<span style={{fontSize:14}}>Годин: <b>{crewSm.hours}</b><small className="muted" style={{display:"block"}}>з обліку команди вище</small></span>:<label style={{margin:0}}>Годин роботи<input type="number" min="0" step="0.5" value={cur.hours??""} placeholder="напр. 32" onChange={e=>update({hours:e.target.value===""?undefined:Math.max(0,Number(e.target.value)||0)})}/></label>}
-     {hours>0&&<span style={{textAlign:"right",fontSize:14}}>робота ÷ год<b style={{display:"block",fontSize:16}}>{money(t.labor/hours)}/год</b></span>}
-   </div>
- </section>;
+
  return <>
    <div className="screenbar noPrint"><button onClick={()=>setOpenId(null)}>← {apple?"Проєкти":"Список"}</button><b>{apple?"":"Розрахунок"}</b><button onClick={remove} style={{color:"#b42318"}}>Видалити</button></div>
    {apple&&(()=>{const p=profitOf(cur);const st=stOf(cur);const m=STATUS_META[st];const pct=t.total>0?Math.min(100,Math.round(t.paid/t.total*100)):0;
@@ -949,9 +911,6 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <div className="apStat"><small>{t.balance>=0?"Клієнт винен":"Переплата"}</small><b className={t.balance>0.5?"apWarn":"apGood"}>{money(Math.abs(t.balance))}</b><em>оплачено {pct}%</em></div>
        </div>
        <div className="apBar apBarBig"><i style={{width:pct+"%"}}/></div>
-       <div className="apQuick" style={{gridTemplateColumns:"1fr"}}>
-         <button onClick={()=>pdf(false)} disabled={busy}>📄 PDF для клієнта</button>
-       </div>
        <div className="apSeg">{tabs.map(([k,l,n])=><button key={k} className={ptab===k?"on":""} onClick={()=>setPtab(k)}>{l}{n?<i>{n}</i>:null}{freshRows([cur]).some(f=>f.tab===k)&&<b style={{marginLeft:4,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</button>)}</div>
      </div>})()}
    {show("over")&&<section className="panel grid">
@@ -963,31 +922,29 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
     </select></label>
    </section>}
 
-   {show("over")&&<>{(()=>{const crewName=(id:string)=>(cur.crew||[]).find(c=>c.id===id)?.name||"";
-     const fh=(cur.workLog||[]).filter(isFresh),fr=cur.receipts.filter(isFresh),fp=(cur.photos||[]).filter(isFresh);
-     if(!fh.length&&!fr.length&&!fp.length)return null;
-     const items=[...fh.map(w=>`⏱ ${w.by||crewName(w.workerId)}: ${w.hours} год за ${w.date}${w.note?` — ${w.note}`:""}`),...fr.map(r=>`🧾 ${r.by}: чек ${r.store||""} ${money(Number(r.amount)||0)}`),...fp.map(p=>`📸 ${p.by}: фото за ${p.date}`)];
-     return <section className="panel" style={{border:"2px solid #fdb022",background:"#fffcf5"}}>
-       <div className="head"><h2>🆕 Нове від помічника</h2></div>
-       {items.map((t,i)=><div key={i} data-notr style={{fontSize:15,padding:"4px 0"}}>{t}</div>)}
-       <small className="muted">Години — у «👷 Команда й години», чеки — у «Чеки на матеріали», фото — у «Фото». Позначка «НОВЕ» тримається добу.</small>
-     </section>})()}</>}
    {show("over")&&(apple?<details className="panel" style={{padding:"12px 14px"}}><summary style={{fontWeight:600}}>Прибуток — детальніше</summary><ProfitCard st={cur}/></details>:<ProfitCard st={cur}/>)}
 
    {show("over")&&<section className="panel">
      <div className="head"><FoldTitle open={fWork||apple} onToggle={tWork} title="Робота" summary={`${cur.labor.length} рядк. · ${money(t.labor)}`}/><button className="add" onClick={()=>{setWork(true);update({labor:[...cur.labor,{id:uid(),description:"",amount:0}]})}}>＋ Рядок</button></div>
      {(fWork||apple)&&<>
-     {cur.labor.map((l:StatementLine)=><div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 42px",gap:8,marginTop:8}}>
+     {cur.labor.map((l:StatementLine)=>{const co=(cur.changes||[]).find(c=>c.status==="accepted"&&c.laborLineId===l.id);return <div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 42px",gap:8,marginTop:8}}>
        <input placeholder="Опис (напр. Range hood installation)" value={l.description} onChange={e=>setLine<StatementLine>("labor",l.id,{description:e.target.value})}/>
-       <input type="number" step="0.01" value={l.amount} onChange={e=>setLine<StatementLine>("labor",l.id,{amount:Number(e.target.value)||0})}/>
-       <button className="remove" onClick={()=>delLine("labor",l.id)}>×</button>
-     </div>)}
+       {co?<span title="Сума береться з Change order — міняй там" style={{alignSelf:"center",textAlign:"right",fontWeight:700}}>{money(Number(l.amount)||0)}<small className="muted" style={{display:"block",fontWeight:400,fontSize:11}}>🔒 з Change order #{co.no}</small></span>
+         :<input type="number" step="0.01" value={l.amount} onChange={e=>setLine<StatementLine>("labor",l.id,{amount:Number(e.target.value)||0})}/>}
+       {co?<span/>:<button className="remove" onClick={()=>delLine("labor",l.id)}>×</button>}
+     </div>})}
      </>}
    </section>}
 
    {show("over")&&<ChangeOrders key={cur.id} st={cur} user={user} onPatch={update} setMsg={setMsg}/>}
    {show("over")&&!cur.own&&<ClientDecisions key={"d"+cur.id} st={cur} onPatch={update}/>}
 
+   {show("rec")&&!cur.own&&<section className="panel" style={{padding:"10px 14px"}}><label style={{margin:0}}><small className="muted">Естімейт цього проєкту (для порівняння матеріалів і графіка оплат)</small>
+     <select value={linked?.id||(cur.calcId==="none"?"none":"")} onChange={e=>update({calcId:e.target.value||undefined})}>
+       <option value="">{linked?"":"— вибери естімейт —"}</option>
+       {calcs.map(c=><option key={c.id} value={c.id}>{c.client||"Без імені"}{c.project?` — ${c.project}`:""} · {money(c.total)} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</option>)}
+       <option value="none">Без естімейту</option>
+     </select></label></section>}
    {show("rec")&&<MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>}
    {show("rec")&&batchView}
    {show("rec")&&<section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
@@ -1051,7 +1008,6 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {show("crew")&&<section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>}
    {show("over")&&<ReviewAsk st={cur} phone={findClient(clientBook,cur.client)?.phone} done={stOf(cur)==="done"} onPatch={update}/>}
    {show("photo")&&<StatementPhotos st={cur} onPatch={update} forceOpen={apple}/>}
-   {show("over")&&planView}
 
    {show("over")&&<section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>}
 

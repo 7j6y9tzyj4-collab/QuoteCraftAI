@@ -17,8 +17,8 @@ type Job={client?:string;title?:string;start?:string;days?:number;sid?:string;ad
 type PTab="over"|"rec"|"pay"|"crew"|"photo";
 const Chevron=()=><svg width="8" height="14" viewBox="0 0 8 14" fill="none" aria-hidden><path d="M1 1l6 6-6 6" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
-export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo,awaitingSlot,onStatements}:{
-  awaitingSlot?:React.ReactNode;onStatements?:(next:Statement[])=>void;
+export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo,awaitingSlot,dueSlot,onStatements}:{
+  awaitingSlot?:React.ReactNode;/** «Пора нагадати» з кнопками SMS (PaymentsDue) — всередині плитки «Клієнти винні» */dueSlot?:React.ReactNode;onStatements?:(next:Statement[])=>void;
   user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string;detail?:{text:string;sid:string}[]};
   onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab)=>void;onGo:(s:"pay"|"saved"|"clients"|"cal")=>void}){
   const jobs=useScheduleJobs(user) as Job[];
@@ -105,8 +105,8 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     </button>
     {draftLabel&&<button className="apRow apCard" onClick={onContinue} style={{marginTop:10}}><span><b>Продовжити чернетку</b><small>{draftLabel}</small></span><Chevron/></button>}
 
-    {inbox.total>0&&<button className="apRow apCard apNotice" onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.detail?.length?inbox.detail.map(d=>`${d.text} → ${(()=>{const st=statements.find(x=>x.id===d.sid);return st?`${st.client||"Без імені"}${st.project?` — ${st.project}`:""}`:"проєкт"})()}`).join(" · "):inbox.text}</small><small style={{color:"#175cd3",fontWeight:700}}>Натисни, щоб додати в розрахунки</small></span><Chevron/></button>}
-    <div style={{marginTop:10}}><HelperFresh list={statements} onOpen={(sid,tab)=>onOpenProject(sid,tab)}/></div>
+    {inbox.total>0&&<button className="apRow apCard apNotice" style={{borderBottomLeftRadius:0,borderBottomRightRadius:0}} onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.detail?.length?inbox.detail.map(d=>`${d.text} → ${(()=>{const st=statements.find(x=>x.id===d.sid);return st?`${st.client||"Без імені"}${st.project?` — ${st.project}`:""}`:"проєкт"})()}`).join(" · "):inbox.text}</small><small style={{color:"#175cd3",fontWeight:700}}>Натисни, щоб додати в розрахунки</small></span><Chevron/></button>}
+    <div style={{marginTop:inbox.total>0?0:10}}><HelperFresh list={statements} onOpen={(sid,tab)=>onOpenProject(sid,tab)}/></div>
 
     <div className="apHomeQuick">
       {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{setMoreP(false);if(k!=="rec"&&v.active.length===1&&!v.rest.length){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
@@ -149,15 +149,9 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
 
     {v.warns.length>0&&<div className="apCard apNotice" style={{marginTop:10}}>{v.warns.map(w=><button key={w.id} className="apRow" onClick={()=>onOpenProject(w.sid,w.tab)}><span style={{flex:1,minWidth:0}}><b>⚠ {w.text}</b><small>{w.sub}</small></span><Chevron/></button>)}</div>}
 
-    <button className="apStat" style={{width:"100%",marginTop:10}} onClick={()=>setOpen(open==="due"?"":"due")}><small>До сплати зараз</small><b className={v.dueSum>0.5?"apWarn":"apGood"}>{money(v.dueSum)}</b><em>{v.dueNow.length?`${v.dueNow.length} · закінчені роботи й етапи оплати, де настав строк · натисни`:"нікому зараз нагадувати не треба"}</em></button>
-    {open==="due"&&<div className="apCard" style={{marginTop:10}}>
-      <div className="apRow" style={{display:"block"}}><b>Кому пора нагадати про оплату</b><small style={{display:"block"}}>Сюди потрапляє проєкт зі статусом «Чекаю оплату» і етапи з «Графіка оплат» у проєкті, в яких уже настав строк. Щоб етап з'явився тут — постав йому дату у вкладці «Оплати».</small></div>
-      {v.dueNow.length===0&&<div className="apRow"><small>Зараз нічого.</small></div>}
-      {v.dueNow.map(x=><button key={x.id} className="apRow" onClick={()=>onOpenProject(x.sid,"pay")}><span style={{flex:1,minWidth:0}}><b>{x.client}</b><small>{x.what}</small></span><span className="apAmt"><b className="apWarn">{money(x.amount)}</b></span><Chevron/></button>)}
-    </div>}
     <div className="apStats">
       <button className="apStat" onClick={()=>setOpen(open==="help"?"":"help")}><small>Винен помічникам</small><b className={v.helpOwed>0.5?"apWarn":"apGood"}>{money(v.helpOwed)}</b><em>{v.helpers.length?v.helpers.map(r=>`${r.name}: робота ${money(r.work)}${r.receipts>0?` + чеки ${money(r.receipts)}`:""}`).join(" · "):"нічого не винен"} · натисни</em></button>
-      <button className="apStat" onClick={()=>setOpen(open==="owed"?"":"owed")}><small>Ще не оплачено по проєктах</small><b className={v.owed>0?"apWarn":""}>{money(v.owed)}</b><em>{v.owedList.length} проєкт(ів) · вся сума до кінця робіт · натисни</em></button>
+      <button className="apStat" onClick={()=>setOpen(open==="owed"?"":"owed")}><small>Клієнти винні</small><b className={v.owed>0?"apWarn":""}>{money(v.owed)}</b><em>{v.owedList.length} проєкт(ів){v.dueNow.length?` · пора нагадати: ${v.dueNow.length}`:""}</em></button>
       <button className="apStat" onClick={()=>awaitingSlot?setOpen(open==="await"?"":"await"):onGo("saved")}><small>Чекають відповіді</small><b>{awaiting.n}</b>{awaiting.n>0&&<em>{awaiting.viewed} відкрили · натисни</em>}</button>
       <button className="apStat" onClick={()=>setOpen(open==="recv"?"":"recv")}><small>Клієнти заплатили за {month}</small><b className="apGood">{money(v.received)}</b><em>{v.recvList.length} оплат(и) · робота + матеріали · натисни</em></button>
     </div>
@@ -166,7 +160,9 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     {open==="help"&&(v.helpers.length?<CrewOwed list={statements} onPay={onStatements?payHelper:undefined}/>:<div className="apCard apEmpty" style={{marginTop:10}}>Помічникам нічого не винен.</div>)}
     {open==="earn"&&<MonthEarnings list={statements}/>}
     {open==="owed"&&<div className="apCard" style={{marginTop:10}}>
-      <div className="apRow" style={{display:"block"}}><b>Хто скільки ще не заплатив</b><small style={{display:"block"}}>Це залишок по кожному проєкту: вся сума (робота + матеріали) мінус те, що клієнт уже дав. Не обов'язково до сплати сьогодні — частина за ще не зроблену роботу.</small></div>
+      {dueSlot}
+      {v.dueNow.filter(x=>x.id.startsWith("s")).map(x=><button key={x.id} className="apRow" onClick={()=>onOpenProject(x.sid,"pay")}><span style={{flex:1,minWidth:0}}><b>{x.client}</b><small>{x.what}</small></span><span className="apAmt"><b className="apWarn">{money(x.amount)}</b></span><Chevron/></button>)}
+      <div className="apRow" style={{display:"block",borderTop:"6px solid #f2f2f7"}}><b>Усі залишки по проєктах</b><small style={{display:"block"}}>Вся сума (робота + матеріали) мінус те, що клієнт уже заплатив.</small></div>
       {v.owedList.map(({s,t})=><button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}><span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||""}</small><small style={{display:"block"}}>всього {money(t.total)} · заплатили {money(t.paid)}</small></span><span className="apAmt"><b className="apWarn">{money(t.balance)}</b><small>залишок</small></span><Chevron/></button>)}
     </div>}
     {open==="recv"&&<div className="apCard" style={{marginTop:10}}>

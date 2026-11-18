@@ -14,12 +14,12 @@ const T={
     h:"год",total:"Разом на цьому об'єкті",pending:"⏳ — ще не переглянуто",media:"📷 Чеки й фото",rec:"🧾 Фото чека",reading:"Читаю чек…",photo:"🏗 Фото роботи",sending:"Надсилаю…",
     counts:(r:number,p:number)=>`Чеків по об'єкту: ${r} · фото: ${p}. Чек фотографуй рівно, щоб було видно суму.`,sent:"✓ Надіслано: ",recNo:"чек (сума не прочиталась — Василь перевірить)",ph:"фото",
     scope:"📋 Що робимо",opts:"Опції (тільки якщо клієнт погодив): ",buy:"📦 Матеріали з естімейту",buyHint:"Купив — одразу сфотографуй чек тут.",
-    hours:"Годин",earned:(r:number)=>`Заробив · $${r}/год`,owed:"Ще винні",paid:"Вже виплачено: ",none:"Поки немає проєктів.",tr:"Перекладаю…",units:{each:"шт",sqft:"sq ft",linear_ft:"lin ft",hour:"год",room:"кімн."} as Record<string,string>,loc:"uk-UA"},
+    none:"Поки немає проєктів.",tr:"Перекладаю…",units:{each:"шт",sqft:"sq ft",linear_ft:"lin ft",hour:"год",room:"кімн."} as Record<string,string>,loc:"uk-UA"},
   en:{call:"📞 Client",hoursH:"⏱ Hours worked",other:"other number of hours",note:"what you did (optional)",save:(h:string)=>`✓ Save ${h} h`,saving:"Saving…",saved:(h:number,d:string)=>`✓ Saved ${h} h for ${d}`,
     h:"h",total:"Total on this job",pending:"⏳ — not reviewed yet",media:"📷 Receipts & photos",rec:"🧾 Receipt photo",reading:"Reading receipt…",photo:"🏗 Work photo",sending:"Sending…",
     counts:(r:number,p:number)=>`Receipts on this job: ${r} · photos: ${p}. Shoot the receipt straight so the total is readable.`,sent:"✓ Sent: ",recNo:"receipt (total not read — will be checked)",ph:"photo",
     scope:"📋 Scope of work",opts:"Options (only if the client approved): ",buy:"📦 Materials from the estimate",buyHint:"Bought something — take a photo of the receipt here.",
-    hours:"Hours",earned:(r:number)=>`Earned · $${r}/h`,owed:"Owed to you",paid:"Already paid: ",none:"No projects yet.",tr:"Translating…",units:{each:"pcs",sqft:"sq ft",linear_ft:"lin ft",hour:"h",room:"room"} as Record<string,string>,loc:"en-US"},
+    none:"No projects yet.",tr:"Translating…",units:{each:"pcs",sqft:"sq ft",linear_ft:"lin ft",hour:"h",room:"room"} as Record<string,string>,loc:"en-US"},
 };
 // переклад обсягу робіт / матеріалів на українську (кеш у браузері)
 const TRK="qc_w_tr_uk";
@@ -113,7 +113,7 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
       <ol style={{paddingLeft:20}}>{p.scope.filter(s=>!s.optional).map((s,i)=><li key={i} style={{marginTop:6}}><b>{tr(s.name)}</b>{s.qty>1||s.unit!=="each"?` — ${s.qty} ${unitL(s.unit)}`:""}{s.note&&<div style={{fontSize:13,color:"#667085"}}>{tr(s.note)}</div>}</li>)}</ol>
       {p.scope.some(s=>s.optional)&&<p style={{fontSize:13,color:"#667085"}}>{L.opts}{p.scope.filter(s=>s.optional).map(s=>tr(s.name)).join("; ")}</p>}
     </details>}
-    <div style={card}>
+    <div id="w-hours" style={card}>
       <h3 style={{marginTop:0}}>{L.hoursH}</h3>
       <input type="date" value={date} max={today()} onChange={e=>setDate(e.target.value)} style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16}}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,marginTop:8}}>
@@ -123,13 +123,13 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
       <input placeholder={L.note} value={note} onChange={e=>setNote(e.target.value)} style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,marginTop:8}}/>
       <button disabled={!hours||busy==="h"} onClick={addHours} style={{...big,width:"100%",marginTop:8,background:"#079455",color:"#fff",opacity:!hours?.5:1}}>{busy==="h"?L.saving:L.save(String(hours||""))}</button>
       {p.days.length>0&&<div style={{marginTop:12}}>
-        {p.days.slice(0,10).map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:"1px solid #eaecf0",fontSize:14}}>
+        {p.days.slice(0,5).map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderTop:"1px solid #eaecf0",fontSize:14}}>
           <span>{fmt(d.date)}{d.note?<small style={{color:"#667085"}}> · {d.note}</small>:null}</span><b>{d.hours} {L.h}{d.pending?" ⏳":""}</b></div>)}
-        <small style={{color:"#667085"}}>{L.total}: <b>{p.hours} {L.h}</b>{p.days.some(d=>d.pending)?" · "+L.pending:""}</small>
+        <small style={{color:"#667085"}}>{L.total}: <b>{p.hours} {L.h}</b>{p.days.some(d=>d.pending)?" · "+L.pending:""}{p.days.length>5?(lang==="en"?" · all days — tap “This week” at the top":" · усі дні — плитка «Цей тиждень» угорі"):""}</small>
       </div>}
     </div>
 
-    <div style={card}>
+    <div id="w-media" style={card}>
       <h3 style={{marginTop:0}}>{L.media}</h3>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <button disabled={!!busy||!!draft} onClick={()=>rec.current?.click()} style={{...big,background:"#2563eb",color:"#fff"}}>{busy==="receipt"?L.reading:L.rec}</button>
@@ -138,10 +138,6 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
       <input ref={rec} type="file" accept="image/*" capture="environment" hidden onChange={e=>upload(e.target.files,"receipt")}/>
       <input ref={ph} type="file" accept="image/*" multiple hidden onChange={e=>upload(e.target.files,"photo")}/>
       <small style={{color:"#667085",display:"block",marginTop:6}}>{L.counts(p.receipts,p.photos)}</small>
-      {p.myReceipts.length>0&&<details style={{marginTop:8}}><summary style={{fontWeight:700,fontSize:15}}>{lang==="en"?`My receipts (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`:`Мої чеки (${p.myReceipts.length}) · ${money(p.myReceipts.reduce((a,r)=>a+r.amount,0))}`}</summary>
-        {p.myReceipts.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:"1px solid #f2f4f7",fontSize:15}}>
-          <span>{fmt(r.date)} · {r.store||(lang==="en"?"receipt":"чек")}<small onClick={async()=>{try{await post({token,sid:p.sid,action:"receipt_payer",id:r.id,paidBy:r.mine?"biz":"mine"});router.refresh()}catch(e){setMsg(e instanceof Error?e.message:String(e))}}} style={{display:"inline-block",marginTop:3,padding:"3px 8px",borderRadius:8,border:"1px solid "+(r.mine?"#d9d6fe":"#d0d5dd"),background:r.mine?"#f4f3ff":"#f9fafb",cursor:"pointer",color:r.mine?"#7a5af8":"#667085"}}>{r.mine?(lang==="en"?`💳 your card${r.card?` ****${r.card}`:""} — will be paid back`:`💳 твоя картка${r.card?` ****${r.card}`:""} — повернуть`):(lang==="en"?"💼 business card":"💼 бізнес-картка")}{" ⇄"}</small>{r.pending&&<small style={{display:"block",color:"#b54708"}}>{lang==="en"?"not reviewed yet":"ще не переглянуто"}</small>}</span><b>{money(r.amount)}</b></div>)}
-      </details>}
       {draft&&<div style={{marginTop:10,padding:12,borderRadius:14,border:dup?"2px solid #f79009":"1px solid #d0d5dd",background:dup?"#fffaeb":"#fff"}}>
         <b style={{display:"block",marginBottom:6}}>{lang==="en"?"Check the receipt":"Перевір чек"}</b>
         {dup&&<p style={{margin:"0 0 8px",color:"#b54708",fontSize:14,fontWeight:700}}>⚠ {lang==="en"?"This receipt is already in the app:":"Цей чек уже є в програмі:"} <span style={{fontWeight:500}}>{dup}</span><br/>{lang==="en"?"Add it anyway?":"Додати все одно?"}</p>}
@@ -282,7 +278,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
   const p=v.projects[i];
   const en=lang==="en";const hr=new Date().getHours();
   const hello=en?(hr<12?"Good morning":hr<18?"Good afternoon":"Good evening"):(hr<12?"Доброго ранку":hr<18?"Добрий день":"Добрий вечір");
-  const open=(sid:string)=>{const k=v.projects.findIndex(x=>x.sid===sid);if(k>=0)setI(k);setTimeout(()=>document.getElementById("w-proj")?.scrollIntoView({behavior:"smooth",block:"start"}),50)};
+  const open=(sid:string,to:"w-proj"|"w-hours"|"w-media"="w-proj")=>{const k=v.projects.findIndex(x=>x.sid===sid);if(k>=0)setI(k);setTimeout(()=>document.getElementById(to)?.scrollIntoView({behavior:"smooth",block:"start"}),80)};
   const tile:React.CSSProperties={background:"#fff",borderRadius:14,padding:14,minWidth:0,boxShadow:"0 1px 3px #0001"};
   const tl:React.CSSProperties={display:"block",color:"#8e8e93",fontSize:13,fontWeight:500};
   const tb:React.CSSProperties={display:"block",fontSize:24,fontWeight:700,marginTop:4,letterSpacing:"-.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"};
@@ -313,8 +309,8 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
         {j.address&&<div style={{fontSize:14,color:"#667085",marginTop:2}}>📍 {j.address}</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
           {j.address&&<a style={act} href={`https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}`} target="_blank" rel="noreferrer">🧭 {en?"Route":"Маршрут"}</a>}
-          {j.sid&&<button style={act} onClick={()=>open(j.sid)}>⏱ {en?"Log hours":"Записати години"}</button>}
-          {j.sid&&<button style={act} onClick={()=>open(j.sid)}>📷 {en?"Receipt":"Чек"}</button>}
+          {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-hours")}>⏱ {en?"Log hours":"Записати години"}</button>}
+          {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-media")}>📷 {en?"Receipt":"Чек"}</button>}
         </div>
       </div>)}</div></>}
     {v.soon.length>0&&<><h2 style={h2s}>{en?"Coming up":"Найближчі роботи"}</h2>

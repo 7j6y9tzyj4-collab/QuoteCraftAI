@@ -12,7 +12,7 @@ const DAY=86400000;
 const HIDE="qc_due_hidden";
 
 // Головна → «💵 Чекають оплати»: розрахунки з залишком, де роботу закінчено або давно не працювали; SMS з посиланням на рахунок.
-export default function PaymentsDue({user,statements,clients,zelle,onOpen}:{user:User|null;statements:Statement[];clients:Client[];zelle:string;onOpen:(id:string)=>void}){
+export default function PaymentsDue({user,statements,clients,zelle,onOpen,embed}:{user:User|null;statements:Statement[];clients:Client[];zelle:string;onOpen:(id:string)=>void;/** всередині плитки «Клієнти винні» на Головній */embed?:boolean}){
   const [busy,setBusy]=useState("");
   const [msg,setMsg]=useState("");
   const [hidden,setHidden]=useState<string[]>(()=>{try{return JSON.parse(localStorage.getItem(HIDE)||"[]")}catch{return []}});
@@ -26,7 +26,8 @@ export default function PaymentsDue({user,statements,clients,zelle,onOpen}:{user
     return {s,t,days,st};
   }).filter(r=>r.st!=="planned"&&r.t.balance>0.5&&(r.st==="waiting"||r.st==="done"||r.days>=3)&&!hidden.includes(r.s.id+":"+r.t.balance))
     .sort((a,b)=>b.t.balance-a.t.balance),[statements,hidden,jobs]);
-  if(!user||!rows.length)return null;
+  if(!user)return null;
+  if(!rows.length)return embed?<div className="apRow"><small>Зараз нікому нагадувати не треба.</small></div>:null;
   const total=rows.reduce((a,r)=>a+r.t.balance,0);
   async function remind(s:Statement,balance:number,copy:boolean){
     if(!user)return;
@@ -42,9 +43,9 @@ export default function PaymentsDue({user,statements,clients,zelle,onOpen}:{user
     }catch(e){setMsg("Не вдалося: "+(e instanceof Error?e.message:String(e)))}finally{setBusy("")}
   }
   const hide=(id:string)=>{const next=[...hidden,id].slice(-200);setHidden(next);try{localStorage.setItem(HIDE,JSON.stringify(next))}catch{}};
-  return <section className="panel">
-    <div className="head"><h2>💵 Чекають оплати · {money(total)}</h2></div>
-    <p className="muted" style={{fontSize:13,margin:"0 0 6px"}}>Залишок до оплати, де роботу закінчено або 3+ дні без руху. Нагадування йде з посиланням на свіжий рахунок{zelle?" і твоїм Zelle":""}.</p>
+  return <section className={embed?undefined:"panel"} style={embed?{padding:"4px 14px 10px"}:undefined}>
+    {!embed&&<div className="head"><h2>💵 Чекають оплати · {money(total)}</h2></div>}
+    <p className="muted" style={{fontSize:13,margin:"0 0 6px"}}>{embed?<b style={{color:"#101828"}}>Пора нагадати · {money(total)}<br/></b>:null}Залишок до оплати, де роботу закінчено або 3+ дні без руху. Нагадування йде з посиланням на свіжий рахунок{zelle?" і твоїм Zelle":""}.</p>
     {rows.map(({s,t,days,st})=><div key={s.id} style={{padding:"10px 0",borderTop:"1px solid #eaecf0"}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
         <button onClick={()=>onOpen(s.id)} style={{all:"unset",cursor:"pointer"}}><b>{s.client||"Без імені"}</b><small className="muted" style={{display:"block"}}>{s.project||"Project"} · {st==="active"?`${days} дн. без руху`:st==="done"?"завершено":"чекаю оплату"}</small></button>
