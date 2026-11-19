@@ -207,7 +207,8 @@ export default function QuoteCraftApp(){
  useEffect(()=>{if(!user)return;supabase.from("user_settings").select("company").eq("user_id",user.id).maybeSingle().then(({data}:{data:any})=>{const c=cleanCompany(data?.company);setCompany(c);setCompanyTick(t=>t+1);setNeedSetup(!c.name.trim())})},[user]); // Prices → ⚙ Налаштування зверху
  const [payOpenId,setPayOpenId]=useState<string|null>(null);
  const [payOpenCal,setPayOpenCal]=useState(false);
- const [payOpenTab,setPayOpenTab]=useState<"over"|"rec"|"pay"|"crew"|"photo"|null>(null); // відкрити розрахунок з картки клієнта
+ const [payOpenTab,setPayOpenTab]=useState<"over"|"rec"|"pay"|"crew"|"photo"|null>(null);
+ const [payOpenFlash,setPayOpenFlash]=useState<string|null>(null); // id запису, який підсвітити (новий від помічника) // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
  useEffect(()=>{void registerSW();
@@ -1861,11 +1862,11 @@ export default function QuoteCraftApp(){
       dueSlot={<PaymentsDue embed user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/>}
       draftLabel={calcItems.length>0&&!calcSavedId?(calcClient||calcProject||"поточний розрахунок"):""}
       onNew={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}
-      onContinue={()=>setScreen("calc")} onOpenProject={(id,tab)=>{setPayOpenTab(tab||null);setPayOpenId(id);setScreen("pay")}} onGo={s=>{if(s==="cal"){setPayOpenCal(true);setScreen("pay")}else setScreen(s)}}/>}
+      onContinue={()=>setScreen("calc")} onOpenProject={(id,tab,flash)=>{setPayOpenTab(tab||null);setPayOpenFlash(flash||null);setPayOpenId(id);setScreen("pay")}} onGo={s=>{if(s==="cal"){setPayOpenCal(true);setScreen("pay")}else setScreen(s)}}/>}
    {screen==="home"&&apple&&<div className="apHomeExtra"><SiteLeads user={user}/></div>}
    {screen==="home"&&!apple&&<>
     {ui.home.hero&&<><section className="hero"><span>{companyName().toUpperCase()} · ESTIMATOR</span><h1>Скажи, що потрібно зробити.</h1><p>AI розділить роботи й порахує працю, матеріали та оздоблення за твоїми цінами. Можна голосом або з фото-замірами.</p><button className="primary huge" onClick={()=>{if(!calcItems.length||calcSavedId){clearCalc()}else if(!confirm("У калькуляторі є незбережений розрахунок. Почати новий? (Скасувати — відкрити поточний)")){setScreen("calc");return}else{setCalcItems([]);clearCalcFields()}setScreen("calc")}}>＋ New estimate</button>{calcItems.length>0&&<div className="actions" style={{marginTop:10}}><button className="secondary" onClick={()=>setScreen("calc")}>↩ Продовжити: {calcClient||calcProject||"поточний розрахунок"}</button></div>}</section></>}
-    {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/><HelperFresh list={payStatements} onOpen={(id,tab)=>{setPayOpenTab(tab);setPayOpenId(id);setScreen("pay")}}/></>}
+    {ui.home.inbox&&<><WorkerInboxBanner sum={inbox} onOpen={()=>setScreen("pay")}/><HelperFresh list={payStatements} onOpen={(id,tab,flash)=>{setPayOpenTab(tab);setPayOpenFlash(flash||null);setPayOpenId(id);setScreen("pay")}}/></>}
     {ui.home.push&&<><PushSetup user={user} compact/></>}
     {ui.home.leads&&<><SiteLeads user={user}/></>}
     {ui.home.awaiting&&<><AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/></>}
@@ -2062,7 +2063,7 @@ export default function QuoteCraftApp(){
     <p className="muted noPrint" style={{marginTop:8}}>Ставки праці й матеріалів — у вкладці <b>Prices</b>; калькулятор і кошториси рахують за однією таблицею.</p>
    </>}
 
-   {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openCal={payOpenCal} onCalOpened={()=>setPayOpenCal(false)} openTab={payOpenTab} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
+   {screen==="pay"&&<PaymentsScreen apple={apple} user={user} calcs={calcSaved} clients={clients} onAddClient={saveClient} incoming={payIncoming} onIncomingDone={()=>setPayIncoming(null)} openCal={payOpenCal} onCalOpened={()=>setPayOpenCal(false)} openTab={payOpenTab} openFlash={payOpenFlash} openId={payOpenId} onOpened={()=>setPayOpenId(null)}/>}
    {screen==="clients"&&<ClientsScreen clients={clients} calcs={calcSaved} statements={payStatements} onSave={saveClient} onDelete={deleteClient} onOpenCalc={openCalc} onOpenStatement={id=>{setPayOpenId(id);setScreen("pay")}} onShareBundle={shareClientBundle} onNewEstimate={c=>{if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Почати новий?"))return;clearCalc();setCalcClient(c.name);setScreen("calc")}}
      user={user} tasks={calcTasks}
      onMeetingToEstimate={(c,m)=>{

@@ -54,7 +54,7 @@ export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement
     {crew.length>0&&<>
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Години</h3>
         <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:crew[0].id,hours:0}]})}>＋ Години</button></div>
-      {log.map(w=><div key={w.id} style={{...(isFresh(w)?{background:"#fffaeb",borderRadius:10,padding:6}:{}),display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
+      {log.map(w=><div key={w.id} data-rid={w.id} style={{...(isFresh(w)?{background:"#fffaeb",borderRadius:10,padding:6}:{}),display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
         <DateInput value={w.date} onChange={v=>setLog(w.id,{date:v})}/>
         <select value={w.workerId} onChange={e=>setLog(w.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
         <input type="number" min="0" step="0.5" value={w.hours||""} placeholder="год" onChange={e=>setLog(w.id,{hours:Math.max(0,Number(e.target.value)||0)})}/>

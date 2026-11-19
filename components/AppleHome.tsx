@@ -19,8 +19,8 @@ const Chevron=()=><svg width="8" height="14" viewBox="0 0 8 14" fill="none" aria
 
 export default function AppleHome({user,statements,clients=[],draftLabel,inbox,onNew,onContinue,onOpenProject,onGo,awaitingSlot,dueSlot,onStatements}:{
   awaitingSlot?:React.ReactNode;/** «Пора нагадати» з кнопками SMS (PaymentsDue) — всередині плитки «Клієнти винні» */dueSlot?:React.ReactNode;onStatements?:(next:Statement[])=>void;
-  user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string;detail?:{text:string;sid:string}[]};
-  onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab)=>void;onGo:(s:"pay"|"saved"|"clients"|"cal")=>void}){
+  user:User|null;statements:Statement[];clients?:Client[];draftLabel:string;inbox:{total:number;text:string;detail?:{text:string;sid:string;id:string;tab:"crew"|"rec"|"photo"}[]};
+  onNew:()=>void;onContinue:()=>void;onOpenProject:(id:string,tab?:PTab,flash?:string)=>void;onGo:(s:"pay"|"saved"|"clients"|"cal")=>void}){
   const jobs=useScheduleJobs(user) as Job[];
   const [awaiting,setAwaiting]=useState<{n:number;sum:number;viewed:number}>({n:0,sum:0,viewed:0});
   useEffect(()=>{if(!user)return;
@@ -108,8 +108,13 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     </button>
     {draftLabel&&<button className="apRow apCard" onClick={onContinue} style={{marginTop:10}}><span><b>Продовжити чернетку</b><small>{draftLabel}</small></span><Chevron/></button>}
 
-    {inbox.total>0&&<button className="apRow apCard apNotice" style={{borderBottomLeftRadius:0,borderBottomRightRadius:0}} onClick={()=>onGo("pay")}><span><b>Нове від помічника · {inbox.total}</b><small>{inbox.detail?.length?inbox.detail.map(d=>`${d.text} → ${(()=>{const st=statements.find(x=>x.id===d.sid);return st?`${st.client||"Без імені"}${st.project?` — ${st.project}`:""}`:"проєкт"})()}`).join(" · "):inbox.text}</small><small style={{color:"#175cd3",fontWeight:700}}>Натисни, щоб додати в розрахунки</small></span><Chevron/></button>}
-    <div style={{marginTop:inbox.total>0?0:10}}><HelperFresh list={statements} onOpen={(sid,tab)=>onOpenProject(sid,tab)}/></div>
+    {inbox.total>0&&<div className="apCard apNotice" style={{borderBottomLeftRadius:0,borderBottomRightRadius:0,padding:0}}>
+      <div className="apRow" style={{display:"block"}}><b>👷 Нове від помічника · {inbox.total}</b><small style={{display:"block"}}>Натисни рядок — відкриється потрібний проєкт, запис буде підсвічений.</small></div>
+      {inbox.detail?.length?inbox.detail.map((d,i)=>{const st=statements.find(x=>x.id===d.sid);const where=st?(st.own?"Мої витрати":`${st.client||"Без імені"}${st.project?` — ${st.project}`:""}`):"проєкт";
+        return <button key={i} className="apRow" onClick={()=>onOpenProject(d.sid,d.tab,d.id)}><span style={{flex:1,minWidth:0}}><b data-notr>{d.text}</b><small style={{color:"#175cd3",fontWeight:700}}>→ <span data-notr>{where}</span></small></span><Chevron/></button>})
+        :<button className="apRow" onClick={()=>onGo("pay")}><span><small>{inbox.text}</small></span><Chevron/></button>}
+    </div>}
+    <div style={{marginTop:inbox.total>0?0:10}}><HelperFresh list={statements} onOpen={(sid,tab,id)=>onOpenProject(sid,tab,id)}/></div>
 
     <div className="apHomeQuick">
       {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{setMoreP(false);if(k!=="rec"&&v.active.length===1&&!v.rest.length){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}

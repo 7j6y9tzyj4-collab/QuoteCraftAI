@@ -5,14 +5,14 @@ import {supabase} from "@/lib/supabase";
 
 // 👷 Що помічник надіслав за посиланням і ще не додано в розрахунки (worker_inbox, applied_at = null).
 // Перевіряємо при відкритті, поверненні в програму і щохвилини, поки вона відкрита.
-export type InboxSum={total:number;text:string;workers:string[];/** кожен запис окремо, з id проєкту — щоб показати, куди він піде */detail?:{text:string;sid:string}[]};
+export type InboxSum={total:number;text:string;workers:string[];/** кожен запис окремо, з id проєкту — щоб показати, куди він піде */detail?:{text:string;sid:string;/** id запису після додавання (для підсвітки) */id:string;tab:"crew"|"rec"|"photo"}[]};
 const EMPTY:InboxSum={total:0,text:"",workers:[]};
 
 export function useWorkerInbox(user:User|null){
   const [sum,setSum]=useState<InboxSum>(EMPTY);
   const check=useCallback(async()=>{
     if(!user)return;
-    const {data,error}=await supabase.from("worker_inbox").select("worker,kind,payload,sid").eq("user_id",user.id).is("applied_at",null);
+    const {data,error}=await supabase.from("worker_inbox").select("id,worker,kind,payload,sid").eq("user_id",user.id).is("applied_at",null);
     if(error){setSum(EMPTY);return}
     const by:Record<string,{h:number;r:number;p:number}>={};
     for(const it of (data||[]) as any[]){const w=String(it.worker||"Помічник");by[w]||={h:0,r:0,p:0};
@@ -21,7 +21,7 @@ export function useWorkerInbox(user:User|null){
     const {data:mail}=await supabase.from("mail_receipts").select("status").eq("user_id",user.id).is("applied_at",null).in("status",["auto","review"]);
     const mAuto=(mail||[]).filter((m:any)=>m.status==="auto").length,mRev=(mail||[]).filter((m:any)=>m.status==="review").length;
     const mailText=[mAuto?`📧 нових чеків ${mAuto}`:"",mRev?`🧾 розібрати ${mRev}`:""].filter(Boolean).join(", ");
-    const detail=((data||[]) as any[]).map(it=>({sid:String(it.sid||""),text:`${it.worker||"Помічник"}: ${it.kind==="hours"?`${Number(it.payload?.hours)||0} год${it.payload?.date?` за ${String(it.payload.date).slice(5,10).replace("-","/")}`:""}`:it.kind==="receipt"?`чек ${it.payload?.store||""}`:"фото"}`}));
+    const detail=((data||[]) as any[]).map(it=>({sid:String(it.sid||""),id:String(it.kind==="hours"?it.id:(it.payload?.id||it.id)),tab:(it.kind==="hours"?"crew":it.kind==="receipt"?"rec":"photo") as "crew"|"rec"|"photo",text:`${it.worker||"Помічник"}: ${it.kind==="hours"?`${Number(it.payload?.hours)||0} год${it.payload?.date?` за ${String(it.payload.date).slice(5,10).replace("-","/")}`:""}`:it.kind==="receipt"?`чек ${it.payload?.store||""}`:"фото"}`}));
     setSum({detail,total:(data||[]).length+mAuto+mRev,text:[text,mailText].filter(Boolean).join(" · "),workers:Object.keys(by)});
   },[user]);
   useEffect(()=>{

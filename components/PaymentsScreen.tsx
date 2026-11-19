@@ -71,7 +71,7 @@ function MsgBox({msg}:{msg:string}){
   return <div role="status" style={{margin:"8px 0 10px",padding:"12px 14px",borderRadius:12,fontSize:15,fontWeight:600,lineHeight:1.35,background:warn?"#fffaeb":"#ecfdf3",border:`1px solid ${warn?"#fec84b":"#abefc6"}`,color:warn?"#93370d":"#067647"}}>{msg}</div>;
 }
 
-export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,openCal,onCalOpened,onOpened,apple=false}:{apple?:boolean;openCal?:boolean;onCalOpened?:()=>void;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
+export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAddClient,incoming,onIncomingDone,openId:openReq,openTab,openFlash,openCal,onCalOpened,onOpened,apple=false}:{apple?:boolean;openCal?:boolean;onCalOpened?:()=>void;openTab?:"over"|"rec"|"pay"|"crew"|"photo"|null;openFlash?:string|null;user:User|null;calcs?:SavedCalc[];clients?:Client[];onAddClient?:(c:Client)=>void;incoming?:Statement|null;onIncomingDone?:()=>void;openId?:string|null;onOpened?:()=>void}){
  const [list,setList]=useState<Statement[]>([]);
  const [openId,setOpenId]=useState<string|null>(null);
  const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
@@ -79,7 +79,20 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const [ptab,setPtab]=useState<"over"|"rec"|"pay"|"crew"|"photo">("over");
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
- useEffect(()=>{if(openReq){setOpenId(openReq);setPtab(openTab||"over");onOpened?.()}},[openReq,onOpened]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(openReq){setOpenId(openReq);setPtab(openTab||"over");if(openFlash)setFlash(openFlash);onOpened?.()}},[openReq,onOpened]); // eslint-disable-line react-hooks/exhaustive-deps
+ // ✨ підсвітити запис (новий від помічника): чекаємо, поки він з'явиться на сторінці, прокручуємо до нього і блимаємо жовтим
+ const [flash,setFlash]=useState<string|null>(null);
+ useEffect(()=>{
+   if(!flash)return;let n=0;
+   const t=setInterval(()=>{
+     const el=document.querySelector(`[data-rid="${CSS.escape(flash)}"]`) as HTMLElement|null;
+     if(el){clearInterval(t);el.scrollIntoView({behavior:"smooth",block:"center"});
+       const old=el.style.boxShadow;el.style.transition="box-shadow .3s";el.style.boxShadow="0 0 0 4px #fdb022";el.style.borderRadius=el.style.borderRadius||"10px";
+       setTimeout(()=>{el.style.boxShadow=old},4000);setFlash(null)}
+     else if(++n>40){clearInterval(t);setFlash(null)}
+   },150);
+   return()=>clearInterval(t);
+ },[flash,list,ptab,openId]);
  // «Мої витрати» відкрили з Головної, а запису ще нема — створюємо, але тільки коли список уже завантажений
  useEffect(()=>{if(openId===OWN_ID&&list.length>0&&(!user||cloudOk.current)&&!list.some(x=>x.id===OWN_ID))persist([newOwnStatement(),...list])},[openId,list]); // eslint-disable-line react-hooks/exhaustive-deps
  const [msg,setMsg]=useState("");
@@ -269,11 +282,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      if(it.kind==="hours"){
        let crew=[...(s.crew||[])];let w=crew.find(c=>!c.self&&c.name.trim().toLowerCase()===who.toLowerCase());
        if(!w){w={id:uid(),name:who,rate:rateOf(it.token)};crew=[...crew,w]}
-       s={...s,crew,workLog:[...(s.workLog||[]),{id:uid(),date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined,by:who,at:it.created_at}]};sum[k].h+=Number(p.hours)||0;
+       s={...s,crew,workLog:[...(s.workLog||[]),{id:it.id,date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined,by:who,at:it.created_at}]};sum[k].h+=Number(p.hours)||0;
      }else if(it.kind==="receipt"){
-       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:p.paidBy||payerFor(p.card,who,cardList()),by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
+       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||it.id,date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:p.paidBy||payerFor(p.card,who,cardList()),by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
      }else if(it.kind==="photo"){
-       if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||uid(),path:p.path,date:us(p.date),by:who,note:p.note||undefined,at:it.created_at}]};sum[k].p++;
+       if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||it.id,path:p.path,date:us(p.date),by:who,note:p.note||undefined,at:it.created_at}]};sum[k].p++;
      }
      next=next.map(x=>x.id===s.id?{...s,updatedAt:new Date().toISOString()}:x);used.push(it.id);
    }
@@ -281,7 +294,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    await supabase.from("worker_inbox").update({applied_at:new Date().toISOString()}).in("id",used);
    window.dispatchEvent(new Event("qc-inbox-applied"));
    const txt=Object.entries(sum).map(([w,v])=>`👷 ${w}: ${[v.h?`${v.h} год`:"",v.r?`чеків ${v.r}`:"",v.p?`фото ${v.p}`:""].filter(Boolean).join(", ")}`).join("; ");
-   if(txt)setMsg(txt+" — додано в розрахунки. Перевір суми чеків.");
+   if(txt)setMsg(txt+" — додано. Нижче в «🆕 Записали помічники» натисни рядок — відкриється потрібний проєкт і підсвітиться запис."+(Object.values(sum).some(v=>v.r)?" Чеки з фото перевір: чи правильно програма прочитала суму.":""));
  }
  useEffect(()=>{if(!ready||!user)return;const on=()=>void pullWorkerInbox();window.addEventListener("qc-inbox-new",on);return()=>window.removeEventListener("qc-inbox-new",on)
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -780,7 +793,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <StoreImport list={list} onAdd={importStore}/>
      <MonthReceiptsButton list={list}/>
    </>;
-   return <>{batchView}{!apple&&<HelperFresh list={list} onOpen={(sid,tab)=>{setOpenId(sid);setPtab(tab);if(!apple)setTimeout(()=>document.getElementById(tab==="crew"?"crew-panel":"")?.scrollIntoView({behavior:"smooth",block:"start"}),250)}}/>}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
+   return <>{batchView}{!apple&&<HelperFresh list={list} onOpen={(sid,tab,id)=>{setOpenId(sid);setPtab(tab);if(id)setFlash(id);if(!apple)setTimeout(()=>document.getElementById(tab==="crew"?"crew-panel":"")?.scrollIntoView({behavior:"smooth",block:"start"}),250)}}/>}<section className="panel" {...dropProps(null)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><h1>Оплати</h1><div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>{list.length>0&&<button className="add" disabled={busy} onClick={()=>setPicking(p=>!p)}>{busy?"Читаю…":"📷 Чек"}</button>}<button className="add" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()} title="Кілька фото або PDF з Нотаток — проєкт знайду за назвою файлу">📦 Пакет</button><button className="add" onClick={create}>＋ Новий</button></div></div>
      {picking&&<div style={{marginTop:10,padding:10,background:"#f8fafc",borderRadius:12}}>
        <small className="muted">Для кого чек? «📷 Фото» — камера; «📋 Скріншот» — вставити скопійований скріншот з програми магазину.</small>
@@ -962,7 +975,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
          style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} style={{display:"grid",gridTemplateColumns:"52px minmax(124px,1fr) 84px 36px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
+     {cur.receipts.map((r:Receipt)=><div key={r.id} data-rid={r.id} style={{display:"grid",gridTemplateColumns:"52px minmax(124px,1fr) 84px 36px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
        <DateInput value={r.date} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
        <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
