@@ -7,6 +7,7 @@ import {imageHash,findDuplicate,findManualMatch,hasPhoto,matchStatementByName,ba
 import ReceiptBatch,{type Draft} from "@/components/ReceiptBatch";
 import DateInput from "@/components/DateInput";
 import ClientPicker from "@/components/ClientPicker";
+import StoreLinks from "@/components/StoreLinks";
 import {findClient,type Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
@@ -77,6 +78,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const baseRef=useRef<Map<string,string>>(new Map());const savingRef=useRef(0);
  // ▸/▾ згортання довгих блоків у проєкті (запам'ятовується)
  const [ptab,setPtab]=useState<"over"|"rec"|"pay"|"crew"|"photo">("over");
+ const [storeF,setStoreF]=useState<string>(""); // фільтр чеків за магазином
+ useEffect(()=>{setStoreF("")},[openId]);
  const [fWork,tWork,setWork]=useFold("work",true);const [fRec,tRec,setRec]=useFold("receipts",false);const [fPay,tPay,setPay]=useFold("payments",true);
  // відкрити конкретний розрахунок (з картки клієнта)
  useEffect(()=>{if(openReq){setOpenId(openReq);setPtab(openTab||"over");if(openFlash)setFlash(openFlash);onOpened?.()}},[openReq,onOpened]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -928,6 +931,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>})()}
    {show("over")&&<section className="panel grid">
      <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
+     {!cur.own&&<StoreLinks address={findClient(clientBook,cur.client)?.address}/>}
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
     <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>
       <option value="auto">Авто — зараз: {STATUS_META[statementStatus({...cur,status:undefined},startOf(cur))].label}</option>
@@ -975,7 +979,11 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          onInput={e=>{e.currentTarget.innerHTML=""}} onFocus={()=>setZoneOn(true)} onBlur={()=>setZoneOn(false)}
          style={{position:"absolute",inset:0,opacity:0,outline:"none",caretColor:"transparent",cursor:"pointer"}}/>
      </div>
-     {cur.receipts.map((r:Receipt)=><div key={r.id} data-rid={r.id} style={{display:"grid",gridTemplateColumns:"52px minmax(124px,1fr) 84px 36px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
+     {(()=>{const by=new Map<string,{n:number;sum:number}>();for(const r of cur.receipts){const k=storeChain(r.store);const v=by.get(k)||{n:0,sum:0};v.n++;v.sum+=recAmt(r);by.set(k,v)}
+       if(by.size<2)return null;const chips=[...by.entries()].sort((a,b)=>b[1].sum-a[1].sum);
+       const chip=(k:string,label:string)=><button key={k||"all"} type="button" onClick={()=>setStoreF(storeF===k?"":k)} style={{padding:"6px 11px",borderRadius:999,fontSize:13,fontWeight:700,border:"1px solid "+(storeF===k?"#175cd3":"#d0d5dd"),background:storeF===k?"#eff8ff":"#fff",color:storeF===k?"#175cd3":"#344054",whiteSpace:"nowrap"}}>{label}</button>;
+       return <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{chip("",`Усі · ${money(t.receipts)}`)}{chips.map(([k,v])=>chip(k,`${k} · ${money(v.sum)} (${v.n})`))}</div>})()}
+     {cur.receipts.filter(r=>!storeF||storeChain(r.store)===storeF).map((r:Receipt)=><div key={r.id} data-rid={r.id} style={{display:"grid",gridTemplateColumns:"52px minmax(124px,1fr) 84px 36px",gap:8,marginTop:10,paddingTop:10,borderTop:"1px solid #f2f4f7",alignItems:"start",...(isFresh(r)?{background:"#fffaeb",borderRadius:10,padding:6}:{})}}>
        <div>{(r.photoPath||r.photoData)?<ReceiptThumb r={r}/>:<span className="muted" style={{fontSize:11}}>без фото</span>}</div>
        <DateInput value={r.date} onChange={v=>setLine<Receipt>("receipts",r.id,{date:v})}/>
        <input type="number" step="0.01" value={r.amount} onChange={e=>setLine<Receipt>("receipts",r.id,{amount:Number(e.target.value)||0})}/>
@@ -1071,4 +1079,17 @@ function ReceiptKind({r,all,onPatch,onReturn}:{r:Receipt;all:Receipt[];onPatch:(
       ?<><small style={{color:"#067647",fontWeight:700}}>✓ повернули {r.back}</small><button className="secondary" style={btn} onClick={()=>onPatch({back:undefined})}>скасувати</button></>
       :<><small style={{color:"#b54708",fontWeight:700}}>⏳ чекає повернення · не йде в рахунок</small><button className="secondary" style={btn} onClick={()=>onPatch({back:td})}>✓ Гроші повернулись</button></>)}
   </div>;
+}
+
+// назва мережі для фільтра чеків: «The Home Depot #1983» → «Home Depot»
+function storeChain(store?:string){
+  const s=String(store||"").toLowerCase();
+  if(/home\s*depot/.test(s))return "Home Depot";
+  if(/menard/.test(s))return "Menards";
+  if(/lowe/.test(s))return "Lowe's";
+  if(/sherwin/.test(s))return "Sherwin-Williams";
+  if(/floor\s*&?\s*(and\s*)?decor/.test(s))return "Floor & Decor";
+  if(/amazon/.test(s))return "Amazon";
+  if(/ace\b/.test(s))return "Ace Hardware";
+  return "Інші";
 }

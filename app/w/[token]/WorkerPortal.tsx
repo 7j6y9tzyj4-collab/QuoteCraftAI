@@ -1,4 +1,5 @@
 "use client";
+import StoreLinks from "@/components/StoreLinks";
 import {useEffect,useRef,useState} from "react";
 import {useRouter} from "next/navigation";
 import type {WorkerView,WorkerProject} from "@/lib/workerView";
@@ -107,6 +108,7 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
         {p.address&&<a href={`https://maps.apple.com/?q=${encodeURIComponent(p.address)}`} target="_blank" rel="noreferrer" style={{...big,background:"#eef2f7",color:"#101828",textDecoration:"none",flex:1,textAlign:"center"}}>📍 {p.address}</a>}
         {p.phone&&<a href={`tel:${p.phone.replace(/[^\d+]/g,"")}`} style={{...big,background:"#eef2f7",color:"#101828",textDecoration:"none",flex:"none"}}>{L.call}</a>}
       </div>
+      <StoreLinks address={p.address} title={lang==="en"?"🛒 Nearest stores":"🛒 Найближчі магазини"} compact/>
     </div>
 
     {p.scope.length>0&&<details style={card} open={p.scope.length<=6}><summary style={{fontWeight:800,fontSize:16}}>{L.scope}{trBusy?` · ${L.tr}`:""}</summary>
