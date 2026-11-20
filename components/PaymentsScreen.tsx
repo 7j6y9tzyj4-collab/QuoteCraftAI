@@ -918,8 +918,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      return <div className="apProj">
        <div className="apProjHead"><h1>{cur.client||"Без імені"}</h1><small>{cur.project}</small><span className="apPill" style={{background:m.bg,color:m.color}}>{m.label}</span></div>
        <div className="apStats">
-         <div className="apStat"><small>Контракт</small><b>{money(t.total)}</b></div>
-         <div className="apStat"><small>Прибуток</small><b className={p.low?"apWarn":"apGood"}>{money(p.profit)}</b>{p.margin!==null&&<em>{p.margin}% роботи</em>}</div>
+         <div className="apStat"><small>Робота (контракт)</small><b>{money(t.labor)}</b><em>{t.included?"матеріали входять у ціну":<>+ матеріали {money(t.materials)}<br/>разом для клієнта {money(t.total)}</>}</em></div>
+         <div className="apStat"><small>Мій заробіток</small><b className={p.low?"apWarn":"apGood"}>{money(p.profit)}</b><em>{p.perHour!==null?<>мої {p.myHours} год → <b style={{fontSize:"inherit",color:p.perHour>=50?"#067647":"#b54708"}}>{money(p.perHour)}/год</b></>:p.margin!==null?`${p.margin}% роботи`:""}</em></div>
          <div className="apStat"><small>Витрати</small><b>{money(t.receipts+p.cost)}</b><em>чеки {money(t.receipts)}{p.cost>0?` · помічники ${money(p.cost)}`:""}</em></div>
          <div className="apStat"><small>{t.balance>=0?"Клієнт винен":"Переплата"}</small><b className={t.balance>0.5?"apWarn":"apGood"}>{money(Math.abs(t.balance))}</b><em>оплачено {pct}%</em></div>
        </div>

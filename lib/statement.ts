@@ -166,7 +166,10 @@ export function profitOf(s:Statement){
   const labor=t.labor,cost=crew.cost,profit=r2(labor+t.matKeep-cost);
   const base=labor+t.matKeep;const margin=base>0?Math.round(profit/base*100):null;
   const helperHours=r2(crew.rows.filter(r=>!r.self).reduce((a,r)=>a+r.hours,0));
-  return {labor,cost,profit,margin,helperHours,matKeep:t.matKeep,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
+  const myHours=r2(crew.rows.filter(r=>r.self).reduce((a,r)=>a+r.hours,0));
+  /** скільки виходить на годину моєї роботи (прибуток ÷ мої години) */
+  const perHour=myHours>0?Math.round(profit/myHours*100)/100:null;
+  return {myHours,perHour,labor,cost,profit,margin,helperHours,matKeep:t.matKeep,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
 }
 
 /** хто платив за чек: бізнес-картка власника → "biz"; інша картка й чек додав помічник → помічник; інша картка, додав власник → "" (уточнити) */
