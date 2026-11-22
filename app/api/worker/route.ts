@@ -7,6 +7,8 @@ import {aiGuard} from "@/lib/aiGuard";
 import {findDuplicate} from "@/lib/receiptBatch";
 import {payerFor,type Statement} from "@/lib/statement";
 import {cardList} from "@/lib/company";
+import {geocode,distM,distText} from "@/lib/geo";
+import {workerView} from "@/lib/workerView";
 import {shopKind,splitShop,shopList,shopAdd,shopToggle,shopDel,shopClearDone} from "@/lib/shop";
 
 export const runtime="nodejs";
@@ -43,6 +45,43 @@ export async function POST(req:NextRequest){
       else if(b.action==="shop_del")await shopDel(u,String(b.id),sid,kind);
       else if(b.action==="shop_clear")await shopClearDone(u,sid,kind);
       return NextResponse.json({items:await shopList(u,sid,kind)});
+    }
+    // 📍 Годинник з GPS: «Почав роботу» / «Закінчив» → години самі йдуть у вхідні власника
+    if(b.action==="clock_in"||b.action==="clock_out"){
+      const num=(x:unknown)=>{const v=Number(x);return Number.isFinite(v)?v:null};
+      const lat=num(b.lat),lng=num(b.lng),acc=num(b.acc);const here=lat!=null&&lng!=null?{lat,lng}:null;
+      const {data:openRows}=await supabaseAdmin.from("worker_shifts").select("*").eq("token",link.token).is("end_at",null).order("start_at",{ascending:false}).limit(1);
+      const open=(openRows||[])[0] as any;
+      const tm=(iso:string)=>new Date(iso).toLocaleTimeString("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"});
+      if(b.action==="clock_in"){
+        if(open)return NextResponse.json({error:open.sid===sid?"Зміна вже йде — натисни «Закінчив роботу».":"Спершу закінчи зміну на іншому об'єкті."},{status:400});
+        let site:{lat:number;lng:number}|null=null;
+        try{const v=await workerView(link);const addr=v.projects.find(x=>x.sid===sid)?.address||"";site=await geocode(addr)}catch{}
+        const dist=here&&site?Math.round(distM(here,site)):null;
+        const {data:row,error}=await supabaseAdmin.from("worker_shifts").insert({token:link.token,user_id:link.user_id,sid,worker:link.worker,start_lat:lat,start_lng:lng,start_acc:acc,start_dist_m:dist,site_lat:site?.lat??null,site_lng:site?.lng??null}).select("id,start_at").single();
+        if(error)throw error;
+        await notify(`▶ Почав роботу о ${tm(row.start_at)}${here?(dist!=null?` · 📍 ${distText(dist)}${dist>250?" ⚠️":""}`:" · 📍 GPS є"):" · без GPS"}`);
+        return NextResponse.json({ok:true,shift:{id:row.id,sid,start:row.start_at,dist}});
+      }
+      if(!open)return NextResponse.json({error:"Зміну не почато."},{status:400});
+      if(open.sid!==sid)return NextResponse.json({error:"Зміна йде на іншому об'єкті."},{status:400});
+      const end=new Date();const raw=(end.getTime()-new Date(open.start_at).getTime())/3600e3;
+      const lunch=b.lunch?0.5:0;
+      let hours=Math.round(Math.max(0,raw-lunch)*4)/4;
+      if(b.hours!=null&&b.hours!==""){hours=Math.round((Number(b.hours)||0)*4)/4}
+      else if(raw>14)return NextResponse.json({error:"Зміна довша за 14 год — мабуть, забув натиснути «Закінчив». Впиши, скільки годин реально працював.",needHours:true},{status:400});
+      if(!(hours>0&&hours<=16))return NextResponse.json({error:"Вкажи години від 0.25 до 16."},{status:400});
+      const site=open.site_lat!=null?{lat:open.site_lat,lng:open.site_lng}:null;
+      const dist=here&&site?Math.round(distM(here,site)):null;
+      const date=new Date(open.start_at).toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
+      const gps=[open.start_dist_m!=null?`прийшов ${distText(open.start_dist_m)}`:open.start_lat!=null?"прийшов з GPS":"прийшов без GPS",dist!=null?`пішов ${distText(dist)}`:here?"пішов з GPS":"пішов без GPS"].join(", ");
+      const far=(open.start_dist_m??0)>250||(dist??0)>250;
+      const noteTxt=`📍 ${tm(open.start_at)}–${tm(end.toISOString())}${lunch?" −30 хв обід":""}${b.hours!=null&&b.hours!==""?" (години вписав сам)":""} · ${gps}${far?" ⚠️":""}${b.note?` · ${String(b.note).slice(0,120)}`:""}`;
+      await supabaseAdmin.from("worker_shifts").update({end_at:end.toISOString(),end_lat:lat,end_lng:lng,end_acc:acc,end_dist_m:dist,hours}).eq("id",open.id);
+      const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"hours",payload:{date,hours,note:noteTxt.slice(0,240),shift:open.id}});
+      if(error)throw error;
+      await notify(`⏹ Закінчив: ${hours} год (${tm(open.start_at)}–${tm(end.toISOString())})${far?" · ⚠️ GPS далеко від об'єкта":""}`);
+      return NextResponse.json({ok:true,hours});
     }
     if(b.action==="hours"){
       const hours=Math.round((Number(b.hours)||0)*4)/4;

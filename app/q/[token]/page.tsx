@@ -163,7 +163,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
           </table>
           <div className="sharedTotals"><div className="grand"><span>Change order total</span><span>{money(c.total)}</span></div></div>
           {c.notes&&<p style={{whiteSpace:"pre-wrap",fontSize:14,color:"#344054",marginTop:16}}>{c.notes}</p>}
-          <AcceptBox token={token} change accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>
+          <AcceptBox token={token} change accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} acceptedSig={String((c as any).sig||"")}/>
         </div>
       </main>
     );
@@ -187,7 +187,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
         </div>
         {q.measurementNotes&&<div style={{margin:"0 0 16px",padding:12,borderRadius:12,background:"#fffaeb",fontSize:14}}><strong>{PRELIMINARY_NOTE}</strong><p style={{whiteSpace:"pre-wrap",margin:"8px 0 0",color:"#667085"}}>Approximate dimensions: {q.measurementNotes}</p></div>}
 
-        {q.tiers?.length?<TierAccept token={token} tiers={q.tiers} chosen={q.chosenTier} zelle={zelle} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""}/>:<>
+        {q.tiers?.length?<TierAccept token={token} tiers={q.tiers} chosen={q.chosenTier} zelle={zelle} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} acceptedSig={String((q as any).sig||"")}/>:<>
         <div style={{overflowX:"auto"}}>
         <table className="sharedTable">
           <thead><tr><th>Description</th><th>Qty</th><th style={{textAlign:"right"}}>Labor</th><th style={{textAlign:"right"}}>Materials</th>{showFinish&&<th style={{textAlign:"right"}}>Finish</th>}<th style={{textAlign:"right"}}>Total</th></tr></thead>
@@ -219,7 +219,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
           <table className="sharedTable"><tbody>
             {q.optional.map((l,i)=><tr key={i}><td><strong>{l.name}</strong>{l.note&&<div className="sharedNote">{l.note}</div>}</td><td style={{whiteSpace:"nowrap"}}>{l.qty} {l.unit}</td><td style={{textAlign:"right"}}>{money(l.total)}</td></tr>)}
           </tbody></table>
-        </>):<OptionsAccept token={token} optional={q.optional} baseTotal={t.total} depositPct={t.depositPct||0} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} chosen={q.chosenOptions} zelle={zelle}/>}
+        </>):<OptionsAccept token={token} optional={q.optional} baseTotal={t.total} depositPct={t.depositPct||0} accepted={data.status==="accepted"} acceptedName={data.accepted_name||""} acceptedAt={data.accepted_at||""} chosen={q.chosenOptions} zelle={zelle} acceptedSig={String((q as any).sig||"")}/>}
 
         {q.notes&&<><h3 style={{marginTop:24}}>Notes &amp; exclusions</h3><p style={{whiteSpace:"pre-wrap",fontSize:14,color:"#344054"}}>{q.notes}</p></>}
 

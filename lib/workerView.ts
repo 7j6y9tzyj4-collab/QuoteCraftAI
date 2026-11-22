@@ -17,7 +17,8 @@ export type WorkerView={company:string;worker:string;rate:number;projects:Worker
   /** головна помічника: цей тиждень, де сьогодні, найближчі роботи, остання виплата */
   week:{hours:number;earned:number};today:{sid:string;client:string;title:string;address:string;phone:string;time?:string}[];
   soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number;method?:string}|null;
-  /** понеділок цього тижня (YYYY-MM-DD) — для перегляду по тижнях */weekFrom:string};
+  /** понеділок цього тижня (YYYY-MM-DD) — для перегляду по тижнях */weekFrom:string;
+  /** відкрита зміна (натиснув «Почав роботу») */shift?:{id:string;sid:string;start:string;dist:number|null}|null};
 
 const n=(s:string)=>String(s||"").trim().toLowerCase();
 
@@ -36,6 +37,8 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     supabaseAdmin.from("user_clients").select("data").eq("user_id",uid),
     supabaseAdmin.from("worker_inbox").select("sid,kind,payload,created_at").eq("token",link.token).is("applied_at",null),
   ]);
+  const {data:sh}=await supabaseAdmin.from("worker_shifts").select("id,sid,start_at,start_dist_m").eq("token",link.token).is("end_at",null).order("start_at",{ascending:false}).limit(1);
+  const shiftRow=(sh||[])[0] as any;
   const tISO=new Date().toLocaleDateString("sv-SE",{timeZone:"America/Chicago"});
   const shift=(iso:string,k:number)=>{const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+k);return d.toLocaleDateString("sv-SE")};
   const wd=new Date(tISO+"T12:00:00").getDay();const weekFrom=shift(tISO,-((wd+6)%7)); // з понеділка
@@ -94,5 +97,5 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
   const from3=shift(tISO,-3);
   for(const p of projects)if(!today.some(x=>x.sid===p.sid)&&p.days.some(d=>d.date>=from3&&d.date<=tISO))today.push({sid:p.sid,client:p.client,title:p.project,address:p.address,phone:p.phone});
   const soon=jobs.filter(j=>String(j.start)>tISO&&String(j.start)<=shift(tISO,14)).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4).map(j=>({client:String(j.client||""),title:String(j.title||""),start:String(j.start),time:j.time||undefined}));
-  return {weekFrom,week:{hours:r2(wkH),earned:r2(wkE)},today,soon,lastPaid,company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
+  return {shift:shiftRow?{id:shiftRow.id,sid:shiftRow.sid,start:shiftRow.start_at,dist:shiftRow.start_dist_m??null}:null,weekFrom,week:{hours:r2(wkH),earned:r2(wkE)},today,soon,lastPaid,company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
 }

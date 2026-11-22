@@ -1,5 +1,6 @@
 "use client";
-import {useState} from "react";
+import {useRef,useState} from "react";
+import SignaturePad,{SigImg,type SigHandle} from "./SignaturePad";
 import type {QuoteSnapshot} from "@/lib/sharedQuote";
 import ZelleBox from "./ZelleBox";
 
@@ -7,21 +8,23 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const MEDAL=["🥉","🥈","🥇"];
 
 // Сторінка клієнта: три варіанти — обрав один → вписав ім'я → Accept.
-export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt,chosen,zelle=""}:{token:string;tiers:NonNullable<QuoteSnapshot["tiers"]>;accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number;zelle?:string}){
+export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt,acceptedSig="",chosen,zelle=""}:{token:string;tiers:NonNullable<QuoteSnapshot["tiers"]>;accepted:boolean;acceptedName:string;acceptedAt:string;acceptedSig?:string;chosen?:number;zelle?:string}){
   const [sel,setSel]=useState<number>(typeof chosen==="number"?chosen:1);
   const [name,setName]=useState("");
-  const [done,setDone]=useState(accepted?{name:acceptedName,at:acceptedAt,tier:chosen}:null as null|{name:string;at:string;tier?:number});
+  const [done,setDone]=useState(accepted?{name:acceptedName,at:acceptedAt,sig:acceptedSig,tier:chosen}:null as null|{name:string;at:string;sig?:string;tier?:number});
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
+  const pad=useRef<SigHandle>(null);
   const t=tiers[sel];
   const showFinish=t.lines.some(l=>l.finish>0);
   async function accept(){
     if(!name.trim()){setErr("Please type your name.");return}
+    const sig=pad.current?.get()||null;if(!sig){setErr("Please sign in the box.");return}
     setBusy(true);setErr("");
     try{
-      const r=await fetch("/api/quote-accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,name:name.trim(),tier:sel})});
+      const r=await fetch("/api/quote-accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,name:name.trim(),sig,tier:sel})});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"Error");
-      setDone({name:name.trim(),at:d.accepted_at,tier:sel});
+      setDone({name:name.trim(),at:d.accepted_at,sig:sig||undefined,tier:sel});
     }catch(e){setErr(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
   return <>
@@ -61,10 +64,11 @@ export default function TierAccept({token,tiers,accepted,acceptedName,acceptedAt
     </div>
 
     {done?<><div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>
-      ✓ Option «{tiers[done.tier??sel]?.name}» accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""}. Thank you — we will contact you to schedule the work.
+      ✓ Option «{tiers[done.tier??sel]?.name}» accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""}. Thank you — we will contact you to schedule the work.<SigImg src={done.sig}/>
     </div><ZelleBox zelle={zelle} amount={tiers[done.tier??sel]?.totals.deposit||0}/></>:<div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
       <h3 style={{marginTop:0}}>Accept option «{t.name}» — {money(t.totals.total)}</h3>
-      <p style={{fontSize:14,color:"#667085"}}>Type your name and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
+      <p style={{fontSize:14,color:"#667085"}}>Type your name, sign below and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
+      <SignaturePad ref={pad}/>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your full name" style={{flex:"1 1 200px",padding:10,borderRadius:10,border:"1px solid #d0d5dd"}}/>
         <button className="primary" disabled={busy} onClick={accept}>{busy?"Sending…":`Accept ${t.name}`}</button>

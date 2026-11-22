@@ -55,7 +55,7 @@ async function post(body:object){
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d?.error||"Помилка");return d;
 }
 
-function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;worker:string}){
+function Project({token,p,lang,worker,shift}:{token:string;p:WorkerProject;lang:Lang;worker:string;shift?:WorkerView["shift"]}){
   const L=T[lang];const fmt=(d:string)=>fmtL(d,L.loc);const unitL=(u:string)=>L.units[u]||u;
   const {tr,busy:trBusy}=useUk([...p.scope.flatMap(x=>[x.name,x.note]),...p.materials.flatMap(x=>[x.name,x.note])],lang==="uk",token);
   const router=useRouter();
@@ -115,6 +115,7 @@ function Project({token,p,lang,worker}:{token:string;p:WorkerProject;lang:Lang;w
       <ol style={{paddingLeft:20}}>{p.scope.filter(s=>!s.optional).map((s,i)=><li key={i} style={{marginTop:6}}><b>{tr(s.name)}</b>{s.qty>1||s.unit!=="each"?` — ${s.qty} ${unitL(s.unit)}`:""}{s.note&&<div style={{fontSize:13,color:"#667085"}}>{tr(s.note)}</div>}</li>)}</ol>
       {p.scope.some(s=>s.optional)&&<p style={{fontSize:13,color:"#667085"}}>{L.opts}{p.scope.filter(s=>s.optional).map(s=>tr(s.name)).join("; ")}</p>}
     </details>}
+    <ShiftClock token={token} sid={p.sid} shift={shift||null} en={lang==="en"} address={p.address}/>
     <div id="w-hours" style={card}>
       <h3 style={{marginTop:0}}>{L.hoursH}</h3>
       <input type="date" value={date} max={today()} onChange={e=>setDate(e.target.value)} style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16}}/>
@@ -280,7 +281,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
   const p=v.projects[i];
   const en=lang==="en";const hr=new Date().getHours();
   const hello=en?(hr<12?"Good morning":hr<18?"Good afternoon":"Good evening"):(hr<12?"Доброго ранку":hr<18?"Добрий день":"Добрий вечір");
-  const open=(sid:string,to:"w-proj"|"w-hours"|"w-media"="w-proj")=>{const k=v.projects.findIndex(x=>x.sid===sid);if(k>=0)setI(k);setTimeout(()=>document.getElementById(to)?.scrollIntoView({behavior:"smooth",block:"start"}),80)};
+  const open=(sid:string,to:"w-proj"|"w-hours"|"w-media"|"w-clock"="w-proj")=>{const k=v.projects.findIndex(x=>x.sid===sid);if(k>=0)setI(k);setTimeout(()=>document.getElementById(to)?.scrollIntoView({behavior:"smooth",block:"start"}),80)};
   const tile:React.CSSProperties={background:"#fff",borderRadius:14,padding:14,minWidth:0,boxShadow:"0 1px 3px #0001"};
   const tl:React.CSSProperties={display:"block",color:"#8e8e93",fontSize:13,fontWeight:500};
   const tb:React.CSSProperties={display:"block",fontSize:24,fontWeight:700,marginTop:4,letterSpacing:"-.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"};
@@ -304,6 +305,8 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
     <MyReceipts token={token} v={v} lang={lang}/>
     {v.reimb>0&&<small style={{display:"block",color:"#8e8e93",padding:"6px 8px 0"}}>{en?"Receipts paid with your own card are added to what you are owed.":"Чеки, оплачені твоєю карткою, додаються до того, що тобі винні."}</small>}
 
+    {v.shift&&(()=>{const pr=v.projects.find(x=>x.sid===v.shift!.sid);return <button onClick={()=>open(v.shift!.sid,"w-clock")} style={{...card,width:"100%",textAlign:"left",border:"2px solid #079455",cursor:"pointer",color:"#101828"}}>
+      🟢 <b>{en?"Shift running":"Зміна йде"}</b>{pr?` · ${pr.client}`:""} · {en?"since":"з"} {new Date(v.shift!.start).toLocaleTimeString(en?"en-US":"uk-UA",{hour:"numeric",minute:"2-digit"})} — <span style={{color:"#d92d20",fontWeight:700}}>{en?"tap to finish":"натисни, щоб закінчити"}</span></button>})()}
     {v.today.length>0&&<><h2 style={h2s}>{en?"Today":"Сьогодні"}</h2>
       <div style={{...card,marginTop:0,padding:0}}>{v.today.map((j,k)=><div key={k} style={{padding:14,borderTop:k?"1px solid #f2f2f7":"none"}}>
         <b style={{fontSize:17}}>{j.client}{j.time?` · ${j.time}`:""}</b>
@@ -311,6 +314,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
         {j.address&&<div style={{fontSize:14,color:"#667085",marginTop:2}}>📍 {j.address}</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
           {j.address&&<a style={act} href={`https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}`} target="_blank" rel="noreferrer">🧭 {en?"Route":"Маршрут"}</a>}
+          {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-clock")}>📍 {v.shift?.sid===j.sid?(en?"Finish work":"Закінчити роботу"):(en?"Start work":"Почав роботу")}</button>}
           {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-hours")}>⏱ {en?"Log hours":"Записати години"}</button>}
           {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-media")}>📷 {en?"Receipt":"Чек"}</button>}
         </div>
@@ -322,6 +326,47 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
       </div>)}</div></>}
     <h2 id="w-proj" style={h2s}>{en?"My jobs":"Мої об'єкти"}</h2>
     {v.projects.length>1&&<div style={{display:"flex",gap:6,marginTop:0,flexWrap:"wrap"}}>{v.projects.map((x,k)=><button key={x.sid} onClick={()=>setI(k)} style={{padding:"8px 12px",borderRadius:999,border:"none",fontWeight:700,background:k===i?"#2563eb":"#eef2f7",color:k===i?"#fff":"#101828",textAlign:"left",lineHeight:1.2}}>{x.client}{v.projects.filter(y=>y.client===x.client).length>1&&x.project?<small style={{display:"block",fontWeight:500,fontSize:12,opacity:.85}}>{String(x.project).trim().slice(0,28)}</small>:null}</button>)}</div>}
-    {p?<Project key={p.sid+lang} token={token} p={p} lang={lang} worker={v.worker}/>:<div style={card}>{L.none}</div>}
+    {p?<Project key={p.sid+lang} token={token} p={p} lang={lang} worker={v.worker} shift={v.shift}/>:<div style={card}>{L.none}</div>}
+  </div>;
+}
+
+// 📍 «Почав / Закінчив роботу» з GPS: години рахуються самі й ідуть власнику, як звичайний запис годин.
+function ShiftClock({token,sid,shift,en,address}:{token:string;sid:string;shift:WorkerView["shift"];en:boolean;address:string}){
+  const router=useRouter();
+  const [busy,setBusy]=useState(false);const [msg,setMsg]=useState("");const [lunch,setLunch]=useState(false);
+  const [need,setNeed]=useState(false);const [manual,setManual]=useState("");const [now,setNow]=useState(Date.now());
+  useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t)},[]);
+  const here=shift&&shift.sid===sid;const other=shift&&shift.sid!==sid;
+  const gps=()=>new Promise<{lat?:number;lng?:number;acc?:number}>(res=>{
+    if(!("geolocation" in navigator))return res({});
+    navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>res({}),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+  });
+  async function go(action:"clock_in"|"clock_out"){
+    setBusy(true);setMsg(en?"Getting location…":"Визначаю місце…");
+    try{
+      const g=await gps();
+      const r=await post({token,sid,action,...g,lunch,...(need&&manual?{hours:Number(manual)}:{})});
+      if(action==="clock_in")setMsg(g.lat!=null?(en?"✓ Started. Location saved.":"✓ Почав. Місце записано."):(en?"✓ Started (no GPS — location was not allowed).":"✓ Почав (без GPS — доступ до місця не дозволено)."));
+      else{setMsg(en?`✓ Done: ${r.hours} h sent.`:`✓ Готово: ${r.hours} год надіслано.`);setNeed(false);setManual("");setLunch(false)}
+      router.refresh();
+    }catch(e){const m=e instanceof Error?e.message:String(e);setMsg(m);if(/14/.test(m))setNeed(true)}finally{setBusy(false)}
+  }
+  const mins=here?Math.max(0,Math.round((now-new Date(shift!.start).getTime())/60000)):0;
+  const dur=`${Math.floor(mins/60)} ${en?"h":"год"} ${mins%60} ${en?"min":"хв"}`;
+  const startT=here?new Date(shift!.start).toLocaleTimeString(en?"en-US":"uk-UA",{hour:"numeric",minute:"2-digit"}):"";
+  const btn={display:"block",width:"100%",padding:16,borderRadius:14,border:"none",fontWeight:800,fontSize:18,color:"#fff",cursor:"pointer"} as const;
+  return <div id="w-clock" style={{...card,border:here?"2px solid #079455":undefined}}>
+    <h3 style={{marginTop:0}}>{en?"📍 Time clock":"📍 Робочий час"}</h3>
+    {other?<p style={{margin:0,color:"#b54708"}}>{en?"Your shift is running on another job. Finish it there first.":"Зміна йде на іншому об'єкті — спершу закінчи її там."}</p>
+    :here?<>
+      <p style={{margin:"0 0 10px",fontSize:16}}>🟢 {en?"Working since":"Працюєш з"} <b>{startT}</b> · <b>{dur}</b>{shift!.dist!=null&&shift!.dist>250?<span style={{color:"#b54708"}}> · {en?"far from the job address":"далеко від адреси об'єкта"}</span>:null}</p>
+      <label style={{display:"flex",gap:8,alignItems:"center",fontSize:15,marginBottom:8}}><input type="checkbox" checked={lunch} onChange={e=>setLunch(e.target.checked)} style={{width:20,height:20}}/>{en?"Subtract 30 min lunch":"Мінус 30 хв обід"}</label>
+      {need&&<input type="number" step="0.25" min="0.25" max="16" value={manual} onChange={e=>setManual(e.target.value)} placeholder={en?"hours actually worked":"скільки годин реально працював"} style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,marginBottom:8}}/>}
+      <button disabled={busy||(need&&!manual)} onClick={()=>go("clock_out")} style={{...btn,background:"#d92d20"}}>{busy?"…":en?"⏹ Finished work":"⏹ Закінчив роботу"}</button>
+    </>:<>
+      <p style={{margin:"0 0 10px",fontSize:14,color:"#667085"}}>{en?"Tap when you start and when you finish — hours are counted automatically. Your location is saved only at these two moments.":"Натисни, коли почав і коли закінчив, і години порахуються самі. Місце записується лише в ці два моменти."}{address?"":(en?" (No job address yet — location will be saved without checking.)":" (Адреси об'єкта нема — місце запишеться без перевірки.)")}</p>
+      <button disabled={busy} onClick={()=>go("clock_in")} style={{...btn,background:"#079455"}}>{busy?"…":en?"▶ Started work":"▶ Почав роботу"}</button>
+    </>}
+    {msg&&<p style={{margin:"8px 0 0",fontSize:14}}>{msg}</p>}
   </div>;
 }

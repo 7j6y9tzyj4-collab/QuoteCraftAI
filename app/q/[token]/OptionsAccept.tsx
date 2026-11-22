@@ -1,5 +1,6 @@
 "use client";
-import {useState} from "react";
+import {useRef,useState} from "react";
+import SignaturePad,{SigImg,type SigHandle} from "./SignaturePad";
 import type {QuoteLine} from "@/lib/sharedQuote";
 import ZelleBox from "./ZelleBox";
 
@@ -7,26 +8,28 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const r2=(n:number)=>Math.round(n*100)/100;
 
 // Сторінка клієнта: опційні позиції — галочками, сума перераховується; потім ім'я → Accept → (за бажанням) завдаток карткою.
-export default function OptionsAccept({token,optional,baseTotal,depositPct,accepted,acceptedName,acceptedAt,chosen,zelle}:{
+export default function OptionsAccept({token,optional,baseTotal,depositPct,accepted,acceptedName,acceptedAt,acceptedSig="",chosen,zelle}:{
   token:string;optional:QuoteLine[];baseTotal:number;depositPct:number;
-  accepted:boolean;acceptedName:string;acceptedAt:string;chosen?:number[];zelle:string;
+  accepted:boolean;acceptedName:string;acceptedAt:string;acceptedSig?:string;chosen?:number[];zelle:string;
 }){
   const [sel,setSel]=useState<number[]>(chosen||[]);
   const [name,setName]=useState("");
-  const [done,setDone]=useState(accepted?{name:acceptedName,at:acceptedAt}:null as null|{name:string;at:string});
+  const [done,setDone]=useState(accepted?{name:acceptedName,at:acceptedAt,sig:acceptedSig}:null as null|{name:string;at:string;sig?:string});
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
+  const pad=useRef<SigHandle>(null);
   const add=sel.reduce((a,i)=>a+(optional[i]?.total||0),0);
   const total=r2(baseTotal+add);
   const deposit=r2(total*depositPct/100);
   const toggle=(i:number)=>{if(done)return;setSel(s=>s.includes(i)?s.filter(x=>x!==i):[...s,i].sort((a,b)=>a-b))};
   async function accept(){
     if(!name.trim()){setErr("Please type your name.");return}
+    const sig=pad.current?.get()||null;if(!sig){setErr("Please sign in the box.");return}
     setBusy(true);setErr("");
     try{
-      const r=await fetch("/api/quote-accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,name:name.trim(),options:sel})});
+      const r=await fetch("/api/quote-accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,name:name.trim(),sig,options:sel})});
       const d=await r.json();if(!r.ok)throw new Error(d?.error||"Error");
-      setDone({name:name.trim(),at:d.accepted_at});
+      setDone({name:name.trim(),at:d.accepted_at,sig:sig||undefined});
     }catch(e){setErr(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
   }
   return <>
@@ -48,12 +51,13 @@ export default function OptionsAccept({token,optional,baseTotal,depositPct,accep
     </div>}
     {done?<>
       <div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>
-        ✓ Estimate accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""} — {money(total)}. Thank you — we will contact you to schedule the work.
+        ✓ Estimate accepted{done.name?` by ${done.name}`:""}{done.at?` on ${new Date(done.at).toLocaleDateString("en-US")}`:""} — {money(total)}. Thank you — we will contact you to schedule the work.<SigImg src={done.sig}/>
       </div>
       <ZelleBox zelle={zelle} amount={deposit}/>
     </>:<div className="noPrint" style={{marginTop:24,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
       <h3 style={{marginTop:0}}>Accept this estimate — {money(total)}</h3>
-      <p style={{fontSize:14,color:"#667085"}}>Type your name and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
+      <p style={{fontSize:14,color:"#667085"}}>Type your name, sign below and press Accept. This does not charge anything — we will contact you to confirm the schedule and deposit.</p>
+      <SignaturePad ref={pad}/>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your full name" style={{flex:"1 1 200px",padding:10,borderRadius:10,border:"1px solid #d0d5dd"}}/>
         <button className="primary" disabled={busy} onClick={accept}>{busy?"Sending…":"Accept estimate"}</button>

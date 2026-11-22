@@ -37,6 +37,12 @@ export async function POST(req:NextRequest){
       const opts=[...new Set((body.options as unknown[]).map(Number).filter(i=>Number.isInteger(i)&&i>=0&&i<optional.length))].sort((a,b)=>a-b);
       upd.data={...(data.data as object),chosenOptions:opts};
     }
+    // ✍️ підпис пальцем (PNG), якщо клієнт підписав
+    const sig=String(body?.sig||"");
+    if(sig){
+      if(!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(sig)||sig.length>300000)return NextResponse.json({error:"Invalid signature"},{status:400});
+      upd.data={...((upd.data as object)||(data.data as object)),sig,signedAt:accepted_at};
+    }
     const {error}=await supabaseAdmin.from("shared_quotes").update(upd).eq("token",token);
     if(error)throw error;
     try{
