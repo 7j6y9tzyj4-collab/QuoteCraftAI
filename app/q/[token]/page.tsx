@@ -10,7 +10,10 @@ import OptionsAccept from "./OptionsAccept";
 import InvoiceView,{type InvoiceData} from "./InvoiceView";
 import SignoffView from "./SignoffView";
 import {shopList} from "@/lib/shop";
-import {statementTotals,type Statement} from "@/lib/statement";
+import {statementTotals,dueNowOf,type Statement} from "@/lib/statement";
+import {stripeOn} from "@/lib/stripe";
+import {clientProjects,invoiceTokenFor} from "@/lib/clientPortal";
+import PayButton from "./PayButton";
 import {ownerSettings} from "@/lib/notify";
 import {acceptedAmounts} from "@/lib/sharedQuote";
 
@@ -23,14 +26,14 @@ export async function generateMetadata({params}:{params:Promise<{token:string}>}
   const {data}=await supabaseAdmin.from("shared_quotes").select("data").eq("token",token).maybeSingle();
   const d=(data?.data||{}) as any;
   const company=d.company||"Estimate";
-  const what=d.kind==="signoff"?`Work completion — ${d.project||"Project"}`:d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
+  const what=d.kind==="signoff"?`Work completion — ${d.project||"Project"}`:d.kind==="invoice"?`Invoice — ${d.project||"Project"}`:d.kind==="bundle"?"Your estimates":d.kind==="client"?`Your projects${d.client?` — ${d.client}`:""}`:d.kind==="change"?`Change Order #${d.no}${d.title?` — ${d.title}`:""}`:(d.project?`Estimate — ${d.project}`:"Estimate");
   const title=`${what} | ${company}`;
-  const description=d.kind==="signoff"?"Please review and confirm the completed work.":d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
+  const description=d.kind==="client"?"All your projects, invoices and balances in one place.":d.kind==="signoff"?"Please review and confirm the completed work.":d.kind==="invoice"?`Updated invoice${d.client?` for ${d.client}`:""}.`:d.client?`Prepared for ${d.client}. Tap to review and accept.`:"Tap to review and accept.";
   return {title,description,openGraph:{title,description,siteName:company,type:"website"},twitter:{card:"summary",title,description}};
 }
 
-export default async function SharedQuotePage({params}:{params:Promise<{token:string}>}){
-  const {token}=await params;
+export default async function SharedQuotePage({params,searchParams}:{params:Promise<{token:string}>;searchParams:Promise<Record<string,string|undefined>>}){
+  const {token}=await params;const sp=await searchParams;
     const ok=/^[0-9a-f-]{36}$/i.test(token);
   const {data,error}=ok
     ?await supabaseAdmin.from("shared_quotes").select("data,status,accepted_at,accepted_name,user_id").eq("token",token).maybeSingle()
@@ -61,8 +64,53 @@ export default async function SharedQuotePage({params}:{params:Promise<{token:st
         return {description:l.description,amount:Number(l.amount)||0,details:co?co.lines.filter(x=>Number(x.amount)||String(x.description||"").trim()).map(x=>({description:x.description,amount:Number(x.amount)||0})):undefined}}),
       pending:(st.changes||[]).filter(c=>c.status==="sent"||c.status==="viewed").map(c=>({no:c.no,title:c.title,total:c.lines.reduce((a,x)=>a+(Number(x.amount)||0),0),lines:c.lines.filter(x=>Number(x.amount)).map(x=>({description:x.description,amount:Number(x.amount)||0}))})),
       receipts:[...st.receipts].filter(r=>Number(r.amount)&&r.kind!=="deposit").map(r=>({date:r.date,store:r.store,items:r.items,amount:Number(r.amount)||0,photo:r.photoPath?signed.get(r.photoPath):undefined})),
-      payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||"",logo};
+      payments:st.payments.map(p=>({date:p.date,amount:Number(p.amount)||0,method:p.method})),totals:t,zelle:settings?.zelle||"",notes:st.notes||"",logo,
+      due:dueNowOf(st,t),payToken:stripeOn()?token:undefined,paid:sp?.paid==="1"};
     return <main className="shared"><ViewPing token={token}/><div className="sharedCard"><InvoiceView d={d}/></div></main>;
+  }
+  if((data.data as any)?.kind==="client"){
+    const c=data.data as any;
+    const list=(await clientProjects(data.user_id,c.client)).filter(x=>x.t.total>0.005||x.t.paid>0.005);
+    const toks=await Promise.all(list.map(x=>invoiceTokenFor(data.user_id,x.s,c.company||"",c.contact||"")));
+    const {data:open}=await supabaseAdmin.from("shared_quotes").select("token,data,status").eq("user_id",data.user_id).in("status",["sent","viewed"]);
+    const waiting=((open||[]) as any[]).filter(r=>{const k=r.data?.kind;return k!=="invoice"&&k!=="client"&&k!=="bundle"&&String(r.data?.client||"").trim().toLowerCase()===String(c.client||"").trim().toLowerCase()});
+    const bal=list.reduce((a,x)=>a+Math.max(0,x.t.balance),0);const now=list.reduce((a,x)=>a+x.due.now,0);
+    const active=list.filter(x=>x.t.balance>0.005);const done=list.filter(x=>x.t.balance<=0.005);
+    const row=(x:typeof list[number],i:number,tok:string)=><a key={i} href={`/q/${tok}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:16,borderRadius:14,border:"1px solid #d0d5dd",textDecoration:"none",color:"#101828"}}>
+      <span><b style={{display:"block",fontSize:17}}>{x.s.project||"Project"}</b>
+        <small style={{color:"#667085"}}>Total {money(x.t.total)} · Paid {money(x.t.paid)}</small></span>
+      <span style={{textAlign:"right",whiteSpace:"nowrap"}}>{x.t.balance>0.005?<><b style={{fontSize:18}}>{money(x.due.now)}</b><br/><small style={{color:"#667085"}}>{x.due.partial?`due now · balance ${money(x.t.balance)}`:"balance due"}</small></>:<b style={{color:"#067647"}}>✓ Paid</b>}<br/><span style={{color:"#2f6df6"}}>Open invoice ›</span></span>
+    </a>;
+    return (
+      <main className="shared"><ViewPing token={token}/>
+        <div className="sharedCard">
+          <div className="sharedHead"><div>
+            {logo&&<img src={logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{c.company}</span>
+            <h1>Your projects</h1>
+            {c.client&&<p>Client: <strong>{c.client}</strong></p>}
+            <p>Updated: {new Date().toLocaleDateString("en-US",{timeZone:"America/Chicago"})}</p>
+            {c.contact&&<p>{c.contact}</p>}
+          </div></div>
+          {sp?.paid==="1"&&<div style={{margin:"0 0 16px",padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>✓ Thank you! Your payment was received. It may take a minute to show here (bank transfers take a few business days).</div>}
+          {waiting.length>0&&<><h3>Waiting for your approval</h3><div style={{display:"grid",gap:10,marginBottom:20}}>
+            {waiting.map((r:any)=><a key={r.token} href={`/q/${r.token}`} style={{display:"flex",justifyContent:"space-between",gap:12,padding:16,borderRadius:14,border:"1px dashed #fdb022",textDecoration:"none",color:"#101828"}}>
+              <b>{r.data?.kind==="change"?`Change order #${r.data.no}${r.data.title?` — ${r.data.title}`:""}`:r.data?.kind==="signoff"?`Work completion — ${r.data.project||""}`:`Estimate — ${r.data?.project||""}`}</b><span style={{color:"#2f6df6",whiteSpace:"nowrap"}}>Review ›</span></a>)}
+          </div></>}
+          {active.length>0&&<><h3>Open invoices</h3><div style={{display:"grid",gap:10}}>{active.map((x,i)=>row(x,i,toks[list.indexOf(x)]))}</div></>}
+          {list.length>0&&<div className="sharedTotals" style={{marginTop:16}}>
+            <div><span>Total balance</span><span>{money(bal)}</span></div>
+            <div className="grand"><span>Due now</span><span>{money(now)}</span></div>
+            {now<bal-0.005&&<div><span style={{color:"#667085"}}>The rest is due when the work is finished</span><span/></div>}
+          </div>}
+          {now>0.005&&stripeOn()&&<PayButton token={token} now={now} full={bal}/>}
+          {now>0.005&&zelle&&<div style={{marginTop:16,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
+            <p style={{margin:0,fontSize:15}}>{stripeOn()?"Or send ":"Please send "}<b>{money(now)}</b> via <b>Zelle</b> to <b style={{userSelect:"all"}}>{zelle}</b>.</p>
+            <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. Thank you!</p></div>}
+          {done.length>0&&<><h3 style={{marginTop:24}}>Paid in full</h3><div style={{display:"grid",gap:10}}>{done.map((x,i)=>row(x,i,toks[list.indexOf(x)]))}</div></>}
+          {!list.length&&<p>No invoices yet.</p>}
+        </div>
+      </main>
+    );
   }
   if((data.data as any)?.kind==="bundle"){
     const b=data.data as any;

@@ -12,6 +12,7 @@ import {findClient,type Client} from "@/lib/clients";
 import {findCalcFor,planFromCalc} from "@/lib/priceHistory";
 import {acceptedAmounts,type QuoteSnapshot} from "@/lib/sharedQuote";
 import {invoiceLink} from "@/lib/invoiceLink";
+import {clientPortalLink} from "@/lib/clientLink";
 import ChangeOrders from "@/components/ChangeOrders";
 import ClientDecisions from "@/components/ClientDecisions";
 import PaymentSchedule from "@/components/PaymentSchedule";
@@ -37,7 +38,7 @@ import MonthReceiptsButton from "@/components/MonthReceiptsButton";
 import StoreImport from "@/components/StoreImport";
 import type {SavedCalc} from "@/lib/calcTypes";
 import {useScheduleJobs,upcomingStart,shortDate} from "@/lib/scheduleStarts";
-import {recAmt,pendingDeposits,payerFor,isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
+import {dueNowOf,recAmt,pendingDeposits,payerFor,isFresh,profitOf,normalizeCrew,jobRate,newStatement,statementTotals,OWN_ID,OWN_CATS,newOwnStatement,guessOwnCategory,crewSummary,statementStatus,STATUS_META,type StatusKey,type Statement,type Receipt,type Payment,type StatementLine} from "@/lib/statement";
 import {buildStatementPdf,statementFileName,buildReceiptsPdf,receiptsFileName,type ReceiptPhoto} from "@/lib/statementPdf";
 import {scanReceipt,shrinkImage,dataUrlToBlob,blobToDataUrl,imageSize} from "@/lib/receiptImage";
 
@@ -225,7 +226,19 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  const pulling=useRef(false);
  async function pullWorkerInbox(){
    if(!user||pulling.current)return;pulling.current=true;
-   try{await pullWorkerInboxInner();await pullMail()}finally{pulling.current=false}
+   try{await pullWorkerInboxInner();await pullMail();await pullStripe()}finally{pulling.current=false}
+ }
+ // ---- 💳 онлайн-оплати Stripe: сервер уже записав їх у проєкт; тут — страховка, якщо телефон перезаписав проєкт старою копією ----
+ async function pullStripe(){
+   if(!user)return;
+   const {data,error}=await supabase.from("stripe_payments").select("id,sid,payment").eq("user_id",user.id).gte("created_at",new Date(Date.now()-120*864e5).toISOString());
+   if(error||!data?.length)return;
+   let next=listRef.current.slice();let added=0;
+   for(const r of data as any[]){
+     const s=next.find(x=>x.id===r.sid);if(!s||s.payments.some(p=>p.id===r.id))continue;
+     const p=r.payment||{};next=next.map(x=>x.id===r.sid?{...x,payments:[...x.payments,{id:r.id,date:p.date||today(),amount:Number(p.amount)||0,method:p.method||"Card (online)"}],updatedAt:new Date().toISOString()}:x);added++;
+   }
+   if(added){persist(next);setMsg(`💳 Додано онлайн-оплат: ${added}.`)}
  }
  // ---- 📧 чеки з пошти (mail_receipts): впевнені — одразу в розрахунок, решта — «Розібрати» ----
  const [mailReview,setMailReview]=useState<any[]>([]);
@@ -1041,6 +1054,14 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <div><span>Разом</span><b>{money(t.total)}</b></div>
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>
+     {!cur.own&&t.balance>0.005&&<div className="noPrint" style={{alignItems:"center",gap:8}}>
+       <span>💵 Попросити зараз <small className="muted">(порожньо — весь залишок)</small></span>
+       <span style={{display:"flex",alignItems:"center",gap:6}}>$<input type="number" inputMode="decimal" min={0} step="0.01" style={{width:110,textAlign:"right"}}
+         key={cur.id+":"+(cur.dueNow?.at||"")} defaultValue={cur.dueNow?.amount?String(cur.dueNow.amount):""}
+         onBlur={e=>{const v=Number(e.target.value)||0;const prev=Number(cur.dueNow?.amount)||0;if(Math.abs(v-prev)<0.005)return;
+           update({dueNow:v>0?{amount:Math.round(v*100)/100,base:t.paid,at:new Date().toISOString()}:undefined})}}/></span>
+     </div>}
+     {!cur.own&&cur.dueNow&&(()=>{const d=dueNowOf(cur,t);return <div className="noPrint"><span className="muted">Клієнт бачить «Due now»{d.partial?", решта — після завершення":""}</span><b>{money(d.now)}</b></div>})()}
    </section>
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"0 4px 10px"}}><input type="checkbox" style={{width:"auto"}} checked={withPhotos} onChange={e=>setWithPhotos(e.target.checked)}/>Додати фото чеків у PDF</label>}
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
@@ -1050,6 +1071,12 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Посилання на рахунок: "+link);return}catch{}}
        try{await navigator.clipboard.writeText(link);setMsg("Посилання на рахунок скопійовано: "+link)}catch{setMsg("Посилання на рахунок: "+link)}
      }catch(e){setMsg("Не вдалося: "+(e instanceof Error?e.message:String(e)))}}}>🔗 Рахунок клієнту (посилання, завжди свіжі цифри)</button></div>}
+   {user&&!cur.own&&cur.client&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={async()=>{
+     try{const link=await clientPortalLink(user,cur.client);
+       const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+       if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Кабінет клієнта: "+link);return}catch{}}
+       try{await navigator.clipboard.writeText(link);setMsg(`Кабінет клієнта «${cur.client}» (усі його проєкти й залишки) скопійовано: `+link)}catch{setMsg("Кабінет клієнта: "+link)}
+     }catch(e){setMsg("Не вдалося: "+(e instanceof Error?e.message:String(e)))}}}>👤 Кабінет клієнта — усі проєкти {cur.client} одним посиланням</button></div>}
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<div className="actions noPrint" style={{marginTop:8}}><button className="secondary" disabled={busy} onClick={receiptsPdf}>📥 Скачати всі чеки проєкту (PDF)</button></div>}
    {inputs}
  </>;

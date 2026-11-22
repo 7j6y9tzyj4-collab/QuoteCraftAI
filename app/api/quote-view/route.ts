@@ -20,7 +20,7 @@ export async function POST(req:NextRequest){
     // 👀 сповіщення власнику: клієнт уперше відкрив посилання
     if(upd?.length){
       const d:any=data.data||{};const who=String(d.client||"Клієнт").trim();
-      const what=d.kind==="signoff"?"здачу роботи":d.kind==="invoice"?"рахунок":d.kind==="change"?"доплату":d.kind==="bundle"?"свої естімейти":"естімейт";
+      const what=d.kind==="signoff"?"здачу роботи":d.kind==="invoice"?"рахунок":d.kind==="change"?"доплату":d.kind==="bundle"?"свої естімейти":d.kind==="client"?"свій кабінет (усі проєкти)":"естімейт";
       await sendPush(data.user_id,{title:`👀 ${who} відкрив(ла) ${what}`,body:[d.project,d.kind==="change"?d.title:""].filter(Boolean).join(" · ")||"Посилання переглянуто",url:(d.kind==="invoice"||d.kind==="signoff")&&d.sid?`/?screen=pay&sid=${encodeURIComponent(d.sid)}`:"/",tag:`view-${token}`});
     }
     return NextResponse.json({ok:true});

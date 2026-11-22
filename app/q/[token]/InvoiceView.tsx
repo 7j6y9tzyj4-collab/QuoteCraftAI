@@ -1,15 +1,18 @@
+import PayButton from "./PayButton";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 
 export type InvoiceData={logo?:string;company:string;contact:string;client:string;project:string;date:string;
   labor:{description:string;amount:number;/** розбивка change order, що стоїть за цим рядком */details?:{description:string;amount:number}[]}[];
   /** change orders, надіслані клієнту, але ще не погоджені — в суму не входять */pending?:{no:number;title:string;total:number;lines:{description:string;amount:number}[]}[];receipts:{date:string;store:string;items:string;amount:number;photo?:string}[];
-  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number;fixed?:boolean;included?:boolean;matPlan?:number;matOver?:number};zelle:string;notes:string};
+  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number;fixed?:boolean;included?:boolean;matPlan?:number;matOver?:number};zelle:string;notes:string;
+  /** «Сплатити зараз»: now — скільки просимо зараз; partial — частина залишку */due?:{now:number;partial:boolean};
+  /** онлайн-оплата Stripe увімкнена — токен цього рахунку */payToken?:string;paid?:boolean};
 
 // Рахунок для клієнта: робота + матеріали за чеками − оплати = залишок. Цифри завжди свіжі з Оплат.
 /** рядок без ціни: «no charge» → Included, інакше «—» (ціна буде пізніше) */
 const amt=(x:{description:string;amount:number})=>x.amount?money(x.amount):/no charge/i.test(x.description)?"Included":"—";
 export default function InvoiceView({d}:{d:InvoiceData}){
-  const t=d.totals;
+  const t=d.totals;const due=d.due||{now:Math.max(0,t.balance),partial:false};const pay=due.now;
   return <>
     <div className="sharedHead"><div>
       {d.logo&&<img src={d.logo} alt="" style={{height:52,maxWidth:200,objectFit:"contain",display:"block",marginBottom:8}}/>}<span className="sharedEyebrow">{d.company}</span>
@@ -42,10 +45,14 @@ export default function InvoiceView({d}:{d:InvoiceData}){
         :<div><span>Materials</span><span>{money(t.materials)}</span></div>}
       <div><span>Total</span><span>{money(t.total)}</span></div>
       <div><span>Paid</span><span>−{money(t.paid)}</span></div>
-      <div className="grand"><span>{t.balance>=0?"Balance due":"Credit"}</span><span>{money(Math.abs(t.balance))}</span></div>
+      <div className={due.partial?"":"grand"}><span>{t.balance>=0?"Balance due":"Credit"}</span><span>{money(Math.abs(t.balance))}</span></div>
+      {due.partial&&<><div className="grand"><span>Due now</span><span>{money(due.now)}</span></div>
+        <div><span style={{color:"#667085"}}>The rest is due when the work is finished (final invoice at the end)</span><span/></div></>}
     </div>
-    {t.balance>0.005&&d.zelle&&<div style={{marginTop:16,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
-      <p style={{margin:0,fontSize:15}}>Please send <b>{money(t.balance)}</b> via <b>Zelle</b> to <b style={{userSelect:"all"}}>{d.zelle}</b>.</p>
+    {d.paid&&<div style={{marginTop:16,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>✓ Thank you! Your payment was received. It may take a minute to show here (bank transfers take a few business days).</div>}
+    {pay>0.005&&d.payToken&&<PayButton token={d.payToken} now={pay} full={Math.max(0,t.balance)}/>}
+    {pay>0.005&&d.zelle&&<div style={{marginTop:16,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
+      <p style={{margin:0,fontSize:15}}>{d.payToken?"Or send ":"Please send "}<b>{money(pay)}</b> via <b>Zelle</b> to <b style={{userSelect:"all"}}>{d.zelle}</b>.</p>
       <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. Thank you!</p></div>}
     {t.balance<=0.005&&<div style={{marginTop:16,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>✓ Paid in full. Thank you!</div>}
     {d.notes&&<p style={{whiteSpace:"pre-wrap",fontSize:13,color:"#667085",marginTop:16}}>{d.notes}</p>}

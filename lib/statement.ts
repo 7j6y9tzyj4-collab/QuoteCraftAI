@@ -70,6 +70,8 @@ export type Statement={
   matPlan?:number;
   /** коли попросив клієнта про відгук у Google */
   reviewAsked?:string;
+  /** «Сплатити зараз»: скільки просимо зараз (amount); base — скільки вже було оплачено в момент запиту (наступні оплати зменшують цю суму) */
+  dueNow?:{amount:number;base:number;at?:string};
 };
 
 export const DEFAULT_STATEMENT_NOTES="Copies of all store receipts are available on request. Payment can be made in cash, by check, or via Zelle. Thank you!";
@@ -178,4 +180,13 @@ export function payerFor(card:string|undefined,by:string|undefined,biz:string[])
   if(c&&biz.includes(c))return "biz";
   if(by)return c?by:"";       // помічник додав, картка не бізнесова → платив він; картка не прочиталась → уточнити
   return c?"":undefined;      // власник додав чек з чужою карткою — уточнити; без картки — як раніше (вважаємо бізнес)
+}
+
+/** скільки клієнт має заплатити зараз: «Сплатити зараз» мінус те, що вже прийшло після запиту; без запиту — весь залишок */
+export function dueNowOf(s:Statement,t=statementTotals(s)):{now:number;partial:boolean}{
+  const bal=Math.max(0,t.balance);
+  if(!s.dueNow||!(Number(s.dueNow.amount)>0))return {now:r2(bal),partial:false};
+  const left=Math.max(0,Number(s.dueNow.amount)-Math.max(0,t.paid-(Number(s.dueNow.base)||0)));
+  const now=r2(Math.min(left,bal));
+  return {now,partial:now<bal-0.005};
 }
