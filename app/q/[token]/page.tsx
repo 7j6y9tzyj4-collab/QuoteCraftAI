@@ -7,7 +7,7 @@ import TierAccept from "./TierAccept";
 import {PRELIMINARY_NOTE} from "@/lib/photoMeasurements";
 import ViewPing from "./ViewPing";
 import OptionsAccept from "./OptionsAccept";
-import InvoiceView,{type InvoiceData} from "./InvoiceView";
+import InvoiceView,{type InvoiceData,CARD_NOTE} from "./InvoiceView";
 import SignoffView from "./SignoffView";
 import {shopList} from "@/lib/shop";
 import {statementTotals,dueNowOf,type Statement} from "@/lib/statement";
@@ -105,7 +105,7 @@ export default async function SharedQuotePage({params,searchParams}:{params:Prom
           {now>0.005&&stripeOn()&&<PayButton token={token} now={now} full={bal}/>}
           {now>0.005&&zelle&&<div style={{marginTop:16,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
             <p style={{margin:0,fontSize:15}}>{stripeOn()?"Or send ":"Please send "}<b>{money(now)}</b> via <b>Zelle</b> to <b style={{userSelect:"all"}}>{zelle}</b>.</p>
-            <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. Thank you!</p></div>}
+            <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. {stripeOn()?"":CARD_NOTE} Thank you!</p></div>}
           {done.length>0&&<><h3 style={{marginTop:24}}>Paid in full</h3><div style={{display:"grid",gap:10}}>{done.map((x,i)=>row(x,i,toks[list.indexOf(x)]))}</div></>}
           {!list.length&&<p>No invoices yet.</p>}
         </div>

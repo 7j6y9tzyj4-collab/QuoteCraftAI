@@ -1,4 +1,6 @@
 import PayButton from "./PayButton";
+/** без підключеного Stripe: картка — за окремим посиланням, з комісією Stripe */
+export const CARD_NOTE="You can also pay by credit/debit card through a secure payment link (a 2.9% + $0.30 card processing fee applies) — just ask and we'll send it.";
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 
 export type InvoiceData={logo?:string;company:string;contact:string;client:string;project:string;date:string;
@@ -53,7 +55,7 @@ export default function InvoiceView({d}:{d:InvoiceData}){
     {pay>0.005&&d.payToken&&<PayButton token={d.payToken} now={pay} full={Math.max(0,t.balance)}/>}
     {pay>0.005&&d.zelle&&<div style={{marginTop:16,padding:16,borderRadius:14,border:"1px solid #d0d5dd"}}>
       <p style={{margin:0,fontSize:15}}>{d.payToken?"Or send ":"Please send "}<b>{money(pay)}</b> via <b>Zelle</b> to <b style={{userSelect:"all"}}>{d.zelle}</b>.</p>
-      <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. Thank you!</p></div>}
+      <p style={{margin:"6px 0 0",fontSize:13,color:"#667085"}}>Check or cash is also accepted. {d.payToken?"":CARD_NOTE} Thank you!</p></div>}
     {t.balance<=0.005&&<div style={{marginTop:16,padding:16,borderRadius:14,background:"#ecfdf3",color:"#067647"}}>✓ Paid in full. Thank you!</div>}
     {d.notes&&<p style={{whiteSpace:"pre-wrap",fontSize:13,color:"#667085",marginTop:16}}>{d.notes}</p>}
   </>;
