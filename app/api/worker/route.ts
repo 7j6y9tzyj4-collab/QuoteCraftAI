@@ -60,7 +60,7 @@ export async function POST(req:NextRequest){
         const dist=here&&site?Math.round(distM(here,site)):null;
         const {data:row,error}=await supabaseAdmin.from("worker_shifts").insert({token:link.token,user_id:link.user_id,sid,worker:link.worker,start_lat:lat,start_lng:lng,start_acc:acc,start_dist_m:dist,site_lat:site?.lat??null,site_lng:site?.lng??null}).select("id,start_at").single();
         if(error)throw error;
-        await notify(`▶ Почав роботу о ${tm(row.start_at)}${here?(dist!=null?` · 📍 ${distText(dist)}${dist>250?" ⚠️":""}`:" · 📍 GPS є"):" · без GPS"}`);
+        await notify(`▶ Почав роботу о ${tm(row.start_at)}${here?(dist!=null?` · 📍 ${distText(dist)}${dist>250?" ⚠️":""}`:" · 📍 GPS є"):" · ⚠️ без GPS"}`);
         return NextResponse.json({ok:true,shift:{id:row.id,sid,start:row.start_at,dist}});
       }
       if(!open)return NextResponse.json({error:"Зміну не почато."},{status:400});

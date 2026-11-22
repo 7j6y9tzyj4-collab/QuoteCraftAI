@@ -337,16 +337,24 @@ function ShiftClock({token,sid,shift,en,address}:{token:string;sid:string;shift:
   const [need,setNeed]=useState(false);const [manual,setManual]=useState("");const [now,setNow]=useState(Date.now());
   useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t)},[]);
   const here=shift&&shift.sid===sid;const other=shift&&shift.sid!==sid;
-  const gps=()=>new Promise<{lat?:number;lng?:number;acc?:number}>(res=>{
-    if(!("geolocation" in navigator))return res({});
-    navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>res({}),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+  // помилка GPS: 1 — доступ заборонено (треба увімкнути), 2/3 — нема сигналу / не встиг
+  const gps=()=>new Promise<{lat?:number;lng?:number;acc?:number;err?:number}>(res=>{
+    if(!("geolocation" in navigator))return res({err:2});
+    navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),e=>res({err:e.code||2}),{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
   });
-  async function go(action:"clock_in"|"clock_out"){
+  const [fails,setFails]=useState(0);const [denied,setDenied]=useState(false);
+  async function go(action:"clock_in"|"clock_out",noGps=false){
     setBusy(true);setMsg(en?"Getting location…":"Визначаю місце…");
     try{
-      const g=await gps();
+      const g0=noGps?{}:await gps();const {err,...g}=g0 as {lat?:number;lng?:number;acc?:number;err?:number};
+      // 📍 GPS обов'язковий для «Почав»: без місця не записуємо (після 2 невдалих спроб через слабкий сигнал — можна без GPS)
+      if(action==="clock_in"&&!noGps&&g.lat==null){
+        if(err===1){setDenied(true);setMsg("");return}
+        setFails(f=>f+1);setMsg(en?"Could not get your location (weak signal). Step outside or near a window and try again.":"Не вдалося визначити місце (слабкий сигнал). Вийди надвір або до вікна й спробуй ще раз.");return;
+      }
+      setDenied(false);
       const r=await post({token,sid,action,...g,lunch,...(need&&manual?{hours:Number(manual)}:{})});
-      if(action==="clock_in")setMsg(g.lat!=null?(en?"✓ Started. Location saved.":"✓ Почав. Місце записано."):(en?"✓ Started (no GPS — location was not allowed).":"✓ Почав (без GPS — доступ до місця не дозволено)."));
+      if(action==="clock_in"){setFails(0);setMsg(g.lat!=null?(en?"✓ Started. Location saved.":"✓ Почав. Місце записано."):(en?"✓ Started without location.":"✓ Почав без місця."))}
       else{setMsg(en?`✓ Done: ${r.hours} h sent.`:`✓ Готово: ${r.hours} год надіслано.`);setNeed(false);setManual("");setLunch(false)}
       router.refresh();
     }catch(e){const m=e instanceof Error?e.message:String(e);setMsg(m);if(/14/.test(m))setNeed(true)}finally{setBusy(false)}
@@ -364,8 +372,15 @@ function ShiftClock({token,sid,shift,en,address}:{token:string;sid:string;shift:
       {need&&<input type="number" step="0.25" min="0.25" max="16" value={manual} onChange={e=>setManual(e.target.value)} placeholder={en?"hours actually worked":"скільки годин реально працював"} style={{width:"100%",padding:10,borderRadius:10,border:"1px solid #d0d5dd",fontSize:16,marginBottom:8}}/>}
       <button disabled={busy||(need&&!manual)} onClick={()=>go("clock_out")} style={{...btn,background:"#d92d20"}}>{busy?"…":en?"⏹ Finished work":"⏹ Закінчив роботу"}</button>
     </>:<>
-      <p style={{margin:"0 0 10px",fontSize:14,color:"#667085"}}>{en?"Tap when you start and when you finish — hours are counted automatically. Your location is saved only at these two moments.":"Натисни, коли почав і коли закінчив, і години порахуються самі. Місце записується лише в ці два моменти."}{address?"":(en?" (No job address yet — location will be saved without checking.)":" (Адреси об'єкта нема — місце запишеться без перевірки.)")}</p>
+      <p style={{margin:"0 0 10px",fontSize:14,color:"#667085"}}>{en?"Tap when you start and when you finish — hours are counted automatically. Location must be on; it is saved only at these two moments.":"Натисни, коли почав і коли закінчив, і години порахуються самі. Потрібен доступ до місця — воно записується лише в ці два моменти."}{address?"":(en?" (No job address yet — location will be saved without checking.)":" (Адреси об'єкта нема — місце запишеться без перевірки.)")}</p>
       <button disabled={busy} onClick={()=>go("clock_in")} style={{...btn,background:"#079455"}}>{busy?"…":en?"▶ Started work":"▶ Почав роботу"}</button>
+      {denied&&<div style={{marginTop:10,padding:12,borderRadius:12,background:"#fffaeb",border:"1px solid #fedf89",fontSize:14,lineHeight:1.5}}>
+        <b>{en?"📍 Location is turned off for this page":"📍 Доступ до місця вимкнено"}</b>
+        <ol style={{margin:"6px 0 0",paddingLeft:18}}>{(en?["Open Settings → Privacy & Security → Location Services — turn it On.","Scroll down to Safari Websites → choose “While Using the App”.","Come back here and tap “▶ Started work” again."]
+          :["Відкрий Налаштування → Конфіденційність і безпека → Служби локації — увімкни.","Прокрути вниз до «Веб-сайти Safari» → вибери «Під час використання».","Повернись сюди й натисни «▶ Почав роботу» ще раз."]).map((t,k)=><li key={k}>{t}</li>)}</ol>
+        <small style={{color:"#667085"}}>{en?"Location is saved only when you tap Start and Finish — nobody tracks you in between.":"Місце записується тільки коли натискаєш «Почав» і «Закінчив» — між ними ніхто не стежить."}</small>
+      </div>}
+      {fails>=2&&!denied&&<button disabled={busy} onClick={()=>go("clock_in",true)} style={{...btn,marginTop:8,background:"#fff",color:"#b54708",border:"1px solid #b54708",fontSize:15}}>{en?"Start without location (the owner will see ⚠️)":"Почати без місця (власник побачить ⚠️)"}</button>}
     </>}
     {msg&&<p style={{margin:"8px 0 0",fontSize:14}}>{msg}</p>}
   </div>;
