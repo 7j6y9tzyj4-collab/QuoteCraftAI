@@ -1034,6 +1034,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </>}
    </section>}
 
+   {show("pay")&&!cur.own&&t.balance>0.005&&<DueNowPanel st={cur} t={t} onPatch={update}/>}
    {show("pay")&&<PaymentSchedule st={cur} contractTotal={plan?Math.round((plan.total+(cur.changes||[]).filter(c=>c.status==="accepted").reduce((a,c)=>a+c.lines.reduce((b,l)=>b+(Number(l.amount)||0),0),0))*100)/100:t.total} depositPct={linked?.depositPct} onPatch={update}/>}
 
    {show("crew")&&<div id="crew-panel"><CrewPanel st={cur} all={list} onPatch={update} forceOpen={apple}/></div>}
@@ -1054,14 +1055,6 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      <div><span>Разом</span><b>{money(t.total)}</b></div>
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>
-     {!cur.own&&t.balance>0.005&&<div className="noPrint" style={{alignItems:"center",gap:8}}>
-       <span>💵 Попросити зараз <small className="muted">(порожньо — весь залишок)</small></span>
-       <span style={{display:"flex",alignItems:"center",gap:6}}>$<input type="number" inputMode="decimal" min={0} step="0.01" style={{width:110,textAlign:"right"}}
-         key={cur.id+":"+(cur.dueNow?.at||"")} defaultValue={cur.dueNow?.amount?String(cur.dueNow.amount):""}
-         onBlur={e=>{const v=Number(e.target.value)||0;const prev=Number(cur.dueNow?.amount)||0;if(Math.abs(v-prev)<0.005)return;
-           update({dueNow:v>0?{amount:Math.round(v*100)/100,base:t.paid,at:new Date().toISOString()}:undefined})}}/></span>
-     </div>}
-     {!cur.own&&cur.dueNow&&(()=>{const d=dueNowOf(cur,t);return <div className="noPrint"><span className="muted">Клієнт бачить «Due now»{d.partial?", решта — після завершення":""}</span><b>{money(d.now)}</b></div>})()}
    </section>
    {cur.receipts.some(r=>r.photoPath||r.photoData)&&<label className="noPrint" style={{display:"flex",gap:8,alignItems:"center",margin:"0 4px 10px"}}><input type="checkbox" style={{width:"auto"}} checked={withPhotos} onChange={e=>setWithPhotos(e.target.checked)}/>Додати фото чеків у PDF</label>}
    <div className="actions noPrint"><button className="primary" disabled={busy} onClick={()=>pdf(false)}>Завантажити PDF</button><button className="secondary" disabled={busy} onClick={()=>pdf(true)}>Надіслати PDF</button></div>
@@ -1119,4 +1112,29 @@ function storeChain(store?:string){
   if(/amazon/.test(s))return "Amazon";
   if(/ace\b/.test(s))return "Ace Hardware";
   return "Інші";
+}
+
+// 💵 Скільки клієнт має заплатити ЗАРАЗ (робота ще не закінчена). В інвойсі: «Due now» + «решта після завершення».
+function DueNowPanel({st,t,onPatch}:{st:Statement;t:ReturnType<typeof statementTotals>;onPatch:(p:Partial<Statement>)=>void}){
+  const d=dueNowOf(st,t);const set=!!st.dueNow&&Number(st.dueNow.amount)>0;
+  const [v,setV]=useState(set?String(st.dueNow!.amount):"");
+  useEffect(()=>{setV(set?String(st.dueNow!.amount):"")},[st.id,st.dueNow?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save=(n:number)=>onPatch({dueNow:n>0&&n<t.balance-0.005?{amount:Math.round(n*100)/100,base:t.paid,at:new Date().toISOString()}:undefined});
+  return <section className="panel noPrint">
+    <h2 style={{margin:"0 0 6px"}}>💵 Скільки взяти зараз</h2>
+    <p className="muted" style={{margin:"0 0 12px",fontSize:14}}>Робота ще не закінчена, а гроші потрібні зараз? Впиши суму, і клієнт в інвойсі побачить, скільки платити зараз, а решту після завершення.</p>
+    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <span style={{fontSize:18,fontWeight:700}}>$</span>
+      <input type="number" inputMode="decimal" min={0} step="0.01" placeholder={`весь залишок ${money(t.balance)}`} value={v} onChange={e=>setV(e.target.value)} style={{flex:1,fontSize:18}}/>
+      <button className="primary" onClick={()=>save(Number(v)||0)}>Зберегти</button>
+    </div>
+    {set&&<button className="secondary" style={{marginTop:8,width:"100%"}} onClick={()=>{setV("");save(0)}}>Прибрати — просити весь залишок</button>}
+    <div style={{marginTop:12,padding:12,borderRadius:12,background:"#f2f4f7",fontSize:14}}>
+      <b>Клієнт зараз бачить в інвойсі:</b>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}><span>Balance due (весь залишок)</span><span>{money(t.balance)}</span></div>
+      {d.partial?<><div style={{display:"flex",justifyContent:"space-between",fontWeight:800,color:"#175cd3"}}><span>Due now (заплатити зараз)</span><span>{money(d.now)}</span></div>
+        <div className="muted">Решта {money(t.balance-d.now)} — після завершення роботи</div></>
+        :<div className="muted">Окремої суми «зараз» нема — просимо весь залишок.</div>}
+    </div>
+  </section>;
 }

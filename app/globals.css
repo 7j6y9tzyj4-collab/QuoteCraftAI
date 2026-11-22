@@ -225,3 +225,5 @@ body:has(.shell.app){overflow:hidden}
 .apHomeQuick button.on{outline:2px solid #2f6df6}
 .apActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .apActs a,.apActs button{border:none;border-radius:10px;background:rgba(47,109,246,.1);color:#2f6df6;font-weight:600;font-size:14px;padding:8px 12px;text-decoration:none}
+
+.shell.app.apple .total{color:var(--ink)}.shell.app.apple .total .grand{border-top-color:var(--line)}
