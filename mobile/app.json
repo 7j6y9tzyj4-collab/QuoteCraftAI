@@ -38,6 +38,12 @@
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "owner": "kvhouserenovations-team",
+    "extra": {
+      "eas": {
+        "projectId": "601b1ee0-1cd2-4d96-8129-53be1a371479"
+      }
+    }
   }
 }
