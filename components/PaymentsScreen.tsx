@@ -507,7 +507,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    if(skipped.length)parts.push(`⚠ Цей чек уже є — вдруге не додаю: ${skipped.join("; ")}.`);
    // «Мої витрати» показують один місяць: чек з іншого місяця — перемикаємо на його місяць, щоб його було видно
    if(target.own&&lastDate&&lastDate.slice(0,7)!==ownMonth){setOwnMonth(lastDate.slice(0,7));parts.push(`Чек за ${new Date(lastDate.slice(0,7)+"-15").toLocaleDateString("uk-UA",{month:"long",year:"numeric"})} — показую цей місяць.`)}
-   setMsg(parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):" Перевір суми з чеками."));
+   setMsg(parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):addedN||mergedN?" Перевір суми з чеками.":""));
    if(fileRef.current)fileRef.current.value="";
    if(camRef.current)camRef.current.value="";
    targetRef.current=null;
