@@ -1,0 +1,33 @@
+name: Mobile iOS → TestFlight
+# Збирає застосунок QuoteCraft у хмарі Expo і відправляє в TestFlight.
+# Потрібно: секрет EXPO_TOKEN і один перший запуск `eas build -p ios` вручну (створює сертифікати Apple).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["mobile/**"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Check Expo token
+        id: tok
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: if [ -z "$EXPO_TOKEN" ]; then echo "has=false" >> "$GITHUB_OUTPUT"; echo "EXPO_TOKEN is not set yet — skipping build"; else echo "has=true" >> "$GITHUB_OUTPUT"; fi
+      - run: npm ci
+        if: steps.tok.outputs.has == 'true'
+      - name: Build and submit to TestFlight
+        if: steps.tok.outputs.has == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest build --platform ios --profile production --non-interactive --no-wait --auto-submit

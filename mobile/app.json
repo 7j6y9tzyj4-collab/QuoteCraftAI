@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "QuoteCraft",
+    "slug": "quotecraft",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "quotecraft",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kvhouserenovation.quotecraft",
+      "infoPlist": {
+        "NSCameraUsageDescription": "QuoteCraft uses the camera to photograph receipts and job photos.",
+        "NSPhotoLibraryUsageDescription": "QuoteCraft lets you attach receipt and job photos from your library.",
+        "NSMicrophoneUsageDescription": "QuoteCraft records voice notes and client meetings when you ask it to.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.kvhouserenovation.quotecraft",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "QuoteCraft records when you arrive at and leave a job site so your work hours are counted automatically. Your location is not tracked anywhere else.",
+          "locationWhenInUsePermission": "QuoteCraft uses your location to confirm you are at the job site when you start and finish work.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}
