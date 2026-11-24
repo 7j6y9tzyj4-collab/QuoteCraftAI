@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from "next/server";
 import {timingSafeEqual} from "crypto";
 import {supabaseAdmin} from "@/lib/supabaseAdmin";
+import {sendPush} from "@/lib/push";
 
 export const runtime="nodejs";
 
@@ -46,6 +47,9 @@ export async function POST(req:NextRequest){
       if(!upErr)photos.push(path);
     }
     if(photos.length)await supabaseAdmin.from("site_leads").update({photos}).eq("id",lead.id);
+    // 🔔 сповіщення власнику про нову заявку
+    const what=str(b?.description,3000).split("\n")[0].slice(0,110);
+    await sendPush(owner,{title:`🌐 Нова заявка з сайту: ${name}`,body:[what,phone].filter(Boolean).join(" · "),url:"/?screen=home",tag:`lead-${lead.id}`});
     return NextResponse.json({ok:true,id:lead.id,photos:photos.length});
   }catch(e){
     return NextResponse.json({error:e instanceof Error?e.message:"Server error"},{status:500});
