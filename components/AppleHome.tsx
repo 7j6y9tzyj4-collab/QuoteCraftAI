@@ -192,7 +192,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
         return <button key={s.id} className="apRow" onClick={()=>onOpenProject(s.id)}>
           <span style={{flex:1,minWidth:0}}><b>{s.client||"Без імені"}</b><small>{s.project||companyName()}</small>
             <i className="apBar"><i style={{width:pct+"%"}}/></i></span>
-          <span className="apAmt">{t.balance>0.5?<><b className="apWarn">{money(t.balance)}</b><small>залишок</small><small>заплатили {money(t.paid)} з {money(t.total)}</small></>:<><b className="apGood">✓ Оплачено повністю</b><small>{money(t.total)}</small></>}</span>
+          <span className="apAmt">{t.balance>0.5?<><b className="apWarn">{money(t.balance)}</b><small>залишок</small><small>заплатили {money(t.paid)} з {money(t.total)}</small></>:t.total<=0.5?<><b style={{color:"#8e8e93"}}>Сума ще не внесена</b><small>додай роботу в проєкт</small></>:<><b className="apGood">✓ Оплачено повністю</b><small>{money(t.total)}</small></>}</span>
           <Chevron/>
         </button>})}</div>}
     </section>
