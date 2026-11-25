@@ -1,5 +1,6 @@
 "use client";
 import {useMemo,useState} from "react";
+import {createPortal} from "react-dom";
 import {HELP,type HelpTopic} from "@/lib/helpDocs";
 
 // ❓ Довідка: кнопка в шапці → теми для поточного екрана, пошук, «Запитати» (AI відповідає з довідки).
@@ -26,7 +27,8 @@ export default function HelpPanel({screen}:{screen:string}){
   }
   return <>
     <button onClick={()=>setOpen(true)} aria-label="Довідка" style={{width:40,height:40,borderRadius:20,background:"rgba(255,255,255,.14)",color:"#fff",fontSize:20,fontWeight:900,flex:"none"}}>?</button>
-    {open&&<div className="noPrint" style={{position:"fixed",inset:0,zIndex:100,background:"rgba(16,24,40,.45)",display:"flex",alignItems:"flex-end"}} onClick={()=>setOpen(false)}>
+    {/* вікно малюємо прямо в body: шапка в режимі Apple «скляна» (blur), і fixed-вікно всередині неї стискалось до розміру шапки */}
+    {open&&createPortal(<div className="noPrint" style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(16,24,40,.45)",display:"flex",alignItems:"flex-end"}} onClick={()=>setOpen(false)}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",width:"100%",maxWidth:720,margin:"0 auto",maxHeight:"88dvh",overflowY:"auto",borderRadius:"20px 20px 0 0",padding:"16px 16px max(20px,env(safe-area-inset-bottom))",color:"#101828"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:20}}>❓ Довідка</b><button onClick={()=>setOpen(false)} style={{background:"#f2f4f7",borderRadius:10,padding:"6px 12px",fontWeight:800}}>✕</button></div>
         <div style={{display:"flex",gap:6,marginTop:10}}>
@@ -50,6 +52,6 @@ export default function HelpPanel({screen}:{screen:string}){
           {fbMsg&&<small style={{display:"block",marginTop:6}}>{fbMsg}</small>}
         </div>
       </div>
-    </div>}
+    </div>,document.body)}
   </>;
 }

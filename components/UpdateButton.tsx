@@ -23,6 +23,8 @@ export default function UpdateButton(){
     const t=setInterval(check,5*60*1000);
     return()=>{on=false;document.removeEventListener("visibilitychange",onVis);clearInterval(t)};
   },[]);
+  // у застосунку на iPhone кнопка потрібна лише тоді, коли на сайті справді є нова версія — інакше вона тільки займає місце
+  if(!fresh&&typeof window!=="undefined"&&(window as unknown as {ReactNativeWebView?:unknown}).ReactNativeWebView)return null;
   return <button onClick={()=>window.location.reload()} title="Оновити програму"
     style={{borderRadius:13,padding:"10px 12px",fontWeight:800,background:fresh?"#12b76a":"#2f6df6",color:"#fff",whiteSpace:"nowrap"}}>
     🔄 {fresh?"Нова версія":"Оновити"}
