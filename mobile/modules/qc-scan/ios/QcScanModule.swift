@@ -2,10 +2,13 @@ import ExpoModulesCore
 import SwiftUI
 import UIKit
 import RoomPlan
+import VisionKit
 
 // Вбудований LiDAR-сканер: QuoteCraft (сайт у WebView) створює заявку з токеном → застосунок відкриває сканер →
 // після «Готово» план, кадри й 3D-точки самі відправляються на сервер за цим токеном. Окремий застосунок і код не потрібні.
 public final class QcScanModule: Module {
+  private var docDelegate: DocScanDelegate?
+
   public func definition() -> ModuleDefinition {
     Name("QcScan")
 
@@ -14,11 +17,43 @@ public final class QcScanModule: Module {
       return false
     }
 
+    // сканер чеків/документів з автообрізанням країв
+    AsyncFunction("scanDocument") { (promise: Promise) in
+      DispatchQueue.main.async {
+        self.presentDocScan(promise: promise)
+      }
+    }
+
     AsyncFunction("scan") { (token: String, api: String, promise: Promise) in
       DispatchQueue.main.async {
         self.present(token: token, api: api, promise: promise)
       }
     }
+  }
+
+  @MainActor
+  private func presentDocScan(promise: Promise) {
+    guard VNDocumentCameraViewController.isSupported else {
+      promise.resolve(["ok": false, "message": "unsupported", "pages": [String]()] as [String: Any])
+      return
+    }
+    guard let top = appContext?.utilities?.currentViewController() else {
+      promise.resolve(["ok": false, "message": "no-view", "pages": [String]()] as [String: Any])
+      return
+    }
+    let delegate = DocScanDelegate { [weak self] pages, error in
+      self?.docDelegate = nil
+      if let pages {
+        promise.resolve(["ok": true, "message": "", "pages": pages] as [String: Any])
+      } else {
+        promise.resolve(["ok": false, "message": error ?? "cancelled", "pages": [String]()] as [String: Any])
+      }
+    }
+    docDelegate = delegate
+    let vc = VNDocumentCameraViewController()
+    vc.delegate = delegate
+    vc.modalPresentationStyle = .fullScreen
+    top.present(vc, animated: true, completion: nil)
   }
 
   @MainActor
