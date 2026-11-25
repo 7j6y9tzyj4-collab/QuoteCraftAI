@@ -267,7 +267,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const s=lst.find(x=>x.id===sid);if(!s)return null;
    const p=row.payload||{};
    if(lst.some(x=>findDuplicate({date:p.date,store:p.store,amount:Number(p.amount)||0,receiptNo:p.receiptNo},x.receipts||[])))return lst;
-   const rc:Receipt={id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath||undefined,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:s.own?undefined:payerFor(p.card,undefined,cardList()),src:"mail",why:why??(row.reason||undefined),...(s.own?{category:guessOwnCategory(p.items||"")}:{})};
+   const rc:Receipt={id:p.id||uid(),date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath||undefined,receiptNo:p.receiptNo||undefined,card:p.card||undefined,codes:p.codes||undefined,full:p.full||undefined,paidBy:s.own?undefined:payerFor(p.card,undefined,cardList()),src:"mail",why:why??(row.reason||undefined),...(s.own?{category:guessOwnCategory(p.items||"")}:{})};
    return lst.map(x=>x.id===sid?{...x,receipts:[...x.receipts,rc].sort(byDate),updatedAt:new Date().toISOString()}:x);
  }
  async function pullMail(){
@@ -320,7 +320,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(!w){w={id:uid(),name:who,rate:rateOf(it.token)};crew=[...crew,w]}
        s={...s,crew,workLog:[...(s.workLog||[]),{id:it.id,date:us(p.date),workerId:w.id,hours:Number(p.hours)||0,note:p.note||undefined,by:who,at:it.created_at}]};sum[k].h+=Number(p.hours)||0;
      }else if(it.kind==="receipt"){
-       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||it.id,date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,card:p.card||undefined,paidBy:p.paidBy||payerFor(p.card,who,cardList()),by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
+       if(!s.receipts.some(r=>r.id===p.id))s={...s,receipts:[...s.receipts,{id:p.id||it.id,date:p.date||today(),store:p.store||"",items:p.items||"",amount:Number(p.amount)||0,photoPath:p.photoPath,receiptNo:p.receiptNo||undefined,card:p.card||undefined,codes:p.codes||undefined,full:p.full||undefined,paidBy:p.paidBy||payerFor(p.card,who,cardList()),by:who,at:it.created_at}].sort(byDate)};sum[k].r++;
      }else if(it.kind==="photo"){
        if(!(s.photos||[]).some(x=>x.id===p.id))s={...s,photos:[...(s.photos||[]),{id:p.id||it.id,path:p.path,date:us(p.date),by:who,note:p.note||undefined,at:it.created_at}]};sum[k].p++;
      }
@@ -477,7 +477,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        if(!res.ok)throw new Error(d?.error||"AI error");
        const hash=await imageHash(p.dataUrl).catch(()=>"");
        const card=String(d.card_last4||"").replace(/\D/g,"").slice(-4);
-       const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash,card:card||undefined,paidBy:target.own?undefined:payerFor(card,undefined,cardList())};
+       const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash,card:card||undefined,codes:String(d.codes||"").slice(0,900)||undefined,full:String(d.all_items||"").slice(0,600)||undefined,paidBy:target.own?undefined:payerFor(card,undefined,cardList())};
        // 0) такий самий чек уже є в ІНШОМУ проєкті (будь-якого клієнта) → питаємо, щоб не задвоїти витрати
        const other=listRef.current.filter(x=>x.id!==target.id).map(x=>({x,r:findDuplicate(info,x.receipts||[])})).find(o=>o.r);
        if(other&&!confirm(`Цей чек уже є в іншому проєкті:\n${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)}\nу «${other.x.client||"Без імені"}${other.x.project?` — ${other.x.project}`:""}».\n\nДодати його ще й сюди? (Скасувати — не додавати)`)){

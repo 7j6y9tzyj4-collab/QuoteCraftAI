@@ -1,5 +1,6 @@
 "use client";
 import HelperFresh from "@/components/HelperFresh";
+import FindPurchase from "@/components/FindPurchase";
 import {useEffect,useMemo,useState} from "react";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
@@ -119,6 +120,7 @@ export default function AppleHome({user,statements,clients=[],draftLabel,inbox,o
     <div className="apHomeQuick">
       {([["rec","📷","Чек"],["crew","⏱","Години"],["pay","💵","Оплата"]] as [PTab,string,string][]).map(([k,ic,l])=><button key={k} className={quick===k?"on":""} onClick={()=>{setMoreP(false);if(k!=="rec"&&v.active.length===1&&!v.rest.length){onOpenProject(v.active[0].s.id,k);return}setQuick(quick===k?"":k)}}><span>{ic}</span>{l}</button>)}
     </div>
+    <FindPurchase onOpenProject={sid=>onOpenProject(sid,"rec")}/>
     {quick&&<div className="apCard" style={{marginTop:10}}>
       <div className="apRow" style={{display:"block"}}><small>{quick==="rec"?"До якого проєкту чек?":quick==="crew"?"На якому проєкті години?":"Від кого оплата?"}</small></div>
       {v.active.length===0&&<div className="apRow"><small>Немає активних проєктів.</small></div>}

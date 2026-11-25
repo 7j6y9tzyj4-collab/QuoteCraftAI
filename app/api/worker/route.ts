@@ -105,7 +105,7 @@ export async function POST(req:NextRequest){
       const {data:cs}=await supabaseAdmin.from("user_settings").select("company").eq("user_id",link.user_id).maybeSingle();
       const card=String((r as any).card_last4||"").replace(/\D/g,"").slice(-4);
       const biz=cardList(String((cs as any)?.company?.cards||""));
-      const draft={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence,card,
+      const draft={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence,card,codes:String((r as any).codes||"").slice(0,900)||undefined,full:String((r as any).all_items||"").slice(0,600)||undefined,
         paidBy:card&&biz.includes(card)?"biz":card?link.worker:""};
       // дублікати: у всіх проєктах власника + чеки, що вже чекають у вхідних
       let dup="";
@@ -180,7 +180,7 @@ export async function POST(req:NextRequest){
       }
       let r={date:"",store:"",items:"",total:0,receipt_no:"",confidence:0};
       try{if(process.env.OPENAI_API_KEY&&(await aiGuard(req,"worker-receipt",0.008,link.user_id)).ok)r=await parseReceiptAI(photo)}catch{/* збережемо фото без суми */}
-      const payload={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence};
+      const payload={id,date:r.date||isoToday(),store:r.store||"",items:r.items||"",amount:Number(r.total)||0,receiptNo:r.receipt_no||"",photoPath:path,confidence:r.confidence,codes:String((r as any).codes||"").slice(0,900)||undefined,full:String((r as any).all_items||"").slice(0,600)||undefined};
       const {error}=await supabaseAdmin.from("worker_inbox").insert({...base,kind:"receipt",payload});
       if(error)throw error;
       await notify(`🧾 Додав чек${payload.store?` ${payload.store}`:""}${payload.amount?` $${payload.amount.toFixed(2)}`:""} — перевір суму`);

@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 // Фото чека → дата, магазин, перелік, сума (спільне для /api/parse-receipt і посилання помічника).
-export type ParsedReceipt={date:string;store:string;items:string;total:number;receipt_no:string;confidence:number;box:{x:number;y:number;w:number;h:number};/** назва роботи / PO, якщо надрукована */job?:string;/** останні 4 цифри картки, якою платили */card_last4?:string};
+export type ParsedReceipt={date:string;store:string;items:string;total:number;receipt_no:string;confidence:number;box:{x:number;y:number;w:number;h:number};/** артикули/штрих-коди всіх рядків чека через пробіл — для пошуку «де я це купив» */codes?:string;/** усі товари чека короткими назвами (без обрізання до 120 символів) */all_items?:string;/** назва роботи / PO, якщо надрукована */job?:string;/** останні 4 цифри картки, якою платили */card_last4?:string};
 export async function parseReceiptAI(photo:string):Promise<ParsedReceipt>{
     const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
     const model=process.env.OPENAI_MODEL||"gpt-4.1-mini";
@@ -14,6 +14,8 @@ export async function parseReceiptAI(photo:string):Promise<ParsedReceipt>{
           "Return the purchase date as MM/DD/YYYY, the store name (e.g. Home Depot, Menards, Floor & Decor, Lowe's), a short English list of the items (product names shortened to what they are, with quantity in parentheses when more than 1, comma separated, max ~120 characters), and the final total paid including tax.",
           "If it is a return/refund, make total negative. If a value is unreadable, use an empty string or 0 and lower confidence.",
           "Also return box: the bounding rectangle of the paper receipt itself inside the photo, as fractions of the image width/height (x,y = top-left corner, w,h = width,height, all between 0 and 1). Include the whole receipt from store logo to the last printed line; if the receipt fills the photo, return 0,0,1,1.",
+          "Also return codes: every product code printed on the item lines (SKU, UPC, item/model number — digits or letters+digits, exactly as printed, without spaces inside one code), separated by single spaces, in receipt order, max 60 codes; empty string if none are printed. Do not include prices, quantities, phone numbers, card or store numbers.",
+          "Also return all_items: the short English names of ALL item lines (brand + what it is + size/color when printed, quantity in parentheses when more than 1), comma separated, max ~500 characters — unlike items, do not drop lines to fit.",
           "Also return receipt_no: the receipt / transaction / order number printed on it (digits and letters only as printed, empty string if none).",
           "Also return job: the job name / PO / project name printed on the receipt (e.g. after JOB NAME, PO#, PROJECT), or an empty string.",
           "Also return card_last4: the last 4 digits of the payment card printed on the receipt (e.g. from XXXXXXXXXXXX1234, ************1234, ending in 1234), or an empty string if paid by cash or not printed.",
@@ -35,12 +37,14 @@ export async function parseReceiptAI(photo:string):Promise<ParsedReceipt>{
           items:{type:"string"},
           total:{type:"number"},
           receipt_no:{type:"string"},
+          codes:{type:"string"},
+          all_items:{type:"string"},
           job:{type:"string"},
           card_last4:{type:"string"},
           confidence:{type:"number",minimum:0,maximum:1},
           box:{type:"object",additionalProperties:false,properties:{x:{type:"number"},y:{type:"number"},w:{type:"number"},h:{type:"number"}},required:["x","y","w","h"]}
         },
-        required:["date","store","items","total","receipt_no","job","card_last4","confidence","box"]
+        required:["date","store","items","total","receipt_no","codes","all_items","job","card_last4","confidence","box"]
       }}}
     });
     const raw=completion.choices[0]?.message?.content;
