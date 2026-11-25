@@ -20,6 +20,14 @@ export async function POST(req:NextRequest){
     const uid=await owner(req);if(!uid)return NextResponse.json({error:"Увійди в QuoteCraft"},{status:401});
     const b=await req.json();
     if(b?.test){const n=await sendPush(uid,{title:"🔔 QuoteCraft",body:"Сповіщення працюють. Так прийде, коли Андрій щось додасть.",url:"/",tag:"test"});return NextResponse.json({ok:n>0,sent:n})}
+    // застосунок на iPhone: токен Expo замість веб-підписки
+    if(b?.expoToken){
+      const tok=String(b.expoToken);
+      if(!/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,80}\]$/.test(tok))return NextResponse.json({error:"Bad token"},{status:400});
+      const {error}=await supabaseAdmin.from("push_subs").upsert({endpoint:"expo:"+tok,user_id:uid,sub:{expo:tok},ua:String(req.headers.get("user-agent")||"").slice(0,200),created_at:new Date().toISOString()},{onConflict:"endpoint"});
+      if(error)throw error;
+      return NextResponse.json({ok:true});
+    }
     const sub=b?.sub;const endpoint=String(sub?.endpoint||"");
     if(!/^https:\/\//.test(endpoint)||!sub?.keys?.p256dh||!sub?.keys?.auth)return NextResponse.json({error:"Bad subscription"},{status:400});
     const {error}=await supabaseAdmin.from("push_subs").upsert({endpoint,user_id:uid,sub,ua:String(req.headers.get("user-agent")||"").slice(0,200),created_at:new Date().toISOString()},{onConflict:"endpoint"});

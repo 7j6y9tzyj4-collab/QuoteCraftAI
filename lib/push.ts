@@ -29,11 +29,29 @@ export async function sendPush(userId:string,msg:PushMsg){
   try{
     const {data:subs}=await supabaseAdmin.from("push_subs").select("endpoint,sub").eq("user_id",userId);
     if(!subs?.length)return 0;
+    const url=msg.url||"/?screen=pay";
+    let sent=0;
+    // застосунок QuoteCraft на iPhone (APNs через Expo): підписка виду {expo:"ExponentPushToken[…]"}
+    const expo=subs.filter((s:any)=>s.sub?.expo);
+    if(expo.length){
+      try{
+        const r=await fetch("https://exp.host/--/api/v2/push/send",{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+          body:JSON.stringify(expo.map((s:any)=>({to:s.sub.expo,title:msg.title,body:msg.body,sound:"default",data:{url}})))});
+        const j=await r.json().catch(()=>null);
+        const res:any[]=Array.isArray(j?.data)?j.data:[];
+        await Promise.all(expo.map(async(s:any,i:number)=>{
+          const t=res[i];
+          if(t?.status==="ok")sent++;
+          else if(t?.details?.error==="DeviceNotRegistered")await supabaseAdmin.from("push_subs").delete().eq("endpoint",s.endpoint);
+        }));
+      }catch{}
+    }
+    const web=subs.filter((s:any)=>!s.sub?.expo);
+    if(!web.length)return sent;
     const k=await vapidKeys();
     webpush.setVapidDetails("https://quotecraftai-app.vercel.app",k.publicKey,k.privateKey);
-    const payload=JSON.stringify({title:msg.title,body:msg.body,url:msg.url||"/?screen=pay",tag:msg.tag});
-    let sent=0;
-    await Promise.all(subs.map(async(s:any)=>{
+    const payload=JSON.stringify({title:msg.title,body:msg.body,url,tag:msg.tag});
+    await Promise.all(web.map(async(s:any)=>{
       try{await webpush.sendNotification(s.sub,payload,{TTL:60*60*24});sent++}
       catch(e:any){if(e?.statusCode===404||e?.statusCode===410)await supabaseAdmin.from("push_subs").delete().eq("endpoint",s.endpoint)}
     }));

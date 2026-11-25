@@ -14,6 +14,9 @@ export async function registerSW(){
   if(typeof navigator==="undefined"||!("serviceWorker" in navigator))return null;
   try{return await navigator.serviceWorker.register("/sw.js")}catch{return null}
 }
+// застосунок QuoteCraft на iPhone: справжні сповіщення через сам застосунок (не Web Push)
+type NativeWin={ReactNativeWebView?:{postMessage(m:string):void};__QC_NATIVE_PUSH?:boolean};
+const nativePush=()=>{if(typeof window==="undefined")return null;const w=window as unknown as NativeWin;return w.ReactNativeWebView&&w.__QC_NATIVE_PUSH?w.ReactNativeWebView:null};
 async function authHeader(){const {data:{session}}=await supabase.auth.getSession();return session?{Authorization:`Bearer ${session.access_token}`}:null}
 
 export default function PushSetup({user,compact}:{user:User|null;compact?:boolean}){
@@ -21,8 +24,26 @@ export default function PushSetup({user,compact}:{user:User|null;compact?:boolea
   const [msg,setMsg]=useState("");
   const [busy,setBusy]=useState(false);
   const [hidden,setHidden]=useState(false);
+  const [nativeTok,setNativeTok]=useState("");
+  useEffect(()=>{
+    const rn=nativePush();if(!rn||!user)return;
+    const f=async(e:Event)=>{
+      const d=(e as CustomEvent<{granted:boolean;denied:boolean;token:string}>).detail;if(!d)return;
+      setBusy(false);
+      if(d.granted&&d.token){
+        setNativeTok(d.token);
+        const h=await authHeader();if(!h)return;
+        const r=await fetch("/api/push",{method:"POST",headers:{"Content-Type":"application/json",...h},body:JSON.stringify({expoToken:d.token})}).catch(()=>null);
+        if(r?.ok)setSt("on");else{setSt("off");setMsg("Не вдалося зберегти — спробуй ще раз.")}
+      }else if(d.granted){setSt("off");setMsg("Телефон не видав ключ сповіщень — спробуй ще раз трохи згодом.")}
+      else setSt(d.denied?"denied":"off");
+    };
+    window.addEventListener("qc-push",f);rn.postMessage("qc:push:status");
+    return()=>window.removeEventListener("qc-push",f);
+  },[user?.id]);
   useEffect(()=>{(async()=>{
     try{if(compact&&localStorage.getItem("qc_push_hide")==="1")setHidden(true)}catch{}
+    if(nativePush())return;
     if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){setSt(isIOS()&&!standalone()?"need-home":"unsupported");return}
     if(Notification.permission==="denied"){setSt("denied");return}
     const reg=await registerSW();const sub=await reg?.pushManager.getSubscription();
@@ -35,6 +56,7 @@ export default function PushSetup({user,compact}:{user:User|null;compact?:boolea
 
   async function enable(){
     setBusy(true);setMsg("");
+    const rn=nativePush();if(rn){rn.postMessage("qc:push:on");return}
     try{
       const perm=await Notification.requestPermission();
       if(perm!=="granted"){setSt(perm==="denied"?"denied":"off");return}
@@ -55,6 +77,11 @@ export default function PushSetup({user,compact}:{user:User|null;compact?:boolea
   }
   async function disable(){
     setBusy(true);
+    if(nativePush()){
+      try{const h=await authHeader();if(h&&nativeTok)await fetch("/api/push",{method:"DELETE",headers:{"Content-Type":"application/json",...h},body:JSON.stringify({endpoint:"expo:"+nativeTok})});
+        setSt("off");setMsg("Вимкнено на цьому телефоні.")}finally{setBusy(false)}
+      return;
+    }
     try{const reg=await navigator.serviceWorker.getRegistration();const sub=await reg?.pushManager.getSubscription();
       if(sub){const h=await authHeader();if(h)await fetch("/api/push",{method:"DELETE",headers:{"Content-Type":"application/json",...h},body:JSON.stringify({endpoint:sub.endpoint})});await sub.unsubscribe()}
       setSt("off");setMsg("Вимкнено на цьому телефоні.")}finally{setBusy(false)}
