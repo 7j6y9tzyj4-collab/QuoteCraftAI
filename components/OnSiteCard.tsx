@@ -35,7 +35,7 @@ export default function OnSiteCard({names,onLog}:{names:(sid:string)=>string;onL
       return <div key={s.id} style={{padding:"4px 0 10px",borderTop:i?"1px solid #b2ddff":"none",marginTop:i?10:0}}>
         <b style={{display:"block",fontSize:17}} data-notr>{here?"⏱":"⏹"} {title}</b>
         <div style={{fontSize:15,margin:"4px 0 8px",color:"#175cd3",fontWeight:600}}>
-          {here?<>На об'єкті з {hm(s.first)} · минуло {dur(end-s.first)}</>:<>Були з {hm(s.first)} до {hm(s.out)} · {dur(s.out-s.first)}</>}
+          {here?<>На об’єкті з {hm(s.first)} · минуло {dur(end-s.first)}</>:<>Були з {hm(s.first)} до {hm(s.out)} · {dur(s.out-s.first)}</>}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <input type="number" inputMode="decimal" step="0.25" min="0.25" max="16" value={hours} onChange={e=>setEdit({...edit,[s.id]:e.target.value})} style={{width:84,padding:"10px",borderRadius:10,border:"1px solid #84caff",fontSize:16,fontWeight:700}} aria-label="години"/>
@@ -43,7 +43,7 @@ export default function OnSiteCard({names,onLog}:{names:(sid:string)=>string;onL
           <button className="primary" onClick={()=>{const h=Math.round((Number(hours)||0)*4)/4;if(h<=0)return;onLog({sid:s.id,hours:h,date:new Date(s.first).toLocaleDateString("sv-SE"),note:`📍 ${hm(s.first)}–${hm(end)}`});done(s.id)}} style={{flex:1,minWidth:150}}>✓ Записати мої години</button>
           <button onClick={()=>done(s.id)} style={{background:"transparent",color:"#667085",fontSize:14,padding:"8px 6px"}}>сховати</button>
         </div>
-        <small className="muted" style={{display:"block",marginTop:6}}>{here?"Відлік іде сам. Записати можна зараз або коли поїдете — прийде нагадування.":"Час пораховано за приїздом і від'їздом. Відніміть обід, якщо треба."}</small>
+        <small className="muted" style={{display:"block",marginTop:6}}>{here?"Відлік іде сам. Записати можна зараз або коли поїдете — прийде нагадування.":"Час пораховано за приїздом і від’їздом. Відніміть обід, якщо треба."}</small>
       </div>})}
   </section>;
 }
