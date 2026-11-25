@@ -131,7 +131,7 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     return `Room ${Math.round(L)}"×${Math.round(W)}", ceiling ${Math.round(H)}". `+lines.join(" ")+(views.length?" "+views.join(" ")+" For these photos do NOT guess the wall — use the given one.":"")+(known.length?` Already placed precisely by the LiDAR scan (do NOT return these again): ${known.join("; ")}. Return only items that are NOT in this list (e.g. plants, rugs, lamps, wall AC, curtains, radiators, lights, mirrors, towel bars).`:"");
   }
   // 📡 LiDAR-скан з iPhone: веб створює токен → відкриває додаток QuoteCraft Scan → чекає payload у scan_inbox
-  const [scanWait,setScanWait]=useState<{rid:string;token:string;pin:string}|null>(null);
+  const [scanWait,setScanWait]=useState<{rid:string;token:string;pin:string;native?:boolean}|null>(null);
   const [scanMsg,setScanMsg]=useState("");
   const [drawRoom,setDrawRoom]=useState("");
   const scanTimer=useRef<ReturnType<typeof setInterval>|null>(null);
@@ -144,7 +144,11 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
     const pin=String(Math.floor(100000+Math.random()*900000));
     const {error}=await supabase.from("scan_inbox").insert({token,pin,user_id:user.id,survey_id:sRef.current.id,room_id:rid});
     if(error){setScanMsg("Скан: "+error.message+(/scan_inbox/.test(error.message)?" (таблиця scan_inbox ще не створена)":""));return}
-    setScanWait({rid,token,pin});setScanMsg("");
+    // у застосунку QuoteCraft на iPhone з LiDAR сканер вбудований: відкривається одразу, без другого застосунку і без коду
+    const w=window as unknown as {ReactNativeWebView?:{postMessage(m:string):void};__QC_NATIVE_SCAN?:boolean};
+    const native=!!(w.ReactNativeWebView&&w.__QC_NATIVE_SCAN);
+    setScanWait({rid,token,pin,native});setScanMsg("");
+    if(native)w.ReactNativeWebView!.postMessage("qc:scan:"+token);
     const started=Date.now();
     scanTimer.current=setInterval(async()=>{
       if(Date.now()-started>20*60e3){stopScanWait();setMsg("Скан не прийшов за 20 хв — спробуй ще раз.");return}
@@ -183,6 +187,14 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
   useEffect(()=>()=>{if(scanTimer.current)clearInterval(scanTimer.current)},[]);
+  // вбудований сканер закрився без результату (скасували або помилка) — не чекаємо 20 хв
+  useEffect(()=>{
+    const f=(e:Event)=>{const d=(e as CustomEvent<{token:string;ok:boolean;message:string}>).detail;if(!d||d.ok)return;
+      stopScanWait();setScanMsg(d.message==="cancelled"?"":d.message==="unsupported"?"Скан: цей iPhone не має LiDAR.":"Скан: "+d.message);
+      supabase.from("scan_inbox").delete().eq("token",d.token).then(()=>{})};
+    window.addEventListener("qc-scan-done",f);return()=>window.removeEventListener("qc-scan-done",f);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
   async function roomPhotosData(room:Room,max:number,side=1400){
     const photos:string[]=[];
     for(const p of room.photos.slice(0,max)){
@@ -350,11 +362,14 @@ export default function SurveyEditor({survey,user,clientId,tasks,onChange,onBack
           <button className="secondary" disabled={busy||!!scanWait} onClick={()=>startScan(r.id)} title="Відкриває додаток QuoteCraft Scan на iPhone (LiDAR). Після сканування розміри, двері/вікна і сантехніка з'являться тут самі.">📡 Сканувати LiDAR</button>
           {scanMsg&&<span className="muted" style={{fontSize:12,alignSelf:"center",color:/Скан:|Увійди/.test(scanMsg)?"#b42318":undefined}}>{scanMsg}</span>}
           {scanWait?.rid===r.id&&<div style={{flexBasis:"100%",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",fontSize:13,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:12,padding:"8px 10px"}}>
-            <div style={{flex:1,minWidth:200}}>
+            {scanWait.native?<div style={{flex:1,minWidth:200}}>
+              <div>📡 Сканер відкривається… Обійди кімнату і натисни «Готово» — розміри з’являться тут самі.</div>
+              <div className="muted" style={{fontSize:12}}>⏳ Чекаю скан…</div>
+            </div>:<div style={{flex:1,minWidth:200}}>
               <div>Відкрий на iPhone <b>QuoteCraft Scan</b> — він сам побачить цю кімнату. Скануй → «Відправити» → повернись сюди.</div>
               <div className="muted" style={{fontSize:12,marginTop:4}}>Перший раз (прив'язка iPhone) — введи там код: <b style={{fontSize:18,letterSpacing:3,color:"#1d4ed8"}}>{scanWait.pin.slice(0,3)} {scanWait.pin.slice(3)}</b></div>
               <div className="muted" style={{fontSize:12}}>⏳ Чекаю скан… заявка діє 20 хв.</div>
-            </div>
+            </div>}
             <button type="button" onClick={stopScanWait} style={{background:"transparent",color:"#b42318",fontWeight:700}}>скасувати</button>
           </div>}
           {!!r.photos.length&&<button className="secondary" disabled={busy} onClick={()=>makePlan(r.id,"uk",true)} title="AI подивиться фото і розставить сантехніку, дзеркало, світло, кольори стін і підлоги на план і 3D">{busy?"Дивлюсь…":"🏠 Розставити з фото"}</button>}

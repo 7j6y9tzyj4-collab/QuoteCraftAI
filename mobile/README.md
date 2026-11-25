@@ -11,3 +11,7 @@
     npx eas-cli@latest build -p ios --auto-submit
 
 Далі збірки йдуть самі з GitHub (секрет `EXPO_TOKEN`), коли змінюється папка `mobile/`.
+
+LiDAR-сканер кімнати вбудований (`modules/qc-scan`, Apple RoomPlan, iOS 17+): кнопка «📡 Сканувати LiDAR» на сайті
+шле `qc:scan:<token>` у застосунок, той відкриває сканер і сам відправляє план на `/api/scan-import`.
+Після змін у `modules/` чи `app.json` потрібна нова збірка (`eas build`), зміни сайту — ні.

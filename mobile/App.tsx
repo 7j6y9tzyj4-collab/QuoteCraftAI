@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { ActivityIndicator, AppState, Linking, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import { WebView as RNWebView, type WebViewProps } from "react-native-webview";
 // типи бібліотеки зводять пропси до never без параметра — задаємо явно
-const WebView = RNWebView as unknown as ComponentType<WebViewProps>;
+const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: unknown }>;
 import { BASE, clearToken, getToken, setToken, stopGeofences, syncGeofences, type GeoStatus } from "./geo";
+import { scanRoom, scanSupported } from "./modules/qc-scan";
+
+// сайт дізнається, що LiDAR-сканер вбудований у застосунок (iPhone з LiDAR), і не просить відкривати QuoteCraft Scan
+const NATIVE_FLAGS = `window.__QC_NATIVE_SCAN=${scanSupported() ? "true" : "false"};true;`;
 
 // QuoteCraft на телефоні: всі екрани — це сайт (оновлюється без App Store),
 // а застосунок додає те, чого сайт не вміє: геозони об'єктів для помічника.
@@ -20,6 +24,8 @@ export default function App() {
   const [link, setLink] = useState("");
   const [err, setErr] = useState("");
   const [geo, setGeo] = useState<GeoStatus | null>(null);
+  const web = useRef<{ injectJavaScript(js: string): void } | null>(null);
+  const scanning = useRef(false);
 
   useEffect(() => { (async () => {
     const m = (await SecureStore.getItemAsync(MODE_KEY)) as Mode;
@@ -46,6 +52,16 @@ export default function App() {
   }
   async function signOut() { await stopGeofences(); await clearToken(); await SecureStore.deleteItemAsync(MODE_KEY); setTok(""); setGeo(null); setMode(null); }
 
+  // «📡 Сканувати LiDAR» на сайті → вбудований сканер; результат відправляється на сервер, сайт забирає його сам
+  async function startScan(tok: string) {
+    if (!/^[0-9a-f]{32}$/.test(tok) || scanning.current) return;
+    scanning.current = true;
+    let r: { ok: boolean; message?: string } = { ok: false, message: "error" };
+    try { r = await scanRoom(tok, BASE); } catch (e) { r = { ok: false, message: e instanceof Error ? e.message : String(e) }; }
+    scanning.current = false;
+    web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-scan-done",{detail:${JSON.stringify({ token: tok, ok: r.ok, message: r.message || "" })}}));true;`);
+  }
+
   if (!ready) return <View style={s.center}><ActivityIndicator /></View>;
 
   if (!mode) return <SafeAreaView style={s.wrap}><StatusBar style="dark" />
@@ -68,7 +84,7 @@ export default function App() {
 
   return <SafeAreaView style={s.wrap}><StatusBar style="dark" />
     {banner && <View style={s.banner}><Text style={s.bannerT}>{banner.t}</Text><Pressable onPress={banner.f}><Text style={s.bannerA}>{banner.a}</Text></Pressable></View>}
-    <WebView source={{ uri }} style={{ flex: 1 }}
+    <WebView ref={web} source={{ uri }} style={{ flex: 1 }}
       originWhitelist={["https://*"]}
       geolocationEnabled javaScriptEnabled domStorageEnabled
       sharedCookiesEnabled allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false}
@@ -83,7 +99,13 @@ export default function App() {
         Linking.openURL(u).catch(() => {});
         return false;
       }}
-      onMessage={e => { if (e.nativeEvent.data === "qc:signout") signOut(); if (e.nativeEvent.data === "qc:geo") refreshGeo(); }}
+      injectedJavaScriptBeforeContentLoaded={NATIVE_FLAGS}
+      onMessage={e => {
+        const d = e.nativeEvent.data;
+        if (d === "qc:signout") signOut();
+        else if (d === "qc:geo") refreshGeo();
+        else if (d.startsWith("qc:scan:") && e.nativeEvent.url.startsWith(BASE)) startScan(d.slice(8));
+      }}
       renderLoading={() => <View style={s.center}><ActivityIndicator /></View>} startInLoadingState />
     <Pressable onLongPress={signOut} delayLongPress={1500} style={s.foot}><Text style={s.footT}>{mode === "worker" ? (geo === "on" ? "📍 Години рахуються автоматично" : "QuoteCraft") : "QuoteCraft"} · утримуй, щоб вийти з режиму</Text></Pressable>
   </SafeAreaView>;

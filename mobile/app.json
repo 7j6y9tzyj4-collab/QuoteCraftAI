@@ -11,7 +11,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.kvhouserenovation.quotecraft",
       "infoPlist": {
-        "NSCameraUsageDescription": "QuoteCraft uses the camera to photograph receipts and job photos.",
+        "NSCameraUsageDescription": "QuoteCraft uses the camera to photograph receipts and job photos, and to scan rooms with LiDAR for measurements.",
         "NSPhotoLibraryUsageDescription": "QuoteCraft lets you attach receipt and job photos from your library.",
         "NSMicrophoneUsageDescription": "QuoteCraft records voice notes and client meetings when you ask it to.",
         "ITSAppUsesNonExemptEncryption": false
