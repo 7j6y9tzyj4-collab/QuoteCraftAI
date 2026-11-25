@@ -7,9 +7,10 @@ import { WebView as RNWebView, type WebViewProps } from "react-native-webview";
 const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: unknown }>;
 import { BASE, clearToken, getToken, setToken, stopGeofences, syncGeofences, type GeoStatus } from "./geo";
 import { scanRoom, scanSupported } from "./modules/qc-scan";
+import { onPushOpen, pushEnable, pushStatus, type PushState } from "./push";
 
 // сайт дізнається, що LiDAR-сканер вбудований у застосунок (iPhone з LiDAR), і не просить відкривати QuoteCraft Scan
-const NATIVE_FLAGS = `window.__QC_NATIVE_SCAN=${scanSupported() ? "true" : "false"};true;`;
+const NATIVE_FLAGS = `window.__QC_NATIVE_SCAN=${scanSupported() ? "true" : "false"};window.__QC_NATIVE_PUSH=true;true;`;
 
 // QuoteCraft на телефоні: всі екрани — це сайт (оновлюється без App Store),
 // а застосунок додає те, чого сайт не вміє: геозони об'єктів для помічника.
@@ -26,6 +27,7 @@ export default function App() {
   const [geo, setGeo] = useState<GeoStatus | null>(null);
   const web = useRef<{ injectJavaScript(js: string): void } | null>(null);
   const scanning = useRef(false);
+  const [start, setStart] = useState("");
 
   useEffect(() => { (async () => {
     const m = (await SecureStore.getItemAsync(MODE_KEY)) as Mode;
@@ -62,6 +64,13 @@ export default function App() {
     web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-scan-done",{detail:${JSON.stringify({ token: tok, ok: r.ok, message: r.message || "" })}}));true;`);
   }
 
+  const tellPush = (st: PushState) => web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-push",{detail:${JSON.stringify(st)}}));true;`);
+  // натиснули на сповіщення → відкриваємо потрібний екран сайту
+  useEffect(() => {
+    if (mode !== "owner") return;
+    return onPushOpen(path => setStart(path + (path.includes("?") ? "&" : "?") + "app=1&t=" + Date.now()));
+  }, [mode]);
+
   if (!ready) return <View style={s.center}><ActivityIndicator /></View>;
 
   if (!mode) return <SafeAreaView style={s.wrap}><StatusBar style="dark" />
@@ -76,7 +85,7 @@ export default function App() {
     </View>
   </SafeAreaView>;
 
-  const uri = mode === "worker" ? `${BASE}/w/${token}?app=1` : `${BASE}/?app=1`;
+  const uri = mode === "worker" ? `${BASE}/w/${token}?app=1` : start ? BASE + start : `${BASE}/?app=1`;
   const banner = mode === "worker" && geo && geo !== "on" ? (
     geo === "no-permission" ? { t: "📍 Щоб години рахувались самі, дозволь доступ до місця «Завжди».", a: "Відкрити налаштування", f: () => Linking.openSettings() }
       : geo === "no-sites" ? { t: "📍 Поки немає об'єктів з адресою — години записуй кнопкою.", a: "Оновити", f: refreshGeo }
@@ -105,6 +114,8 @@ export default function App() {
         if (d === "qc:signout") signOut();
         else if (d === "qc:geo") refreshGeo();
         else if (d.startsWith("qc:scan:") && e.nativeEvent.url.startsWith(BASE)) startScan(d.slice(8));
+        else if (d === "qc:push:status") pushStatus().then(tellPush);
+        else if (d === "qc:push:on") pushEnable().then(tellPush);
       }}
       renderLoading={() => <View style={s.center}><ActivityIndicator /></View>} startInLoadingState />
     <Pressable onLongPress={signOut} delayLongPress={1500} style={s.foot}><Text style={s.footT}>{mode === "worker" ? (geo === "on" ? "📍 Години рахуються автоматично" : "QuoteCraft") : "QuoteCraft"} · утримуй, щоб вийти з режиму</Text></Pressable>
