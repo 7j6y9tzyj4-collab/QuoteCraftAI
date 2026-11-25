@@ -12,6 +12,7 @@ import BackupPanel from "@/components/BackupPanel";
 import AwaitingReplies from "@/components/AwaitingReplies";
 import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
+import {syncOwnerGeo} from "@/lib/nativeApp";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
 import AutoTranslate from "@/components/AutoTranslate";
@@ -211,6 +212,8 @@ export default function QuoteCraftApp(){
  const [payOpenFlash,setPayOpenFlash]=useState<string|null>(null); // id запису, який підсвітити (новий від помічника) // відкрити розрахунок з картки клієнта
  // 👷 нове від помічника (позначка) + відкриття з push-сповіщення (/?screen=pay&sid=…)
  const {sum:inbox}=useWorkerInbox(user);
+ // застосунок на iPhone: передаємо адреси активних проєктів — він нагадає «Ви приїхали до клієнта»
+ useEffect(()=>{if(!user?.id)return;const t=setTimeout(()=>{void supabase.auth.getSession().then(({data})=>{if(data.session)void syncOwnerGeo(data.session.access_token)})},4000);return()=>clearTimeout(t)},[user?.id]);
  useEffect(()=>{void registerSW();
    try{const q=new URLSearchParams(location.search);if(q.get("screen")==="pay"){const sid=q.get("sid");if(sid)setPayOpenId(sid);setScreen("pay");history.replaceState(null,"","/")}}catch{}
  },[]);

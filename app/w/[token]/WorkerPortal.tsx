@@ -1,5 +1,6 @@
 "use client";
 import StoreLinks from "@/components/StoreLinks";
+import {nativeDocScan} from "@/lib/nativeApp";
 import {useEffect,useRef,useState} from "react";
 import {useRouter} from "next/navigation";
 import type {WorkerView,WorkerProject} from "@/lib/workerView";
@@ -135,7 +136,7 @@ function Project({token,p,lang,worker,shift}:{token:string;p:WorkerProject;lang:
     <div id="w-media" style={card}>
       <h3 style={{marginTop:0}}>{L.media}</h3>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        <button disabled={!!busy||!!draft} onClick={()=>rec.current?.click()} style={{...big,background:"#2563eb",color:"#fff"}}>{busy==="receipt"?L.reading:L.rec}</button>
+        <button disabled={!!busy||!!draft} onClick={()=>{const scan=nativeDocScan();if(scan)void scan.then(fs=>{if(fs.length){const dt=new DataTransfer();dt.items.add(fs[0]);void upload(dt.files,"receipt")}});else rec.current?.click()}} style={{...big,background:"#2563eb",color:"#fff"}}>{busy==="receipt"?L.reading:L.rec}</button>
         <button disabled={!!busy} onClick={()=>ph.current?.click()} style={{...big,background:"#7a5af8",color:"#fff"}}>{busy==="photo"?L.sending:L.photo}</button>
       </div>
       <input ref={rec} type="file" accept="image/*" capture="environment" hidden onChange={e=>upload(e.target.files,"receipt")}/>

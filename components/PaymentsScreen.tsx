@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useRef,useState,type DragEvent} from "react";
+import {nativeDocScan} from "@/lib/nativeApp";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
@@ -548,9 +549,16 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    window.addEventListener("paste",onPaste);
    return()=>window.removeEventListener("paste",onPaste);
  });
+ // у застосунку на iPhone — сканер документів (сам обрізає краї, можна кілька чеків підряд); у браузері — звичайна камера
+ function openCam(){
+   const scan=nativeDocScan();
+   if(!scan){camRef.current?.click();return}
+   const target=targetRef.current;
+   void scan.then(files=>{if(files.length)void addReceiptPhotos(files,target,true);else targetRef.current=null});
+ }
  function quickReceipt(id:string){
    targetRef.current=id;setPicking(false);
-   camRef.current?.click();
+   openCam();
  }
 
  // ---------- Пакет чеків: кілька фото / PDF (1 сторінка = 1 чек) → перегляд → «Додати всі» ----------
@@ -883,7 +891,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        <p className="muted" style={{marginTop:0}}>Інструменти й матеріали, які купуєш для себе (не для клієнта). Чеки — так само: фото, пакет PDF або вручну.</p>
        <label>Місяць<input type="month" value={ownMonth} onChange={e=>e.target.value&&setOwnMonth(e.target.value)}/></label>
        <div className="actions" style={{marginTop:10}}>
-         <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю…":"📷 Чек"}</button>
+         <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;openCam()}}>{busy?"Читаю…":"📷 Чек"}</button>
          <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет (фото / PDF)</button>
          <button className="secondary" onClick={()=>{const [y,m]=ownMonth.split("-");const now=new Date();const d=now.toLocaleDateString("sv-SE").startsWith(ownMonth)?today():`${m}/01/${y}`;update({receipts:[...cur.receipts,{id:uid(),date:d,store:"",items:"",amount:0}]})}}>＋ Вручну</button>
        </div>
@@ -980,7 +988,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    {show("rec")&&<section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
      <div className="head"><FoldTitle open={fRec||apple} onToggle={tRec} title="Чеки на матеріали" summary={`${cur.receipts.length} чек. · ${money(t.receipts)}${pendingDeposits(cur).length?` · ⏳ депозит ${money(pendingDeposits(cur).reduce((a,r)=>a+(Number(r.amount)||0),0))}`:""}`}/><button className="add" onClick={()=>{setRec(true);update({receipts:[...cur.receipts,{id:uid(),date:today(),store:"",items:"",amount:0}]})}}>＋ Вручну</button></div>
      <div className="actions" style={{marginTop:10}}>
-       <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;camRef.current?.click()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
+       <button className="primary" disabled={busy} onClick={()=>{targetRef.current=cur.id;openCam()}}>{busy?"Читаю чеки…":"📷 Сфотографувати чек"}</button>
        <button className="secondary" disabled={busy||!!batch} onClick={()=>fileRef.current?.click()}>📦 Пакет чеків (фото / PDF)</button>
        <button className="secondary" disabled={busy} onClick={()=>pasteReceipt(cur.id)}>📋 Скріншот</button>
      </div>
