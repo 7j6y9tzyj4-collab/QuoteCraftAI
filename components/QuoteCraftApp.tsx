@@ -13,6 +13,7 @@ import AwaitingReplies from "@/components/AwaitingReplies";
 import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
 import {syncOwnerGeo} from "@/lib/nativeApp";
+import OnSiteCard from "@/components/OnSiteCard";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
 import AutoTranslate from "@/components/AutoTranslate";
@@ -1861,6 +1862,8 @@ export default function QuoteCraftApp(){
  return <div className={`shell app${ui.text==="large"?" large":""}${biz?" biz":""}${apple?" apple":""}`}><AutoTranslate on={ui.lang==="en"} strip={biz||apple}/>{needSetup&&!ui.onboarded&&user&&<Onboarding user={user} ui={ui} saveUi={saveUi} onDone={()=>{setNeedSetup(false);setCompanyTick(t=>t+1)}} onTry={p=>{clearCalcFields();setCalcItems([]);setCalcPrompt(p);setScreen("calc");void generateCalc(undefined,p)}}/>}
   <header><div><strong>{(biz||apple)&&companyName()!=="Your Company"?companyName():"QuoteCraft AI"}</strong><small>{biz?"Estimates · Jobs · Payments":"Real AI estimate parsing"}</small></div><div style={{display:"flex",gap:8,alignItems:"center"}}><HelpPanel screen={screen}/><UpdateButton/></div></header>
   <main>
+   {(screen==="home"||screen==="pay")&&user&&<OnSiteCard names={sid=>{const s=payStatements.find(x=>x.id===sid);return s?`${s.client||""}${s.project?` — ${s.project}`:""}`:""}}
+     onLog={p=>{(window as unknown as {__qcPendingHours?:unknown}).__qcPendingHours=p;setPayOpenTab("crew");setPayOpenFlash(null);setPayOpenId(p.sid);setScreen("pay");setTimeout(()=>window.dispatchEvent(new Event("qc-log-hours")),300)}}/>}
    {screen==="home"&&apple&&<AppleHome user={user} statements={payStatements} inbox={inbox} clients={clients} onStatements={setPayStatements} awaitingSlot={<AwaitingReplies user={user} clients={clients} calcs={calcSaved} onOpenCalc={openCalc}/>}
       dueSlot={<PaymentsDue embed user={user} statements={payStatements} clients={clients} zelle={ownerPrefs.zelle} onOpen={id=>{setPayOpenId(id);setScreen("pay")}}/>}
       draftLabel={calcItems.length>0&&!calcSavedId?(calcClient||calcProject||"поточний розрахунок"):""}

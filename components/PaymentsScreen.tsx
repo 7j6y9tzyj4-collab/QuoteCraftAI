@@ -228,6 +228,20 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    return done.length?"✓ Записано: "+done.join("; "):"Нічого не записано.";
  }
 
+ // ⏱ картка «Ви на об'єкті» (застосунок, геозони) → записати години власника в проєкт
+ useEffect(()=>{
+   if(!ready)return;
+   const take=()=>{
+     const w=window as unknown as {__qcPendingHours?:{sid:string;hours:number;date:string;note:string}|null};
+     const p=w.__qcPendingHours;if(!p)return;w.__qcPendingHours=null;
+     if(!listRef.current.some(s=>s.id===p.sid)){setToast("⚠ Не знайшов цей проєкт — запишіть години вручну.");return}
+     const text=applyVoice([{type:"hours",project_id:p.sid,date:p.date,hours:p.hours,worker:"",amount:0,method:"",store:"",items:"",note:p.note,confidence:1}]);
+     setMsg(text);setToast(text);
+   };
+   take();window.addEventListener("qc-log-hours",take);return()=>window.removeEventListener("qc-log-hours",take);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[ready]);
+
  // ---- 👷 що надіслав помічник за посиланням (worker_inbox) → у розрахунки ----
  const pulling=useRef(false);
  async function pullWorkerInbox(){
