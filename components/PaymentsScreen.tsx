@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,type DragEvent} from "react";
 import {createPortal} from "react-dom";
 import {nativeDocScan} from "@/lib/nativeApp";
+import {isMatFeeLine,matFeePctOfLine} from "@/lib/matFee";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
 import {prepareReceiptFile,isPdf,isReceiptFile,filesFromDataTransfer,filesFromClipboardItems,prepareReceiptPages,joinReceiptImages} from "@/lib/receiptFile";
@@ -349,7 +350,9 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const calc=calcs.find(c=>c.shareToken===p.token);if(calc)st.calcId=calc.id;
    const tier=q.tiers?.length&&typeof q.chosenTier==="number"?q.tiers[q.chosenTier]:null;
    const lines=[...(tier?tier.lines:q.lines),...(q.chosenOptions||[]).map(i=>q.optional[i]).filter(Boolean)];
-   st.labor=lines.filter(l=>Number(l.labor)>0).map(l=>({id:uid(),description:l.name,amount:Math.round(Number(l.labor)*100)/100}));
+   // плата за закупівлю матеріалів з естімейту → у розрахунку це відсоток від фактичних чеків
+   const feeLine=lines.find(l=>isMatFeeLine(l.name));if(feeLine)st.matFee=matFeePctOfLine(feeLine.name)||undefined;
+   st.labor=lines.filter(l=>Number(l.labor)>0&&!isMatFeeLine(l.name)).map(l=>({id:uid(),description:l.name,amount:Math.round(Number(l.labor)*100)/100}));
    const disc=tier?Number(tier.totals.discount)||0:Number(q.totals?.discount)||0;
    if(disc>0)st.labor.push({id:uid(),description:q.totals?.discountLabel||"Package discount",amount:-Math.round(disc*100)/100});
    const a=acceptedAmounts(q);
@@ -393,7 +396,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const same=list.find(s=>!s.own&&(incoming.quoteToken&&s.quoteToken===incoming.quoteToken)||
      (incoming.client.trim()&&s.client.trim().toLowerCase()===incoming.client.trim().toLowerCase()&&s.project.trim().toLowerCase()===incoming.project.trim().toLowerCase()));
    if(same&&confirm(`Розрахунок «${same.client||"без імені"}» вже є. Замінити в ньому роботу на цей естімейт? Чеки й оплати залишаться.`)){
-     persist(list.map(s=>s.id===same.id?{...s,labor:[...incoming.labor,...s.labor.filter(l=>(s.changes||[]).some(c=>c.laborLineId===l.id))],quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,updatedAt:new Date().toISOString()}:s));
+     persist(list.map(s=>s.id===same.id?{...s,labor:[...incoming.labor,...s.labor.filter(l=>(s.changes||[]).some(c=>c.laborLineId===l.id))],quoteToken:incoming.quoteToken||s.quoteToken,calcId:incoming.calcId||s.calcId,matFee:incoming.matFee??s.matFee,updatedAt:new Date().toISOString()}:s));
      setOpenId(same.id);setMsg("Роботу оновлено з естімейту.");
    }else{
      persist([incoming,...list]);setOpenId(incoming.id);setMsg("Створено з естімейту. Додавай чеки й оплати.");
@@ -1005,6 +1008,14 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        {calcs.map(c=><option key={c.id} value={c.id}>{c.client||"Без імені"}{c.project?` — ${c.project}`:""} · {money(c.total)} · {new Date(c.updatedAt).toLocaleDateString("uk-UA")}</option>)}
        <option value="none">Без естімейту</option>
      </select></label></section>}
+   {show("rec")&&!cur.own&&cur.matMode!=="included"&&<section className="panel" style={{padding:"10px 14px"}}>
+     <label style={{margin:0,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+       <span style={{flex:1,minWidth:180}}>🛒 Закупівля й доставка матеріалів<small className="muted" style={{display:"block"}}>{t.matFeePct>0?<>Клієнт платить {t.matFeePct}% від матеріалів — зараз {money(t.matFee)}. Рахується саме від чеків.</>:"Не береться в цьому проєкті."}</small></span>
+       <select value={String(Number(cur.matFee)||0)} onChange={e=>{const v=Number(e.target.value)||0;if(v>0&&!(Number(cur.matFee)>0)&&!confirm(`Додати клієнту ${v}% від матеріалів за закупівлю й доставку?\n\nКлієнт побачить цей рядок у рахунку. Вмикай, якщо це було в естімейті або ви про це домовились.`))return;update({matFee:v||undefined})}} style={{width:110}}>
+         {[0,10,15,20].concat([0,10,15,20].includes(Number(cur.matFee)||0)?[]:[Number(cur.matFee)]).map(v=><option key={v} value={v}>{v?`${v}%`:"немає"}</option>)}
+       </select>
+     </label>
+   </section>}
    {show("rec")&&<MaterialsCompare st={cur} calc={linked} planMat={plan?plan.materials:null} onPatch={update}/>}
    {show("rec")&&batchView}
    {show("rec")&&<section className="panel" {...dropProps(cur.id)} style={dragOn?{outline:"2px dashed #2563eb",background:"#eff6ff"}:undefined}>
@@ -1082,6 +1093,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      {t.included?<div><span>Матеріали входять у ціну <small className="muted">(чеки {money(t.receipts)} — твої витрати)</small></span><span>—</span></div>
        :t.fixed?<><div><span>Матеріали (за естімейтом)</span><span>{money(t.matPlan)}</span></div>{t.matOver>0&&<div><span>+ Матеріали понад естімейт</span><span>{money(t.matOver)}</span></div>}</>
        :<div><span>Матеріали за чеками</span><span>{money(t.materials)}</span></div>}
+     {t.matFee>0&&<div><span>Закупівля й доставка матеріалів ({t.matFeePct}%)</span><span>{money(t.matFee)}</span></div>}
      <div><span>Разом</span><b>{money(t.total)}</b></div>
      <div><span>Отримано</span><span>−{money(t.paid)}</span></div>
      <div className="grand"><span>{t.balance>=0?"Залишок до оплати":"Переплата"}</span><b>{money(Math.abs(t.balance))}</b></div>

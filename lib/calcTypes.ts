@@ -74,6 +74,8 @@ export type CalcDraft={
   includeFinish?:boolean;
   /** депозит, % від суми */
   depositPct?:number;
+  /** плата за закупівлю й доставку матеріалів, % від матеріалів (нові естімейти — 15; старі — нема) */
+  matFeePct?:number;
   /** підтверджені приблизні розміри з фото — естімейт попередній */
   measurementNotes?:string;
   /** три варіанти Good / Better / Best */

@@ -46,6 +46,8 @@ export type Statement={
   quoteToken?:string;
   /** з якого збереженого естімейту калькулятора (план/факт); "none" — не прив'язувати */
   calcId?:string;
+  /** плата за закупівлю й доставку матеріалів: відсоток від матеріалів у рахунку (0/нема — не береться) */
+  matFee?:number;
   /** години роботи — щоб рахувати реальну $/год */
   hours?:number;
   /** «Мої витрати»: мої інструменти й матеріали для роботи (не клієнтський розрахунок) */
@@ -92,11 +94,14 @@ export function statementTotals(s:Statement){
   const plan=r2(Number(s.matPlan)||0);const fixed=s.matMode==="estimate"&&plan>0&&!s.own;
   const included=s.matMode==="included"&&!s.own;
   const materials=included?0:fixed?Math.max(plan,receipts):receipts;
-  const total=r2(labor+materials);
+  // плата за закупівлю й доставку: відсоток від матеріалів, які платить клієнт (не для «під ключ» і не для моїх витрат)
+  const matFeePct=!s.own&&!included?Math.max(0,Math.min(50,Number(s.matFee)||0)):0;
+  const matFee=r2(Math.max(0,materials)*matFeePct/100);
+  const total=r2(labor+materials+matFee);
   const paid=r2(s.payments.reduce((a,p)=>a+(Number(p.amount)||0),0));
-  // matKeep: на скільки матеріали змінюють мій заробіток (+ дешевше за естімейт; − при «під ключ» усі чеки — мої)
-  const matKeep=included?r2(-receipts):fixed?r2(Math.max(0,plan-receipts)):0;
-  return {labor,materials,receipts,fixed,included,matPlan:fixed?plan:0,matOver:fixed?r2(Math.max(0,receipts-plan)):0,matKeep,total,paid,balance:r2(total-paid)};
+  // matKeep: на скільки матеріали змінюють мій заробіток (+ дешевше за естімейт; − при «під ключ» усі чеки — мої; + плата за закупівлю)
+  const matKeep=r2((included?-receipts:fixed?Math.max(0,plan-receipts):0)+matFee);
+  return {labor,materials,receipts,fixed,included,matPlan:fixed?plan:0,matOver:fixed?r2(Math.max(0,receipts-plan)):0,matKeep,matFee,matFeePct,total,paid,balance:r2(total-paid)};
 }
 
 // ---- Мої витрати (інструменти й матеріали для себе) ----
@@ -173,7 +178,7 @@ export function profitOf(s:Statement){
   const myHours=r2(crew.rows.filter(r=>r.self).reduce((a,r)=>a+r.hours,0));
   /** скільки виходить на годину моєї роботи (прибуток ÷ мої години) */
   const perHour=myHours>0?Math.round(profit/myHours*100)/100:null;
-  return {myHours,perHour,labor,cost,profit,margin,helperHours,matKeep:t.matKeep,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
+  return {myHours,perHour,labor,cost,profit,margin,helperHours,matKeep:t.matKeep,matFee:t.matFee,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
 }
 
 /** хто платив за чек: бізнес-картка власника → "biz"; інша картка й чек додав помічник → помічник; інша картка, додав власник → "" (уточнити) */

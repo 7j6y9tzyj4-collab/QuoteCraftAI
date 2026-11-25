@@ -6,7 +6,7 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 export type InvoiceData={logo?:string;company:string;contact:string;client:string;project:string;date:string;
   labor:{description:string;amount:number;/** розбивка change order, що стоїть за цим рядком */details?:{description:string;amount:number}[]}[];
   /** change orders, надіслані клієнту, але ще не погоджені — в суму не входять */pending?:{no:number;title:string;total:number;lines:{description:string;amount:number}[]}[];receipts:{date:string;store:string;items:string;amount:number;photo?:string}[];
-  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number;fixed?:boolean;included?:boolean;matPlan?:number;matOver?:number};zelle:string;notes:string;
+  payments:{date:string;amount:number;method:string}[];totals:{labor:number;materials:number;total:number;paid:number;balance:number;matFee?:number;matFeePct?:number;fixed?:boolean;included?:boolean;matPlan?:number;matOver?:number};zelle:string;notes:string;
   /** «Сплатити зараз»: now — скільки просимо зараз; partial — частина залишку */due?:{now:number;partial:boolean};
   /** онлайн-оплата Stripe увімкнена — токен цього рахунку */payToken?:string;paid?:boolean};
 
@@ -45,6 +45,7 @@ export default function InvoiceView({d}:{d:InvoiceData}){
       {t.fixed?<><div><span>Materials (per estimate)</span><span>{money(t.matPlan||0)}</span></div>{(t.matOver||0)>0&&<div><span>Additional materials (over estimate)</span><span>{money(t.matOver||0)}</span></div>}</>
         :t.included?<div><span>Materials</span><span>Included</span></div>
         :<div><span>Materials</span><span>{money(t.materials)}</span></div>}
+      {(t.matFee||0)>0&&<div><span>Material purchasing &amp; delivery ({t.matFeePct}% of materials)</span><span>{money(t.matFee||0)}</span></div>}
       <div><span>Total</span><span>{money(t.total)}</span></div>
       <div><span>Paid</span><span>−{money(t.paid)}</span></div>
       <div className={due.partial?"":"grand"}><span>{t.balance>=0?"Balance due":"Credit"}</span><span>{money(Math.abs(t.balance))}</span></div>

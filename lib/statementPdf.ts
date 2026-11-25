@@ -63,6 +63,7 @@ export async function buildStatementPdf(s:Statement,photos:ReceiptPhoto[]=[]):Pr
   if(t.included)line("Materials","Included");
   else if(t.fixed){line("Materials (per estimate)",money(t.matPlan));if(t.matOver>0)line("Additional materials (over estimate)",money(t.matOver))}
   else if(t.materials)line("Materials",money(t.materials));
+  if(t.matFee>0)line(`Material purchasing & delivery (${t.matFeePct}% of materials)`,money(t.matFee));
   line("Total",money(t.total),true);
   if(t.paid)line("Payments received","-"+money(t.paid));
   doc.setDrawColor(16,24,40);doc.setLineWidth(1);doc.line(W-M-260,y-9,W-M,y-9);y+=4;

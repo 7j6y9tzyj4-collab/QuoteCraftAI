@@ -14,6 +14,7 @@ import PaymentsDue from "@/components/PaymentsDue";
 import PushSetup,{registerSW} from "@/components/PushSetup";
 import {syncOwnerGeo} from "@/lib/nativeApp";
 import OnSiteCard from "@/components/OnSiteCard";
+import {MAT_FEE_DEFAULT,syncMatFee,isMatFeeItem,matFeePctOfLine} from "@/lib/matFee";
 import CalcEditBox from "@/components/CalcEditBox";
 import ViewSettings from "@/components/ViewSettings";
 import AutoTranslate from "@/components/AutoTranslate";
@@ -112,7 +113,7 @@ const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency
 const fresh=():Estimate=>({id:crypto.randomUUID(),client:"",project:"",address:"",items:[],discount:0,tax:0,deposit:25,createdAt:new Date().toISOString(),status:"draft",includeFinish:true});
 const load=<T,>(k:string,f:T):T=>{try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
 const unitLabel=(u:Unit)=>({each:"each",sqft:"sq ft",hour:"hour",linear_ft:"linear ft",room:"room"}[u]);
-const DEFAULT_CALC_NOTES="Additional conditions: This estimate includes labor and an editable allowance for basic installation materials (adhesive/thinset, waterproof boards, floor underlayment boards, shower pan/base, drain and plumbing rough materials, grout, silicone, sealants and small consumables). Final material cost may change based on product choice, final layout and conditions found after demolition.\n\nFinish materials (tile, vanity, faucet, mirror, shower glass/door, light fixtures, fan, accessories) are either shown above as a basic-grade allowance or purchased by the customer; the final amount follows the customer's actual selection and receipts. Appliances, permits, dumpster/disposal, and any hidden damage behind walls or under the floor are separate unless specifically included above. Small consumables (fasteners, sealant, putty, etc.) are purchased by the contractor and reimbursed by the customer based on receipts. Payment can be made in cash, by check, or via Zelle.\n\nAny additional work beyond this estimate will be billed separately; the customer will be informed in advance to approve the cost before proceeding. Final labor may change if ductwork, plumbing, electrical, rotten subfloor, mold, or other hidden issues are found after demolition. Prices are valid for 30 days.";
+const DEFAULT_CALC_NOTES="Additional conditions: This estimate includes labor and an editable allowance for basic installation materials (adhesive/thinset, waterproof boards, floor underlayment boards, shower pan/base, drain and plumbing rough materials, grout, silicone, sealants and small consumables). Final material cost may change based on product choice, final layout and conditions found after demolition.\n\nFinish materials (tile, vanity, faucet, mirror, shower glass/door, light fixtures, fan, accessories) are either shown above as a basic-grade allowance or purchased by the customer; the final amount follows the customer's actual selection and receipts. Appliances, permits, dumpster/disposal, and any hidden damage behind walls or under the floor are separate unless specifically included above. Small consumables (fasteners, sealant, putty, etc.) are purchased by the contractor and reimbursed by the customer based on receipts. Payment can be made in cash, by check, or via Zelle.\n\nAny additional work beyond this estimate will be billed separately; the customer will be informed in advance to approve the cost before proceeding. Final labor may change if ductwork, plumbing, electrical, rotten subfloor, mold, or other hidden issues are found after demolition. Prices are valid for 30 days.\n\nMaterial purchasing & delivery: when this line is shown above, it covers shopping, pick-up, delivery to the job site and returns of unused materials. It is a percentage of the materials, and the final amount is based on the actual store receipts.\n\nDebris removal and disposal is billed at the end of the project based on the actual volume, unless it is specifically included above.";
 // Шаблони нотаток: власник зберігає свої абзаци й вставляє їх у кошторис однією кнопкою.
 type NoteTemplate={id:string;name:string;text:string};
 const NTK="qc_note_templates";
@@ -264,6 +265,8 @@ export default function QuoteCraftApp(){
  const [calcNotes,setCalcNotes]=useState(DEFAULT_CALC_NOTES);
  const [calcSavedId,setCalcSavedId]=useState("");
  const [calcDepositPct,setCalcDepositPct]=useState(25);
+ // 🛒 плата за закупівлю й доставку матеріалів: нові естімейти — 15%; у старих (уже відправлених) її нема
+ const [calcMatFeePct,setCalcMatFeePct]=useState(MAT_FEE_DEFAULT);
  const [calcMeasurementNotes,setCalcMeasurementNotes]=useState("");
  const [calcTiers,setCalcTiers]=useState<Tiers|undefined>(undefined);
  const [calcPhotos,setCalcPhotos]=useState<JobPhoto[]>([]);
@@ -311,14 +314,17 @@ export default function QuoteCraftApp(){
    setCalcShareToken(draft.shareToken||"");
    setCalcSavedId(draft.savedId||"");
    setCalcDepositPct(draft.depositPct??25);
+   setCalcMatFeePct(draft.matFeePct??(draft.items?.length?0:MAT_FEE_DEFAULT));
    setCalcMeasurementNotes(draft.measurementNotes||"");
    setCalcSaved(load<SavedCalc[]>(CSK,[]));
  },[]);
 
  useEffect(()=>{
-   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,savedId:calcSavedId||undefined,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes||undefined};
+   const draft:CalcDraft={items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,savedId:calcSavedId||undefined,depositPct:calcDepositPct,matFeePct:calcMatFeePct,measurementNotes:calcMeasurementNotes||undefined};
    localStorage.setItem(CDK,JSON.stringify(draft));
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcSavedId,calcDepositPct,calcMeasurementNotes]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcSavedId,calcDepositPct,calcMatFeePct,calcMeasurementNotes]);
+ // рядок «Material purchasing & delivery» завжди дорівнює відсотку від оцінки матеріалів
+ useEffect(()=>{const next=syncMatFee(calcItems,calcMatFeePct,calcLocationMultiplier,calcIncludeFinish);if(next!==calcItems)setCalcItems(next)},[calcItems,calcMatFeePct,calcLocationMultiplier,calcIncludeFinish]);
 
  const calcTasks=useMemo(()=>tasksFromPrices(prices),[prices]);
  // Пакетні групи («повний ремонт») — першими у списку, решта — у порядку каталогу
@@ -402,7 +408,7 @@ export default function QuoteCraftApp(){
    setCalcItems([]);clearCalcFields();
  }
  function clearCalcFields(){
-   setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);setCalcSavedId("");setCalcSavedAt("");setCalcDepositPct(25);setCalcMeasurementNotes("");setCalcPhotos([]);setCalcDiscountValue(0);setCalcTiers(undefined);
+   setCalcClient("");setCalcProject("");setCalcLocationMultiplier(1);setCalcNotes(DEFAULT_CALC_NOTES);setCalcPrompt("");setCalcMessage("");setCalcShareToken("");setCalcQuote(null);setCalcSavedId("");setCalcSavedAt("");setCalcDepositPct(25);setCalcMatFeePct(MAT_FEE_DEFAULT);setCalcMeasurementNotes("");setCalcPhotos([]);setCalcDiscountValue(0);setCalcTiers(undefined);
  }
 
  function needsCalcRecorderFallback(){
@@ -693,7 +699,7 @@ export default function QuoteCraftApp(){
  }
  function storeCalcList(next:SavedCalc[]){setCalcSaved(next);try{localStorage.setItem(CSK,JSON.stringify(next))}catch{}}
  function currentCalc(id:string):SavedCalc{
-   return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,depositPct:calcDepositPct,measurementNotes:calcMeasurementNotes||undefined,tiers:calcTiers};
+   return {id,updatedAt:new Date().toISOString(),total:Math.round(calcGrandTotal*100)/100,items:calcItems,client:calcClient,project:calcProject,locationMultiplier:calcLocationMultiplier,notes:calcNotes,discountType:calcDiscountType,discountValue:calcDiscountValue,includeFinish:calcIncludeFinish,shareToken:calcShareToken||undefined,depositPct:calcDepositPct,matFeePct:calcMatFeePct,measurementNotes:calcMeasurementNotes||undefined,tiers:calcTiers};
  }
  function saveCalc(silent=false):string|undefined{
    if(!calcItems.length){if(!silent)setCalcMessage("Спочатку додай позиції.");return}
@@ -713,14 +719,14 @@ export default function QuoteCraftApp(){
    const t=setTimeout(()=>saveCalc(true),1500);
    return()=>clearTimeout(t);
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcDepositPct,calcMeasurementNotes,calcTiers]);
+ },[calcItems,calcClient,calcProject,calcLocationMultiplier,calcNotes,calcDiscountType,calcDiscountValue,calcIncludeFinish,calcShareToken,calcDepositPct,calcMatFeePct,calcMeasurementNotes,calcTiers]);
  function openCalc(s:SavedCalc){
    if(calcItems.length&&!calcSavedId&&!confirm("Поточний розрахунок у калькуляторі не збережений. Відкрити інший замість нього?"))return;
    calcAutoRef.current=false;
    setCalcItems(s.items||[]);setCalcClient(s.client||"");setCalcProject(s.project||"");setCalcLocationMultiplier(s.locationMultiplier??1);
    setCalcNotes(s.notes??DEFAULT_CALC_NOTES);setCalcDiscountType(s.discountType??"percent");setCalcDiscountValue(Number(s.discountValue)||0);
    setCalcIncludeFinish(s.includeFinish!==false);setCalcShareToken(s.shareToken||"");setCalcQuote(null);
-   setCalcDepositPct(s.depositPct??25);setCalcMeasurementNotes(s.measurementNotes||"");setCalcPhotos([]);setCalcTiers(s.tiers);
+   setCalcDepositPct(s.depositPct??25);setCalcMatFeePct(s.matFeePct??0);setCalcMeasurementNotes(s.measurementNotes||"");setCalcPhotos([]);setCalcTiers(s.tiers);
    setCalcSavedId(s.id);setCalcSavedAt(s.updatedAt);setCalcPrompt("");setCalcMessage("");
    setScreen("calc");
  }
@@ -851,12 +857,15 @@ export default function QuoteCraftApp(){
    const s=newStatement();
    const cid=calcSavedId||saveCalc(true); // план/факт бере цифри зі збереженого естімейту
    s.client=calcClient;s.project=calcProject;s.quoteToken=calcShareToken||undefined;s.calcId=cid||undefined;
-   s.labor=items.filter(li=>!li.optional).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
+   // рядок плати за закупівлю матеріалів: якщо матеріали йдуть за чеками — у розрахунку це відсоток від чеків (а не фіксована сума з естімейту)
+   const feeItem=items.find(li=>!li.optional&&isMatFeeItem(li));
+   s.labor=items.filter(li=>!li.optional&&!isMatFeeItem(li)).map(li=>({id:crypto.randomUUID(),description:li.name,amount:r2(computeCalcLine(li,calcLocationMultiplier,calcIncludeFinish).labor)})).filter(l=>l.amount>0);
    if(disc>0)s.labor.push({id:crypto.randomUUID(),description:calcDiscountLabel,amount:-r2(disc)});
    const mat=r2(totalsV.materials+totalsV.supplies+totalsV.finish);
    if(mat>0&&!confirm(`Робота ${money(r2(totalsV.labor-disc))} переноситься в Оплати.\n\nМатеріали в естімейті: ${money(mat)}.\nOK — матеріали клієнт платить за чеками (додаватимеш чеки).\nСкасувати — додати матеріали з естімейту однією сумою.`)){
      s.labor.push({id:crypto.randomUUID(),description:"Materials (per estimate)",amount:mat});
-   }
+     if(feeItem)s.labor.push({id:crypto.randomUUID(),description:feeItem.name,amount:r2(computeCalcLine(feeItem,calcLocationMultiplier,calcIncludeFinish).labor)});
+   }else if(feeItem)s.matFee=matFeePctOfLine(feeItem.name)||calcMatFeePct||undefined;
    setPayIncoming(s);setScreen("pay");
  }
  async function shareCalcPdf(){
@@ -1971,7 +1980,7 @@ export default function QuoteCraftApp(){
       {calcTranscribing&&<div className="recHint">Розпізнаю голос… це займає кілька секунд.</div>}
     </section>
 
-    <section className="panel grid noPrint"><ClientPicker value={calcClient} onChange={setCalcClient} clients={clients} onAdd={saveClient}/><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label><label>Знижка на роботу<select value={calcDiscountType} onChange={e=>setCalcDiscountType(e.target.value as "percent"|"amount")}><option value="percent">відсоток, %</option><option value="amount">сума, $</option></select></label><label>{calcDiscountType==="percent"?"Знижка, %":"Знижка, $"}<input type="number" min="0" step={calcDiscountType==="percent"?"1":"10"} value={calcDiscountValue} onChange={e=>setCalcDiscountValue(Math.max(0,Number(e.target.value)||0))}/></label><label>Deposit, %<input type="number" min="0" max="100" step="5" value={calcDepositPct} onChange={e=>setCalcDepositPct(Math.min(100,Math.max(0,Number(e.target.value)||0)))}/></label></section>
+    <section className="panel grid noPrint"><ClientPicker value={calcClient} onChange={setCalcClient} clients={clients} onAdd={saveClient}/><label>Project<input value={calcProject} onChange={e=>setCalcProject(e.target.value)}/></label><label>Location multiplier<input type="number" min="0.5" max="3" step="0.01" value={calcLocationMultiplier} onChange={e=>setCalcLocationMultiplier(Number(e.target.value)||1)}/></label><label>Знижка на роботу<select value={calcDiscountType} onChange={e=>setCalcDiscountType(e.target.value as "percent"|"amount")}><option value="percent">відсоток, %</option><option value="amount">сума, $</option></select></label><label>{calcDiscountType==="percent"?"Знижка, %":"Знижка, $"}<input type="number" min="0" step={calcDiscountType==="percent"?"1":"10"} value={calcDiscountValue} onChange={e=>setCalcDiscountValue(Math.max(0,Number(e.target.value)||0))}/></label><label>Deposit, %<input type="number" min="0" max="100" step="5" value={calcDepositPct} onChange={e=>setCalcDepositPct(Math.min(100,Math.max(0,Number(e.target.value)||0)))}/></label><label>Закупівля матеріалів, %<input type="number" min="0" max="50" step="5" value={calcMatFeePct} onChange={e=>setCalcMatFeePct(Math.min(50,Math.max(0,Number(e.target.value)||0)))}/><small className="muted">окремий рядок в естімейті; 0 — не брати</small></label></section>
     {calcMeasurementNotes&&<section className="panel noPrint"><b>Попередній естімейт — потрібні заміри на обʼєкті</b><p>{PRELIMINARY_NOTE}</p><details><summary>Підтверджені приблизні розміри</summary><p style={{whiteSpace:"pre-wrap"}}>{calcMeasurementNotes}</p></details><button className="secondary" onClick={()=>{if(confirm("Прибрати позначку «попередній»? (коли вже зробив точні заміри)"))setCalcMeasurementNotes("")}}>Заміри зроблено — прибрати позначку</button></section>}
 
     <section className="panel"><div className="head"><h2>Line items</h2><button className="add noPrint" onClick={addCalcItem}>＋ Add item</button></div>
