@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useRef,useState,type DragEvent} from "react";
+import {createPortal} from "react-dom";
 import {nativeDocScan} from "@/lib/nativeApp";
 import type {User} from "@supabase/supabase-js";
 import {supabase} from "@/lib/supabase";
@@ -102,6 +103,10 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
  useEffect(()=>{if(openId===OWN_ID&&list.length>0&&(!user||cloudOk.current)&&!list.some(x=>x.id===OWN_ID))persist([newOwnStatement(),...list])},[openId,list]); // eslint-disable-line react-hooks/exhaustive-deps
  const [msg,setMsg]=useState("");
  const [busy,setBusy]=useState(false);
+ // результат чека — одразу великим банером угорі екрана (не треба гортати вниз, щоб побачити «додано» чи «вже є»)
+ const [toast,setToast]=useState("");
+ useEffect(()=>{if(!toast||toast.startsWith("⏳"))return;const t=setTimeout(()=>setToast(""),15000);return()=>clearTimeout(t)},[toast]);
+ useEffect(()=>{if(!busy&&toast.startsWith("⏳"))setToast("")},[busy,toast]);
  const cloudOk=useRef(false);
  const loaded=useRef(false);
  const fileRef=useRef<HTMLInputElement|null>(null);   // галерея, кілька фото
@@ -444,7 +449,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const target=list.find(s=>s.id===(targetId||cur?.id))||null;
    if(!target||!files?.length)return;
    if(openId!==target.id)setOpenId(target.id);
-   setBusy(true);setMsg("");
+   setBusy(true);setMsg("");setToast(`⏳ Читаю чек${files.length>1?`и (${files.length})`:""}…`);
    const latest=list.find(s=>s.id===target.id)||target;
    // робоча копія чеків проєкту: сюди додаємо нові і в неї ж «вклеюємо» фото до чеків, вписаних вручну
    let receipts:Receipt[]=[...latest.receipts];
@@ -508,7 +513,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    if(skipped.length)parts.push(`⚠ Цей чек уже є — вдруге не додаю: ${skipped.join("; ")}.`);
    // «Мої витрати» показують один місяць: чек з іншого місяця — перемикаємо на його місяць, щоб його було видно
    if(target.own&&lastDate&&lastDate.slice(0,7)!==ownMonth){setOwnMonth(lastDate.slice(0,7));parts.push(`Чек за ${new Date(lastDate.slice(0,7)+"-15").toLocaleDateString("uk-UA",{month:"long",year:"numeric"})} — показую цей місяць.`)}
-   setMsg(parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):addedN||mergedN?" Перевір суми з чеками.":""));
+   const resText=parts.join(" ")+(failed.length?" Увага — "+failed.join("; "):addedN||mergedN?" Перевір суми з чеками.":"");
+   setMsg(resText);setToast((addedN||mergedN?`${target.own?"Мої витрати":target.client||"Проєкт"}: `:"")+resText);
    if(fileRef.current)fileRef.current.value="";
    if(camRef.current)camRef.current.value="";
    targetRef.current=null;
@@ -732,6 +738,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    onDrop:(e:DragEvent)=>{const fs=Array.from(e.dataTransfer.files||[]);if(!fs.length)return;e.preventDefault();setDragOn(false);startBatch(fs,targetId)},
  });
 
+ const toastWarn=/⚠|Увага|вже є|уже є|Пропущено|Не вдалося|помилк/i.test(toast);
+ const toastEl=toast&&typeof document!=="undefined"?createPortal(<div role="status" className="noPrint" onClick={()=>setToast("")} style={{position:"fixed",left:10,right:10,top:"calc(env(safe-area-inset-top) + 10px)",zIndex:900,padding:"14px 16px",borderRadius:16,fontSize:16,fontWeight:700,lineHeight:1.35,boxShadow:"0 10px 30px rgba(16,24,40,.25)",background:toast.startsWith("⏳")?"#eff8ff":toastWarn?"#fffaeb":"#ecfdf3",border:`2px solid ${toast.startsWith("⏳")?"#84caff":toastWarn?"#fdb022":"#32d583"}`,color:toast.startsWith("⏳")?"#175cd3":toastWarn?"#93370d":"#067647"}}>{toast}{!toast.startsWith("⏳")&&<small style={{display:"block",fontWeight:500,opacity:.7,marginTop:4}}>Натисни, щоб сховати</small>}</div>,document.body):null;
  const batchView=batch&&<ReceiptBatch drafts={batch} list={list} askTarget={batchAsk} saving={saving}
    onPatch={patchDraft} onTarget={batchTarget} projectsFor={projectsFor} onJoin={joinDraft} onCancel={()=>{if(saving)return;if(confirm("Скасувати пакет? Нічого не буде додано.")){setB(()=>null);setMsg("")}}} onSave={saveBatch}/>;
 
@@ -827,7 +835,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <button className="secondary" onClick={()=>pasteReceipt(s.id)}>📋 Скріншот</button>
        </div>)}
      </div>}
-     {msg&&<MsgBox msg={msg}/>}
+     {toastEl}{msg&&<MsgBox msg={msg}/>}
      {mailReview.length>0&&<div style={{marginTop:10,padding:12,borderRadius:12,background:"#fffaeb",border:"1px solid #fedf89"}}>
        <b>🧾 Чеки з пошти — куди? · {mailReview.length}</b>
        <small className="muted" style={{display:"block"}}>Програма не впевнена. Синя кнопка — її підказка.</small>
@@ -917,7 +925,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
          <button className="remove" onClick={()=>delLine("receipts",r.id)}>×</button>
        </div>)}
      </section>
-     {msg&&<MsgBox msg={msg}/>}
+     {toastEl}{msg&&<MsgBox msg={msg}/>}
      <section className="total">
        {byCat.filter(x=>x.sum).map(x=><div key={x.c}><span>{x.c}</span><span>{money(x.sum)}</span></div>)}
        <div className="grand"><span>Разом за {monthName}</span><b>{money(total)}</b></div>
@@ -1054,7 +1062,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    {show("over")&&<section className="panel"><label>Примітка в PDF<textarea rows={3} value={cur.notes} onChange={e=>update({notes:e.target.value})}/></label></section>}
 
-   {msg&&<MsgBox msg={msg}/>}
+   {toastEl}{msg&&<MsgBox msg={msg}/>}
    <section className="total">
      <div><span>Робота</span><span>{money(t.labor)}</span></div>
      {t.included?<div><span>Матеріали входять у ціну <small className="muted">(чеки {money(t.receipts)} — твої витрати)</small></span><span>—</span></div>
