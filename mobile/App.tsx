@@ -7,11 +7,11 @@ import { WebView as RNWebView, type WebViewProps } from "react-native-webview";
 const WebView = RNWebView as unknown as ComponentType<WebViewProps & { ref?: unknown }>;
 import { BASE, clearToken, getToken, setToken, stopGeofences, syncGeofences, type GeoStatus } from "./geo";
 import { docScanAvailable, scanDocument, scanRoom, scanSupported } from "./modules/qc-scan";
-import { stopOwnerGeofences, syncOwnerGeofences, type OwnerSite } from "./ownerGeo";
+import { ownerOnSite, ownerSiteDone, stopOwnerGeofences, syncOwnerGeofences, type OwnerSite } from "./ownerGeo";
 import { onPushOpen, pushEnable, pushStatus, type PushState } from "./push";
 
 // сайт дізнається, що LiDAR-сканер вбудований у застосунок (iPhone з LiDAR), і не просить відкривати QuoteCraft Scan
-const NATIVE_FLAGS = `window.__QC_NATIVE_SCAN=${scanSupported() ? "true" : "false"};window.__QC_NATIVE_PUSH=true;window.__QC_NATIVE_DOCSCAN=${docScanAvailable() ? "true" : "false"};window.__QC_NATIVE_OWNERGEO=true;true;`;
+const NATIVE_FLAGS = `window.__QC_NATIVE_SCAN=${scanSupported() ? "true" : "false"};window.__QC_NATIVE_PUSH=true;window.__QC_NATIVE_DOCSCAN=${docScanAvailable() ? "true" : "false"};window.__QC_NATIVE_OWNERGEO=true;window.__QC_NATIVE_ONSITE=true;true;`;
 
 // QuoteCraft на телефоні: всі екрани — це сайт (оновлюється без App Store),
 // а застосунок додає те, чого сайт не вміє: геозони об'єктів для помічника.
@@ -75,6 +75,8 @@ export default function App() {
     web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-docscan",{detail:${JSON.stringify({ id: reqId, ok: r.ok, message: r.message || "", pages: r.pages || [] })}}));true;`);
   }
 
+  // картка «⏱ Ви на об'єкті» на сайті: де власник зараз / був сьогодні (з геозон)
+  const tellOnSite = async () => { const sites = await ownerOnSite(); web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-onsite",{detail:${JSON.stringify({ sites })}}));true;`); };
   const tellPush = (st: PushState) => web.current?.injectJavaScript(`window.dispatchEvent(new CustomEvent("qc-push",{detail:${JSON.stringify(st)}}));true;`);
   // натиснули на сповіщення → відкриваємо потрібний екран сайту
   useEffect(() => {
@@ -127,6 +129,8 @@ export default function App() {
         else if (d.startsWith("qc:scan:") && e.nativeEvent.url.startsWith(BASE)) startScan(d.slice(8));
         else if (d.startsWith("qc:docscan:") && e.nativeEvent.url.startsWith(BASE)) startDocScan(d.slice(11));
         else if (d.startsWith("qc:ownergeo:") && mode === "owner" && e.nativeEvent.url.startsWith(BASE)) { try { void syncOwnerGeofences(JSON.parse(d.slice(12)) as OwnerSite[]); } catch {} }
+        else if (d === "qc:onsite" && mode === "owner") void tellOnSite();
+        else if (d.startsWith("qc:onsite:done:") && mode === "owner") void ownerSiteDone(d.slice(15)).then(tellOnSite);
         else if (d === "qc:push:status") pushStatus().then(tellPush);
         else if (d === "qc:push:on") pushEnable().then(tellPush);
       }}

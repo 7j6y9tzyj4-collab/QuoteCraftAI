@@ -12,7 +12,7 @@ const OPTS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.A
 
 export type OwnerSite = { id: string; lat: number; lng: number; radius: number; title: string };
 type Sites = Record<string, string>;                                       // id зони → назва клієнта
-type State = Record<string, { day: string; first: number; in: number; told: boolean }>;
+type State = Record<string, { day: string; first: number; in: number; told: boolean; out?: number; done?: boolean }>;
 
 async function read<T>(key: string, empty: T): Promise<T> {
   try { return JSON.parse((await SecureStore.getItemAsync(key, OPTS)) || "") as T; } catch { return empty; }
@@ -39,13 +39,13 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
   if (data.eventType === Location.GeofencingEventType.Enter) {
     // раз на день на об'єкт: вийшов до машини й повернувся — вдруге не турбуємо
     const told = cur ? cur.told : false;
-    state[id] = { day, first: cur ? cur.first : now, in: now, told: true };
+    state[id] = { day, first: cur ? cur.first : now, in: now, told: true, out: 0, done: cur ? cur.done : false };
     await write(STATE_KEY, state);
     if (!told) await notify(`📍 Ви на об'єкті: ${title}`, "Почати облік часу? Натисніть, щоб відкрити проєкт.", id);
   } else if (data.eventType === Location.GeofencingEventType.Exit) {
     if (!cur || !cur.in) return;
     const stayed = now - cur.in;
-    state[id] = { ...cur, in: 0 };
+    state[id] = { ...cur, in: 0, out: now };
     await write(STATE_KEY, state);
     // коротка відлучка (до машини) або проїздом — мовчимо
     if (stayed < 30 * 60000) return;
@@ -78,4 +78,22 @@ export async function syncOwnerGeofences(list: OwnerSite[]): Promise<void> {
 
 export async function stopOwnerGeofences() {
   try { if (await Location.hasStartedGeofencingAsync(OWNER_GEO_TASK)) await Location.stopGeofencingAsync(OWNER_GEO_TASK); } catch {}
+}
+
+export type OnSite = { id: string; title: string; first: number; in: number; out: number };
+/** Де власник сьогодні був / є зараз (для картки «⏱ Ви на об'єкті» на сайті). Записані чи сховані — не показуємо. */
+export async function ownerOnSite(): Promise<OnSite[]> {
+  const sites = await read<Sites>(SITES_KEY, {});
+  const state = await read<State>(STATE_KEY, {});
+  const day = new Date().toDateString();
+  return Object.entries(state)
+    .filter(([id, v]) => v && v.day === day && !v.done && sites[id] && (v.in > 0 || (v.out || 0) > 0))
+    .map(([id, v]) => ({ id, title: sites[id], first: v.first, in: v.in, out: v.out || 0 }));
+}
+/** Години записано або картку сховали — більше не показувати сьогодні. */
+export async function ownerSiteDone(id: string) {
+  const state = await read<State>(STATE_KEY, {});
+  if (!state[id]) return;
+  state[id] = { ...state[id], done: true };
+  await write(STATE_KEY, state);
 }
