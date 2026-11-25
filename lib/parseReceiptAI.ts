@@ -21,7 +21,10 @@ export async function parseReceiptAI(photo:string):Promise<ParsedReceipt>{
         ].join(" ")},
         {role:"user",content:[
           {type:"text" as const,text:"Read this receipt."},
-          {type:"image_url" as const,image_url:{url:photo,detail:"high" as const}}
+          // PDF-чек (Home Depot надсилає чек вкладенням) читаємо як файл, фото — як картинку
+          photo.startsWith("data:application/pdf")
+            ?{type:"file" as const,file:{filename:"receipt.pdf",file_data:photo}}
+            :{type:"image_url" as const,image_url:{url:photo,detail:"high" as const}}
         ]}
       ],
       response_format:{type:"json_schema",json_schema:{name:"receipt",strict:true,schema:{

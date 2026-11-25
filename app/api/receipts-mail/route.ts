@@ -38,6 +38,8 @@ export async function POST(req:NextRequest){
     // 1) картинка чека в листі (Floor & Decor, Home Depot e-receipt)
     const img=[...html.matchAll(/<img[^>]+>/gi)].map(m=>m[0]).find(t=>/alt=["'][^"']*receipt/i.test(t)||/src=["'][^"']*receipt[^"']*\.(jpe?g|png)/i.test(t));
     const src=img?.match(/src=["']([^"']+)["']/i)?.[1]?.replace(/&amp;/g,"&");
+    const pdfRaw=String(b?.pdf||"").replace(/\s+/g,"");
+    const pdf=pdfRaw.length>200&&pdfRaw.length<5_000_000&&/^[A-Za-z0-9+/=]+$/.test(pdfRaw)?pdfRaw:"";
     let rec={date:"",store,items:"",amount:0,receiptNo:"",job:"",card:""};let photoPath="";let conf=0;
     if(src&&/^https:\/\//.test(src)){
       const r=await fetch(src);if(!r.ok)throw new Error("receipt image "+r.status);
@@ -46,8 +48,17 @@ export async function POST(req:NextRequest){
       rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;
       const id=crypto.randomUUID();photoPath=`${userId}/mail/${id}.jpg`;
       if(!dry){const up=await supabaseAdmin.storage.from("receipts").upload(photoPath,buf,{contentType:type,upsert:true});if(up.error)photoPath=""}
+    }else if(pdf){
+      // 2) чек у PDF-вкладенні (Home Depot: «your Home Depot receipt for # H…», eReceipt)
+      const p=await parseReceiptAI(`data:application/pdf;base64,${pdf}`);
+      if(!Number(p.total)){
+        if(dry)return NextResponse.json({ok:true,dry:true,skipped:"pdf unreadable",parsed:p});
+        await supabaseAdmin.from("mail_receipts").insert({user_id:userId,msg_id:msgId,store,subject,status:"skipped",reason:"PDF не прочитався",payload:{}});
+        return NextResponse.json({ok:true,skipped:"pdf unreadable"});
+      }
+      rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;
     }else{
-      // 2) текст листа (онлайн-замовлення, Menards, Lowe's)
+      // 3) текст листа (онлайн-замовлення, Menards, Lowe's)
       const p=await parseReceiptText(`From: ${from}\nSubject: ${subject}\n\n${html2text(html)}`);
       if(!p.is_receipt||!p.total){
         if(dry)return NextResponse.json({ok:true,dry:true,skipped:"not a receipt",parsed:p});
