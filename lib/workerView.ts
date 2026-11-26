@@ -54,7 +54,8 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const client=cl.find(c=>n(c.name)===n(s.client));
     const me=(s.crew||[]).find(c=>!c.self&&n(c.name)===n(link.worker));
     const days:WorkerDay[]=[];
-    if(me)for(const w of s.workLog||[])if(w.workerId===me.id)days.push({date:normDate(w.date),hours:Number(w.hours)||0,note:w.note||"",pending:false});
+    let ex=0;      // фіксовані доплати (трак, бензин, премія) — не години
+    if(me)for(const w of s.workLog||[])if(w.workerId===me.id){const am=Number(w.amount)||0;ex+=am;days.push({date:normDate(w.date),hours:Number(w.hours)||0,note:[w.note||"",am?`+$${am}`:""].filter(Boolean).join(" · "),pending:false})}
     for(const i of (inbox||[]) as any[])if(i.sid===sid&&i.kind==="hours")days.push({date:normDate(i.payload?.date)||String(i.created_at).slice(0,10),hours:Number(i.payload?.hours)||0,note:String(i.payload?.note||""),pending:true});
     days.sort((a,b)=>b.date.localeCompare(a.date));
     const h=days.reduce((a,d)=>a+d.hours,0);
@@ -62,13 +63,14 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const p=me?(s.payouts||[]).filter(x=>x.workerId===me.id).reduce((a,x)=>a+(Number(x.amount)||0),0):0;
     // чеки, оплачені його карткою (прийняті власником) — їх треба повернути
     const rb=s.receipts.filter(r=>n(r.paidBy||"")===n(link.worker)).reduce((a,r)=>a+(Number(r.amount)||0),0);
-    hours+=h;earned+=h*rate;paid+=p;reimbAll+=rb;
+    hours+=h;earned+=h*rate+ex;paid+=p;reimbAll+=rb;
+    if(me)for(const w of s.workLog||[])if(w.workerId===me.id&&Number(w.amount)){const dt=normDate(w.date);if(dt>=weekFrom&&dt<=tISO)wkE+=Number(w.amount)||0}
     for(const d of days)if(d.date>=weekFrom&&d.date<=tISO){wkH+=d.hours;wkE+=d.hours*rate}
     if(me)for(const x of s.payouts||[])if(x.workerId===me.id){const dt=normDate(x.date);if(!lastPaid||dt>lastPaid.date)lastPaid={date:dt,amount:Number(x.amount)||0,method:x.method}}
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
     const myPay=me?(s.payouts||[]).filter(x=>x.workerId===me.id).map(x=>({date:normDate(x.date),amount:Number(x.amount)||0,method:String(x.method||"")})).sort((a,b)=>b.date.localeCompare(a.date)):[];
     const r2p=(x:number)=>Math.round(x*100)/100;
-    projects.push({rate,earned:r2p(h*rate),paid:r2p(p),owed:r2p(h*rate+rb-p),payouts:myPay,reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
+    projects.push({rate,earned:r2p(h*rate+ex),paid:r2p(p),owed:r2p(h*rate+ex+rb-p),payouts:myPay,reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
       // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати
       scope:items.length?items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional}))
         :[...s.labor.filter(l=>String(l.description||"").trim()&&!/^Agreed work \(per estimate\)$/i.test(String(l.description).trim())).map(l=>({name:String(l.description).replace(/^Change order #\d+:\s*/i,""),qty:1,unit:"each",note:"",optional:false})),

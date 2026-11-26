@@ -80,7 +80,7 @@ export function buildMonthXlsx(list:Statement[],ym:string):Uint8Array{
   const outs:XCell[][]=[["Дата","Хто","Проєкт","Виплачено","Як"]];
   for(const s of list){
     const cr=s.crew||[];
-    for(const w of s.workLog||[])if(inM(w.date)){const c=cr.find(x=>x.id===w.workerId);if(!c||isMeName(c.name,c.self))continue;const h=Number(w.hours)||0,rt=Number(c.rate)||0;crew.push([normDate(w.date),c.name,name(s),h,rt,Math.round(h*rt*100)/100,w.note||""])}
+    for(const w of s.workLog||[])if(inM(w.date)){const c=cr.find(x=>x.id===w.workerId);if(!c||isMeName(c.name,c.self))continue;const h=Number(w.hours)||0,rt=Number(c.rate)||0,ex=Number(w.amount)||0;crew.push([normDate(w.date),c.name,name(s),h,rt,Math.round((h*rt+ex)*100)/100,w.note||""])}
     for(const p of s.payouts||[])if(inM(p.date)){const c=cr.find(x=>x.id===p.workerId);if(c&&isMeName(c.name,c.self))continue;outs.push([normDate(p.date),c?.name||"?",name(s),Number(p.amount)||0,p.method||""])}
   }
   const cH=crew.slice(1).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));crew.length=1;crew.push(...cH);

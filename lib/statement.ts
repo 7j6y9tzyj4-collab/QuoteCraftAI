@@ -23,7 +23,7 @@ export const recAmt=(r:Receipt)=>r.kind==="deposit"?0:(Number(r.amount)||0);
 /** депозити, що ще не повернулись */
 export const pendingDeposits=(s:Statement)=>(s.receipts||[]).filter(r=>r.kind==="deposit"&&!r.back);
 export type CrewMember={id:string;name:string;rate:number;/** це я — мої години рахуються, але не входять у витрати на помічників */self?:boolean};
-export type WorkEntry={id:string;date:string;workerId:string;hours:number;note?:string;/** хто записав (помічник за посиланням); нема — записав власник */by?:string;at?:string};
+export type WorkEntry={id:string;date:string;workerId:string;hours:number;/** фіксована доплата в $ (не години): трак, бензин, премія — додається до зарплати помічника */amount?:number;note?:string;/** хто записав (помічник за посиланням); нема — записав власник */by?:string;at?:string};
 /** запис від помічника, доданий за останні 36 год */
 export const isFresh=(x:{by?:string;at?:string})=>!!x.by&&!!x.at&&Date.now()-new Date(x.at).getTime()<36*3600e3;
 export type Payout={id:string;date:string;workerId:string;amount:number;/** як виплатив: Zelle / Cash / Check / … */method?:string};
@@ -138,7 +138,8 @@ export function crewSummary(s:Statement){
   const crew=s.crew||[];
   const rows:CrewRow[]=crew.map(c=>{
     const hours=r2((s.workLog||[]).filter(w=>w.workerId===c.id).reduce((a,w)=>a+(Number(w.hours)||0),0));
-    const accrued=r2(hours*(Number(c.rate)||0));
+    const extra=r2((s.workLog||[]).filter(w=>w.workerId===c.id).reduce((a,w)=>a+(Number(w.amount)||0),0));
+    const accrued=r2(hours*(Number(c.rate)||0)+extra);
     const paid=r2((s.payouts||[]).filter(p=>p.workerId===c.id).reduce((a,p)=>a+(Number(p.amount)||0),0));
     const reimb=c.self?0:r2(s.receipts.filter(r=>r.paidBy&&r.paidBy.trim().toLowerCase()===String(c.name||"").trim().toLowerCase()).reduce((a,r)=>a+(Number(r.amount)||0),0));
     return {id:c.id,name:c.name,rate:Number(c.rate)||0,self:!!c.self,hours,accrued,paid,reimb,owed:r2(accrued+reimb-paid)};

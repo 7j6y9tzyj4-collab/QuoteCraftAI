@@ -53,13 +53,17 @@ export default function CrewPanel({st,all,onPatch,forceOpen=false}:{st:Statement
 
     {crew.length>0&&<>
       <div className="head" style={{marginTop:16}}><h3 style={{margin:0,fontSize:16}}>Години</h3>
-        <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:crew[0].id,hours:0}]})}>＋ Години</button></div>
+        <span style={{display:"flex",gap:6}}>
+        <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:(crew.find(c=>!c.self)||crew[0]).id,hours:0,amount:0}]})} title="Фіксована сума помічникові: трак, бензин, премія">＋ Доплата $</button>
+        <button className="add" onClick={()=>onPatch({workLog:[...log,{id:uid(),date:today(),workerId:crew[0].id,hours:0}]})}>＋ Години</button></span></div>
       {log.map(w=><div key={w.id} data-rid={w.id} style={{...(isFresh(w)?{background:"#fffaeb",borderRadius:10,padding:6}:{}),display:"grid",gridTemplateColumns:"minmax(0,125px) minmax(0,1fr) 64px 42px",gap:6,marginTop:8}}>
         <DateInput value={w.date} onChange={v=>setLog(w.id,{date:v})}/>
         <select value={w.workerId} onChange={e=>setLog(w.id,{workerId:e.target.value})}>{crew.map(c=><option key={c.id} value={c.id}>{c.name||"Без імені"}</option>)}</select>
-        <input type="number" min="0" step="0.5" value={w.hours||""} placeholder="год" onChange={e=>setLog(w.id,{hours:Math.max(0,Number(e.target.value)||0)})}/>
+        {w.amount!==undefined
+          ?<input type="number" min="0" step="5" value={w.amount||""} placeholder="$" title="Фіксована доплата в доларах (не години)" style={{background:"#f0f9ff"}} onChange={e=>setLog(w.id,{amount:Math.max(0,Number(e.target.value)||0)})}/>
+          :<input type="number" min="0" step="0.5" value={w.hours||""} placeholder="год" onChange={e=>setLog(w.id,{hours:Math.max(0,Number(e.target.value)||0)})}/>}
         <button className="remove" onClick={()=>onPatch({workLog:log.filter(x=>x.id!==w.id)})}>×</button>
-        <input style={{gridColumn:"1/4"}} placeholder="Що робили (необов'язково)" value={w.note||""} onChange={e=>setLog(w.id,{note:e.target.value})}/>
+        <input style={{gridColumn:"1/4"}} placeholder={w.amount!==undefined?"За що доплата (трак, бензин…)":"Що робили (необов'язково)"} value={w.note||""} onChange={e=>setLog(w.id,{note:e.target.value})}/>
         <small style={{gridColumn:"1/5",marginTop:-2,color:w.by?"#7a5af8":"#98a2b3",fontWeight:w.by?700:400}}>{w.by?<>👷 записав {w.by}{isFresh(w)&&<b style={{marginLeft:6,background:"#fdb022",color:"#fff",borderRadius:6,padding:"0 5px",fontSize:10}}>НОВЕ</b>}</>:"✍️ записав ти"}</small>
       </div>)}
 
