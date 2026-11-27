@@ -182,6 +182,22 @@ export function profitOf(s:Statement){
   return {myHours,perHour,labor,cost,profit,margin,helperHours,matKeep:t.matKeep,matFee:t.matFee,low:margin!==null&&cost>0&&margin<25,cash:r2(t.paid-t.receipts-cost)};
 }
 
+/** скільки я заробляю з години помічника: проєкт приносить (робота ÷ усі години) за годину, помічник коштує свою ставку — різниця моя.
+ *  Працює, коли записані години всіх (і мої теж); інакше ціна години проєкту завищена. */
+export function helperMargins(s:Statement){
+  const t=statementTotals(s);const crew=crewSummary(s);
+  const base=t.labor+t.matKeep;const hours=crew.hours;
+  if(!(base>0)||!(hours>0))return null;
+  const perHour=r2(base/hours);
+  const rows=crew.rows.filter(r=>!r.self&&r.hours>0).map(r=>{
+    const brings=r2(perHour*r.hours);const keep=r2(brings-r.accrued);
+    return {name:r.name,hours:r.hours,cost:r.accrued,costHour:r2(r.accrued/r.hours),brings,keep,keepHour:r2(keep/r.hours)};
+  });
+  if(!rows.length)return null;
+  const myHours=r2(crew.rows.filter(r=>r.self).reduce((x,r)=>x+r.hours,0));
+  return {perHour,rows,myHours};
+}
+
 /** хто платив за чек: бізнес-картка власника → "biz"; інша картка й чек додав помічник → помічник; інша картка, додав власник → "" (уточнити) */
 export function payerFor(card:string|undefined,by:string|undefined,biz:string[]):string|undefined{
   const c=String(card||"").trim();
