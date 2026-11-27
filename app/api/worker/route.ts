@@ -158,7 +158,7 @@ export async function POST(req:NextRequest){
         if(rc&&String(rc.by||"").trim().toLowerCase()===link.worker.trim().toLowerCase())path=String(rc.photoPath||"");
       }
       if(!path)return NextResponse.json({error:"Фото чека немає."},{status:404});
-      const {data:su}=await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path,3600);
+      const {data:su}=await supabaseAdmin.storage.from(BUCKET).createSignedUrl(path,86400);
       return NextResponse.json({url:su?.signedUrl||""});
     }
     if(b.action==="receipt_cancel"){

@@ -64,7 +64,7 @@ function ReceiptThumb({r}:{r:Receipt}){
    if(r.photoData){setSrc(r.photoData);return}
    if(!r.photoPath)return;
    let on=true;
-   supabase.storage.from(BUCKET).createSignedUrl(r.photoPath,3600).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});
+   supabase.storage.from(BUCKET).createSignedUrl(r.photoPath,86400).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});
    return()=>{on=false};
  },[r.photoPath,r.photoData]);
  if(!src)return null;

@@ -17,7 +17,7 @@ const uid=()=>crypto.randomUUID();
 // мініатюра фото з приватного сховища
 function Thumb({p,onRemove,big}:{p:SurveyPhoto;onRemove:()=>void;big?:boolean}){
   const [src,setSrc]=useState<string|null>(p.dataUrl||null);
-  useEffect(()=>{if(p.dataUrl){setSrc(p.dataUrl);return}if(!p.path)return;let on=true;supabase.storage.from(BUCKET).createSignedUrl(p.path,3600).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});return()=>{on=false}},[p.path,p.dataUrl]);
+  useEffect(()=>{if(p.dataUrl){setSrc(p.dataUrl);return}if(!p.path)return;let on=true;supabase.storage.from(BUCKET).createSignedUrl(p.path,86400).then(({data}:{data:any})=>{if(on&&data?.signedUrl)setSrc(data.signedUrl)});return()=>{on=false}},[p.path,p.dataUrl]);
   return <figure style={{position:"relative",margin:0}}>{src?<a href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{width:big?200:96,height:big?200:96,objectFit:"cover",borderRadius:12,border:"1px solid #d0d5dd"}}/></a>:<div style={{width:big?200:96,height:big?200:96,borderRadius:12,background:"#eef2f7"}}/>}<button onClick={onRemove} style={{position:"absolute",top:-6,right:-6,width:24,height:24,borderRadius:12,background:"#fff0ee",color:"#b42318",fontWeight:800}}>×</button></figure>;
 }
 

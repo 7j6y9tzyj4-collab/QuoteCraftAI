@@ -12,7 +12,7 @@ export default function StatementPhotos({st,onPatch,forceOpen=false}:{st:Stateme
   const [urls,setUrls]=useState<Record<string,string>>({});
   useEffect(()=>{
     const paths=photos.map(p=>p.path).filter(p=>!urls[p]);if(!paths.length)return;
-    supabase.storage.from("receipts").createSignedUrls(paths,3600).then(({data}:{data:any[]|null})=>{const m:Record<string,string>={};for(const x of data||[])if(x.path&&x.signedUrl)m[x.path]=x.signedUrl;setUrls(u=>({...u,...m}))});
+    supabase.storage.from("receipts").createSignedUrls(paths,86400).then(({data}:{data:any[]|null})=>{const m:Record<string,string>={};for(const x of data||[])if(x.path&&x.signedUrl)m[x.path]=x.signedUrl;setUrls(u=>({...u,...m}))});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[photos.length]);
   if(!photos.length)return forceOpen?<section className="panel"><p className="muted" style={{margin:0}}>Фото ще немає. Помічник може додати їх зі свого посилання.</p></section>:null;

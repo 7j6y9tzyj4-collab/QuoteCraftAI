@@ -15,7 +15,7 @@ function LeadPhotos({paths}:{paths:string[]}){
   useEffect(()=>{
     if(!paths?.length)return;
     let on=true;
-    supabase.storage.from(BUCKET).createSignedUrls(paths,3600).then(({data}:{data:any})=>{
+    supabase.storage.from(BUCKET).createSignedUrls(paths,86400).then(({data}:{data:any})=>{
       if(on&&Array.isArray(data))setUrls(data.map((d:any)=>d?.signedUrl).filter(Boolean));
     });
     return()=>{on=false};

@@ -79,7 +79,7 @@ export async function POST(req:NextRequest){
     const top=[...picked.entries()].sort((a,b)=>b[1].confidence-a[1].confidence).slice(0,5);
     const paths=top.map(([n])=>list[n-1].r.photoPath).filter(Boolean) as string[];
     const signed=new Map<string,string>();
-    if(paths.length){const {data:su}=await supabaseAdmin.storage.from("receipts").createSignedUrls(paths,3600);for(const x of su||[])if(x.path&&x.signedUrl)signed.set(x.path,x.signedUrl)}
+    if(paths.length){const {data:su}=await supabaseAdmin.storage.from("receipts").createSignedUrls(paths,86400);for(const x of su||[])if(x.path&&x.signedUrl)signed.set(x.path,x.signedUrl)}
     const matches=top.map(([n,m])=>{const x=list[n-1];const t=ts(x.r.date);return {
       sid:x.sid,receiptId:x.r.id,client:x.own?"Мої витрати":x.client,project:x.own?"":x.project,
       date:x.r.date,store:x.r.store||"",amount:Number(x.r.amount)||0,items:x.r.full||x.r.items||"",receiptNo:x.r.receiptNo||"",
