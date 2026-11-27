@@ -74,6 +74,8 @@ export type Statement={
   matPlan?:number;
   /** коли попросив клієнта про відгук у Google */
   reviewAsked?:string;
+  /** бюджет годин на всю бригаду, заданий вручну; нема — рахується з роботи за цільовою ціною години */
+  hoursPlan?:number;
   /** «Сплатити зараз»: скільки просимо зараз (amount); base — скільки вже було оплачено в момент запиту (наступні оплати зменшують цю суму) */
   dueNow?:{amount:number;base:number;at?:string};
 };
@@ -196,6 +198,22 @@ export function helperMargins(s:Statement){
   if(!rows.length)return null;
   const myHours=r2(crew.rows.filter(r=>r.self).reduce((x,r)=>x+r.hours,0));
   return {perHour,rows,myHours};
+}
+
+/** цільова ціна години бригади, з якої рахується бюджет годин */
+export const TARGET_HOUR=60;
+/** ⏱ бюджет годин: скільки годин бригади «вміщається» в ціну роботи і скільки вже витрачено */
+export function hoursBudget(s:Statement){
+  if(s.own)return null;
+  const t=statementTotals(s);const base=t.labor+Math.max(0,t.matKeep);
+  const manual=Number(s.hoursPlan)>0;
+  const plan=manual?r2(Number(s.hoursPlan)):Math.round(base/TARGET_HOUR);
+  if(!(plan>0))return null;
+  const used=crewSummary(s).hours;
+  const pct=Math.round(used/plan*100);
+  /** скільки зараз виходить за годину і скільки вийде, якщо вкластися в план */
+  const perHour=used>0?r2(base/used):null;
+  return {plan,used,left:r2(plan-used),pct,manual,perHour,level:(pct>=100?"over":pct>=80?"warn":"ok") as "over"|"warn"|"ok"};
 }
 
 /** хто платив за чек: бізнес-картка власника → "biz"; інша картка й чек додав помічник → помічник; інша картка, додав власник → "" (уточнити) */

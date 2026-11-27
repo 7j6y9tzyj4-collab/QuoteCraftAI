@@ -107,6 +107,8 @@ export default function PushSetup({user,compact}:{user:User|null;compact?:boolea
     {st==="denied"&&<p style={{fontSize:14}}>Сповіщення заборонені. iPhone: Параметри → Сповіщення → QuoteCraft → Дозволити.</p>}
     {st==="off"&&<button className="primary" disabled={busy} onClick={enable} style={{width:"100%"}}>{busy?"Вмикаю…":"🔔 Увімкнути на цьому телефоні"}</button>}
     {st==="on"&&<div className="actions"><span style={{color:"#067647",fontWeight:700}}>✓ Увімкнено</span><button className="secondary" disabled={busy} onClick={test}>Тест</button><button className="secondary" disabled={busy} onClick={disable}>Вимкнути</button></div>}
+    {st==="on"&&<><small className="muted" style={{display:"block",marginTop:8}}>Щонеділі ввечері приходить підсумок тижня: що заробив, кому винен, хто винен тобі, що наступного тижня.</small>
+      <button className="secondary" disabled={busy} style={{marginTop:6,padding:"6px 10px",fontSize:13}} onClick={async()=>{const h=await authHeader();if(!h)return;setMsg("Надсилаю…");try{const r=await fetch("/api/cron/weekly",{method:"POST",headers:h});const j=await r.json();setMsg(r.ok?(Array.isArray(j.lines)?j.lines.join(" · "):"Надіслано."):(j?.error||"Не вдалося."))}catch{setMsg("Не вдалося.")}}}>📊 Надіслати підсумок тижня зараз</button></>}
     {msg&&<p className="muted" style={{fontSize:14,margin:"8px 0 0"}}>{msg}</p>}
   </div>;
 }

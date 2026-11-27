@@ -47,6 +47,7 @@ export async function POST(req:NextRequest){
     if(error)throw error;
     try{
       const q={...(data.data as any),...((upd.data as object)||{})};
+      if(q.kind==="change"){await sendPush((data as any).user_id,{title:`✍️ ${name} погодив(ла) доплату #${q.no}`,body:`${q.project?q.project+" · ":""}+$${Math.round(Number(q.total)||0).toLocaleString("en-US")}${q.title?" · "+q.title:""}`,url:"/?screen=pay"});return NextResponse.json({accepted_at})}
       const a=acceptedAmounts(q);
       const money=(n:number)=>"$"+Math.round(n).toLocaleString("en-US");
       await sendPush((data as any).user_id,{title:`✅ ${q.client||name} прийняв(ла) естімейт`,body:`${q.project?q.project+" · ":""}${money(a.total)}${a.label?` (${a.label})`:""}${a.deposit?` · завдаток ${money(a.deposit)}`:""}`,url:"/?screen=pay"});

@@ -5,6 +5,7 @@ import {supabase} from "@/lib/supabase";
 import type {Statement} from "@/lib/statement";
 import {changeTotal,newChangeOrder,DEFAULT_CHANGE_NOTES,type ChangeOrder,type ChangeSnapshot} from "@/lib/changeOrder";
 import {companyName,companyContact} from "@/lib/company";
+import SignaturePad,{type SigHandle} from "@/app/q/[token]/SignaturePad";
 
 const money=(n:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n||0);
 const CYR=/[а-яіїєґё]/i;
@@ -20,6 +21,10 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
   const list=st.changes||[];
   const [busyId,setBusyId]=useState("");
   const stRef=useRef(st);stRef.current=st;
+  const rec=useRef<MediaRecorder|null>(null);const chunks=useRef<Blob[]>([]);
+  const [voice,setVoice]=useState<""|"rec"|"work">("");
+  const [signId,setSignId]=useState("");const [signName,setSignName]=useState("");const [signBusy,setSignBusy]=useState(false);const [signErr,setSignErr]=useState("");
+  const sigRef=useRef<SigHandle>(null);
 
   const save=(changes:ChangeOrder[],extra:Partial<Statement>={})=>onPatch({changes,...extra});
   const setCo=(id:string,patch:Partial<ChangeOrder>)=>save(list.map(c=>c.id===id?{...c,...patch}:c));
@@ -74,13 +79,14 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
     }catch(e){setMsg("Не вдалося перекласти: "+(e instanceof Error?e.message:String(e)));return null}
     finally{setBusyId("")}
   }
-  async function send(co0:ChangeOrder){
+  // сторінка клієнта для доплати (створити або оновити) → токен
+  async function ensureLink(co0:ChangeOrder):Promise<{token:string;co:ChangeOrder}|null>{
     let co=co0;
     // якщо є українські літери — спершу перекладаємо, клієнт бачить англійською
-    if(CYR.test([co.title,...co.lines.map(l=>l.description),co.notes||""].join(" "))){const t=await toEnglish(co);if(!t)return;co=t}
-    if(!user){setMsg("Увійди в акаунт, щоб надіслати посилання.");return}
+    if(CYR.test([co.title,...co.lines.map(l=>l.description),co.notes||""].join(" "))){const t=await toEnglish(co);if(!t)return null;co=t}
+    if(!user){setMsg("Увійди в акаунт, щоб надіслати посилання.");return null}
     const total=changeTotal(co);
-    if(!co.lines.some(l=>l.description.trim()&&l.amount)){setMsg("Додай опис і суму доплати.");return}
+    if(!co.lines.some(l=>l.description.trim()&&l.amount)){setMsg("Додай опис і суму доплати.");return null}
     const data:ChangeSnapshot={v:1,kind:"change",company:companyName(),contact:companyContact(),client:st.client,project:st.project,
       date:new Date().toLocaleDateString("en-US"),no:co.no,title:co.title,lines:co.lines.filter(l=>l.description.trim()||l.amount).map(l=>({description:l.description,amount:Number(l.amount)||0})),total,notes:co.notes||""};
     try{
@@ -94,12 +100,63 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
         const {error}=await supabase.from("shared_quotes").insert({token,user_id:user.id,data,status:"sent"});
         if(error)throw error;
       }
-      setCo(co.id,{token,status:co.status==="draft"?"sent":co.status});
-      const link=`${window.location.origin}/q/${token}`;
-      const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
-      if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Посилання на доплату надіслано.");return}catch{/* скасував */}}
-      try{await navigator.clipboard.writeText(link);setMsg("Посилання на доплату скопійовано: "+link)}catch{setMsg("Посилання: "+link)}
-    }catch(e){setMsg("Не вдалося надіслати: "+(e instanceof Error?e.message:String((e as any)?.message||e)))}
+      const next={...co,token,status:co.status==="draft"?"sent" as const:co.status};
+      setCo(co.id,{token,status:next.status});
+      return {token,co:next};
+    }catch(e){setMsg("Не вдалося надіслати: "+(e instanceof Error?e.message:String((e as any)?.message||e)));return null}
+  }
+  async function send(co0:ChangeOrder){
+    const r=await ensureLink(co0);if(!r)return;
+    const link=`${window.location.origin}/q/${r.token}`;
+    const nav=navigator as Navigator&{share?:(d:ShareData)=>Promise<void>};
+    if(nav.share&&/iPhone|iPad|Android/i.test(navigator.userAgent)){try{await nav.share({text:link});setMsg("Посилання на доплату надіслано.");return}catch{/* скасував */}}
+    try{await navigator.clipboard.writeText(link);setMsg("Посилання на доплату скопійовано: "+link)}catch{setMsg("Посилання: "+link)}
+  }
+  // 🎤 продиктував на об'єкті → готова доплата англійською з цінами
+  async function dictate(){
+    if(rec.current){rec.current.stop();return}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const type=["audio/mp4","audio/webm;codecs=opus","audio/webm"].find(x=>typeof MediaRecorder!=="undefined"&&MediaRecorder.isTypeSupported?.(x))||"";
+      const r=type?new MediaRecorder(stream,{mimeType:type}):new MediaRecorder(stream);rec.current=r;chunks.current=[];
+      r.ondataavailable=e=>{if(e.data?.size)chunks.current.push(e.data)};
+      r.onstop=async()=>{
+        stream.getTracks().forEach(x=>x.stop());rec.current=null;setVoice("work");
+        try{
+          const blob=new Blob(chunks.current,{type:r.mimeType||"audio/mp4"});
+          if(blob.size<800){setMsg("Запис закороткий — спробуй ще раз.");return}
+          const f=new FormData();f.append("audio",blob,`co.${(r.mimeType||"").includes("webm")?"webm":"mp4"}`);
+          const j=await fetch("/api/transcribe",{method:"POST",body:f}).then(x=>x.json());
+          const said=String(j?.text||"").trim();
+          if(!said){setMsg(j?.error||"Не розчув — спробуй ще раз.");return}
+          const d=await fetch("/api/change-draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:said,project:stRef.current.project})}).then(x=>x.json());
+          if(!Array.isArray(d?.lines)||!d.lines.length){setMsg(d?.error||"Не вдалося скласти доплату.");return}
+          const cur=stRef.current.changes||[];const no=Math.max(0,...cur.map(c=>c.no))+1;
+          const co:ChangeOrder={...newChangeOrder(no),title:String(d.title||""),notes:DEFAULT_CHANGE_NOTES,lines:d.lines.map((l:{description:string;amount:number})=>({id:crypto.randomUUID(),description:l.description,amount:Number(l.amount)||0}))};
+          onPatch({changes:[...cur,co]});
+          setMsg(d.priced?`Доплату #${no} складено з твоїми цінами — перевір і давай клієнту на підпис.`:`Доплату #${no} складено: приблизно ${d.hours} год роботи. Перевір ціни й давай клієнту на підпис.`);
+        }catch(e){setMsg(e instanceof Error?e.message:String(e))}
+        finally{setVoice("")}
+      };
+      r.start(1000);setVoice("rec");
+    }catch{setMsg("Нема доступу до мікрофона.")}
+  }
+  // ✍️ клієнт підписує пальцем прямо на моєму телефоні
+  async function signHere(){
+    const co=(stRef.current.changes||[]).find(c=>c.id===signId);if(!co)return;
+    const name=signName.trim();const sig=sigRef.current?.get()||"";
+    if(name.length<2){setSignErr("Впиши ім’я клієнта.");return}
+    if(!sig){setSignErr("Клієнт має розписатись у рамці.");return}
+    setSignBusy(true);setSignErr("");
+    try{
+      const r=await ensureLink(co);if(!r){setSignErr("Не вдалося зберегти доплату — перевір опис і суму.");return}
+      const res=await fetch("/api/quote-accept",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:r.token,name,sig})});
+      const j=await res.json();if(!res.ok)throw new Error(j?.error||"Server error");
+      onPatch(acceptInto(stRef.current,co.id,{token:r.token,status:"accepted",acceptedName:name,acceptedAt:j?.accepted_at||new Date().toISOString()}));
+      setMsg(`✍️ ${name} підписав(ла) доплату #${co.no} — ${money(changeTotal(r.co))} додано в «Роботу».`);
+      setSignId("");setSignName("");
+    }catch(e){setSignErr(e instanceof Error?e.message:String(e))}
+    finally{setSignBusy(false)}
   }
   function manual(co:ChangeOrder){
     if(!confirm(`Клієнт погодив доплату #${co.no} (${money(changeTotal(co))}) усно? Сума додасться в «Роботу».`))return;
@@ -113,6 +170,8 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
 
   return <section className="panel">
     <div className="head"><h2>Доплати (change orders)</h2><button className="add" onClick={add}>＋ Доплата</button></div>
+    <button className={voice==="rec"?"primary":"secondary"} disabled={voice==="work"} onClick={dictate} style={{width:"100%",marginTop:6,padding:"12px 10px",fontWeight:700}}>{voice==="rec"?"⏹ Зупинити й скласти доплату":voice==="work"?"Складаю доплату…":"🎤 Продиктувати доплату"}</button>
+    {voice==="rec"&&<small className="muted" style={{display:"block",marginTop:4}}>Кажи, що клієнт попросив додати. Назвеш ціну — візьму твою; не назвеш — порахую сам.</small>}
     {!list.length&&<p className="muted" style={{fontSize:14}}>Додаткова робота після прийнятого естімейту: створи доплату → «🔗 Надіслати» → клієнт тисне Approve → сума сама додається в «Роботу».</p>}
     {list.map(co=>{
       const locked=co.status==="accepted";
@@ -136,11 +195,27 @@ export default function ChangeOrders({st,user,onPatch,setMsg}:{st:Statement;user
         {!locked&&<div className="actions" style={{marginTop:8,flexWrap:"wrap"}}>
           <button className="secondary" disabled={busyId===co.id} onClick={()=>toEnglish(co)}>{busyId===co.id?"Перекладаю…":"🌐 Перекласти на англійську"}</button>
           <button className="primary" disabled={busyId===co.id} onClick={()=>send(co)}>🔗 {co.token?"Оновити й надіслати":"Надіслати клієнту"}</button>
+          <button className="primary" style={{background:"#067647"}} disabled={busyId===co.id} onClick={()=>{setSignErr("");setSignName(signName||st.client||"");setSignId(co.id)}}>✍️ Підписати тут</button>
           <button className="secondary" onClick={()=>manual(co)}>✓ Погоджено усно</button>
           <button className="secondary" style={{color:"#b42318",flex:"0 0 auto"}} onClick={()=>remove(co)}>Видалити</button>
         </div>}
         {co.token&&<small className="muted" style={{display:"block",marginTop:6}}><a href={`/q/${co.token}`} target="_blank" rel="noreferrer">відкрити сторінку клієнта</a></small>}
       </div>;
     })}
+    {signId&&(()=>{const co=list.find(c=>c.id===signId);if(!co)return null;return <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(16,24,40,.6)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div data-notr style={{background:"#fff",width:"100%",maxWidth:560,maxHeight:"92vh",overflowY:"auto",borderRadius:"18px 18px 0 0",padding:"18px 16px calc(18px + env(safe-area-inset-bottom))"}}>
+        <b style={{fontSize:18}}>Change order #{co.no}{co.title?` — ${co.title}`:""}</b>
+        <div style={{marginTop:8}}>{co.lines.filter(l=>l.description.trim()||l.amount).map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"6px 0",borderTop:"1px solid #eaecf0",fontSize:15}}><span>{l.description}</span><span style={{whiteSpace:"nowrap"}}>{money(l.amount)}</span></div>)}</div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"2px solid #101828",fontSize:18}}><b>Total added</b><b>{money(changeTotal(co))}</b></div>
+        <small style={{color:"#667085",display:"block"}}>By signing, I approve this additional work and its price. All other terms of the original estimate stay the same.</small>
+        <label style={{marginTop:10,display:"block"}}>Your name<input value={signName} onChange={e=>setSignName(e.target.value)} autoComplete="off"/></label>
+        <SignaturePad ref={sigRef} label="Sign here"/>
+        {signErr&&<p style={{color:"#b42318",margin:"4px 0"}}>{signErr}</p>}
+        <div className="actions" style={{marginTop:6}}>
+          <button className="secondary" disabled={signBusy} onClick={()=>setSignId("")}>Cancel</button>
+          <button className="primary" disabled={signBusy} onClick={signHere}>{signBusy?"Saving…":"Approve & sign"}</button>
+        </div>
+      </div>
+    </div>})()}
   </section>;
 }

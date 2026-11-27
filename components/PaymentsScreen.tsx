@@ -31,6 +31,7 @@ import {cardList} from "@/lib/company";
 import FoldTitle from "@/components/FoldTitle";
 import {useFold} from "@/lib/useFold";
 import ProfitCard from "@/components/ProfitCard";
+import HoursBudget from "@/components/HoursBudget";
 import CrewOwed from "@/components/CrewOwed";
 import MaterialsCompare from "@/components/MaterialsCompare";
 import ReviewAsk from "@/components/ReviewAsk";
@@ -985,6 +986,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
     </select></label>
    </section>}
 
+   {show("over")&&!cur.own&&<HoursBudget st={cur} onPatch={update}/>}
    {show("over")&&(apple?<details className="panel" style={{padding:"12px 14px"}}><summary style={{fontWeight:600}}>Прибуток — детальніше</summary><ProfitCard st={cur}/></details>:<ProfitCard st={cur}/>)}
 
    {show("over")&&<section className="panel">
