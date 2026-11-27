@@ -217,7 +217,7 @@ export default function QuoteCraftApp(){
  // застосунок на iPhone: передаємо адреси активних проєктів — він нагадає «Ви приїхали до клієнта»
  useEffect(()=>{if(!user?.id)return;const t=setTimeout(()=>{void supabase.auth.getSession().then(({data})=>{if(data.session)void syncOwnerGeo(data.session.access_token)})},4000);return()=>clearTimeout(t)},[user?.id]);
  useEffect(()=>{void registerSW();
-   try{const q=new URLSearchParams(location.search);if(q.get("screen")==="pay"){const sid=q.get("sid");if(sid)setPayOpenId(sid);setScreen("pay");history.replaceState(null,"","/")}}catch{}
+   try{const q=new URLSearchParams(location.search);if(q.get("screen")==="pay"){const sid=q.get("sid");const tb=q.get("tab");if(sid){if(tb==="crew"||tb==="rec"||tb==="pay"||tb==="photo")setPayOpenTab(tb);else if(tb==="shop")setPayOpenTab("over");setPayOpenId(sid)}setScreen("pay");history.replaceState(null,"","/")}}catch{}
  },[]);
  useEffect(()=>{if(screen==="pay"&&inbox.total)window.dispatchEvent(new Event("qc-inbox-new"))},[screen,inbox.total]);
  // ---- клієнти (таблиця user_clients, по рядку на клієнта; локальна копія qc_clients) ----

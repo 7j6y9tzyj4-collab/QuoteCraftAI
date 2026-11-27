@@ -986,6 +986,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
     </select></label>
    </section>}
 
+   {apple&&show("over")&&!cur.own&&<ShopList key={"o"+cur.id} hideEmpty call={shopCall} style={{background:"#fff",border:"2px solid #2563eb",borderRadius:16,padding:14,marginBottom:13}}/>}
+   {show("rec")&&!cur.own&&<section className="panel"><ShopList key={cur.id} call={shopCall}/></section>}
    {show("over")&&!cur.own&&<HoursBudget st={cur} onPatch={update}/>}
    {show("over")&&(apple?<details className="panel" style={{padding:"12px 14px"}}><summary style={{fontWeight:600}}>Прибуток — детальніше</summary><ProfitCard st={cur}/></details>:<ProfitCard st={cur}/>)}
 
@@ -1082,7 +1084,6 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
 
    {show("crew")&&<div id="crew-panel"><CrewPanel st={cur} all={list} onPatch={update} forceOpen={apple}/></div>}
    {show("crew")&&<WorkerLinks user={user} st={cur}/>}
-   {show("rec")&&<section className="panel"><ShopList key={cur.id} call={shopCall}/></section>}
    {show("crew")&&<section className="panel"><ShopList key={"p"+cur.id} kind="punch" call={shopCall}/><SignoffBox user={user} st={cur} phone={findClient(clientBook,cur.client)?.phone}/></section>}
    {show("over")&&<ReviewAsk st={cur} phone={findClient(clientBook,cur.client)?.phone} done={stOf(cur)==="done"} onPatch={update}/>}
    {show("photo")&&<StatementPhotos st={cur} onPatch={update} forceOpen={apple}/>}

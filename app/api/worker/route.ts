@@ -30,7 +30,7 @@ export async function POST(req:NextRequest){
     const base={token:link.token,user_id:link.user_id,worker:link.worker,sid};
     const id=crypto.randomUUID();
     // сповіщення власнику на телефон
-    const notify=async(text:string)=>{const t=await statementTitle(link.user_id,sid);await sendPush(link.user_id,{title:`👷 ${link.worker}${t?` · ${t}`:""}`,body:text,url:`/?screen=pay&sid=${encodeURIComponent(sid)}`})};
+    const notify=async(text:string,tab?:string)=>{const t=await statementTitle(link.user_id,sid);await sendPush(link.user_id,{title:`👷 ${link.worker}${t?` · ${t}`:""}`,body:text,url:`/?screen=pay&sid=${encodeURIComponent(sid)}${tab?`&tab=${tab}`:""}`})};
     if(String(b.action||"").startsWith("shop_")){
       const u=link.user_id;const kind=shopKind(b.kind);
       if(b.action==="shop_add"){
@@ -38,7 +38,7 @@ export async function POST(req:NextRequest){
         const ok=text.length<25||(await aiGuard(req,"shop-list",0.001,u)).ok;
         const items=ok?await splitShop(text,kind):text.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
         await shopAdd(u,sid,items,link.worker,kind);
-        if(items.length)await notify(`${kind==="punch"?"✅ Доробки:":"🛒 Треба купити:"} ${items.slice(0,6).join(", ")}${items.length>6?` … (+${items.length-6})`:""}`);
+        if(items.length)await notify(`${kind==="punch"?"✅ Доробки:":"🛒 Треба купити:"} ${items.slice(0,6).join(", ")}${items.length>6?` … (+${items.length-6})`:""}`,kind==="punch"?"crew":"shop");
       }
       else if(b.action==="shop_toggle"){await shopToggle(u,String(b.id),!!b.done,sid,kind);
         if(kind==="punch"&&b.done&&b.text)await notify(`✅ Зробив доробку: ${String(b.text).slice(0,100)}`)}
