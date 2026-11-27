@@ -68,6 +68,12 @@ export async function POST(req:NextRequest){
       rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;
     }
     const a=await assignMailReceipt(userId,rec);
+    // лист без суми (реклама магазину, «як отримати чек на пошту», картинка-банер) — це не чек
+    if(!(Math.abs(Number(rec.amount)||0)>0)){
+      if(dry)return NextResponse.json({ok:true,dry:true,skipped:"no amount"});
+      await supabaseAdmin.from("mail_receipts").insert({user_id:userId,msg_id:msgId,store,subject,status:"skipped",reason:"нема суми — не чек",payload:{}});
+      return NextResponse.json({ok:true,skipped:"no amount"});
+    }
     const payload={id:crypto.randomUUID(),date:rec.date,store:rec.store,items:rec.items,amount:rec.amount,receiptNo:rec.receiptNo||undefined,card:rec.card||undefined,codes:codes||undefined,full:full||undefined,photoPath:photoPath||undefined,job:rec.job||undefined,readConf:conf};
     const status=a.dupOf?"skipped":a.sid?"auto":"review";
     if(dry)return NextResponse.json({ok:true,dry:true,status,assign:a,receipt:payload});
