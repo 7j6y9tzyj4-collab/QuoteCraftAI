@@ -48,14 +48,14 @@ export async function POST(req:NextRequest){
       rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;codes=String(p.codes||"").slice(0,900);full=String(p.all_items||"").slice(0,600);
       const id=crypto.randomUUID();photoPath=`${userId}/mail/${id}.jpg`;
       if(!dry){const up=await supabaseAdmin.storage.from("receipts").upload(photoPath,buf,{contentType:type,upsert:true});if(up.error)photoPath=""}
-    }else if(pdf){
+    }
+    // картинка виявилась банером (Home Depot: «How do I get more…») — це не чек, пробуємо PDF і текст листа
+    if(!rec.amount){photoPath="";codes="";full=""}
+    const pp=!rec.amount&&pdf?await parseReceiptAI(`data:application/pdf;base64,${pdf}`):null;
+    if(rec.amount){/* чек уже прочитано з картинки */}
+    else if(pp&&Number(pp.total)){
+      const p=pp;
       // 2) чек у PDF-вкладенні (Home Depot: «your Home Depot receipt for # H…», eReceipt)
-      const p=await parseReceiptAI(`data:application/pdf;base64,${pdf}`);
-      if(!Number(p.total)){
-        if(dry)return NextResponse.json({ok:true,dry:true,skipped:"pdf unreadable",parsed:p});
-        await supabaseAdmin.from("mail_receipts").insert({user_id:userId,msg_id:msgId,store,subject,status:"skipped",reason:"PDF не прочитався",payload:{}});
-        return NextResponse.json({ok:true,skipped:"pdf unreadable"});
-      }
       rec={date:p.date,store:p.store||store,items:p.items,amount:Number(p.total)||0,receiptNo:p.receipt_no||"",job:p.job||"",card:String(p.card_last4||"").replace(/\D/g,"").slice(-4)};conf=p.confidence;codes=String(p.codes||"").slice(0,900);full=String(p.all_items||"").slice(0,600);
     }else{
       // 3) текст листа (онлайн-замовлення, Menards, Lowe's)
