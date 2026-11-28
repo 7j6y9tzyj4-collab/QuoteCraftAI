@@ -6,7 +6,7 @@ import {normDate} from "./receiptBatch";
 // Дані для сторінки помічника /w/<token>: тільки його проєкти, без цін клієнта і мого заробітку.
 export type WorkerLink={token:string;user_id:string;worker:string;rate:number;projects:string[];revoked:boolean};
 export type WorkerDay={date:string;hours:number;note:string;pending:boolean};
-export type WorkerProject={sid:string;client:string;project:string;address:string;phone:string;
+export type WorkerProject={sid:string;client:string;project:string;address:string;phone:string;access?:string;
   scope:{name:string;qty:number;unit:string;note:string;optional:boolean}[];notes:string;
   myReceipts:{id:string;date:string;store:string;amount:number;pending:boolean;mine:boolean;card:string;items:string;photo:boolean;payer:"mine"|"biz"|"none"}[];reimb:number;
   materials:{name:string;qty:number;unit:string;note:string}[];
@@ -15,7 +15,7 @@ export type WorkerProject={sid:string;client:string;project:string;address:strin
   rate:number;earned:number;paid:number;owed:number;payouts:{date:string;amount:number;method:string}[]};
 export type WorkerView={company:string;worker:string;rate:number;projects:WorkerProject[];hours:number;earned:number;paid:number;reimb:number;owed:number;
   /** головна помічника: цей тиждень, де сьогодні, найближчі роботи, остання виплата */
-  week:{hours:number;earned:number};today:{sid:string;client:string;title:string;address:string;phone:string;time?:string}[];
+  week:{hours:number;earned:number};today:{sid:string;client:string;title:string;address:string;phone:string;access?:string;time?:string}[];
   soon:{client:string;title:string;start:string;time?:string}[];lastPaid:{date:string;amount:number;method?:string}|null;
   /** понеділок цього тижня (YYYY-MM-DD) — для перегляду по тижнях */weekFrom:string;
   /** відкрита зміна (натиснув «Почав роботу») */shift?:{id:string;sid:string;start:string;dist:number|null}|null};
@@ -70,7 +70,7 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
     const items=(calc?.items||[]).filter(i=>!/^OPTION/i.test(i.name));
     const myPay=me?(s.payouts||[]).filter(x=>x.workerId===me.id).map(x=>({date:normDate(x.date),amount:Number(x.amount)||0,method:String(x.method||"")})).sort((a,b)=>b.date.localeCompare(a.date)):[];
     const r2p=(x:number)=>Math.round(x*100)/100;
-    projects.push({rate,earned:r2p(h*rate+ex),paid:r2p(p),owed:r2p(h*rate+ex+rb-p),payouts:myPay,reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),
+    projects.push({rate,earned:r2p(h*rate+ex),paid:r2p(p),owed:r2p(h*rate+ex+rb-p),payouts:myPay,reimb:Math.round(rb*100)/100,sid,client:s.client,project:s.project,address:String(client?.address||""),phone:String(client?.phone||""),access:String(s.access||"").slice(0,300)||undefined,
       // немає естімейту з калькулятора — показуємо рядки «Робота» з проєкту (без сум) і погоджені доплати
       scope:items.length?items.map(i=>({name:i.name,qty:Number(i.quantity)||0,unit:i.unit,note:String(i.note||""),optional:!!i.optional}))
         :[...s.labor.filter(l=>String(l.description||"").trim()&&!/^Agreed work \(per estimate\)$/i.test(String(l.description).trim())).map(l=>({name:String(l.description).replace(/^Change order #\d+:\s*/i,""),qty:1,unit:"each",note:"",optional:false})),
@@ -94,10 +94,10 @@ export async function workerView(link:WorkerLink):Promise<WorkerView>{
   const endOf=(j:J)=>{const d=new Date(String(j.start)+"T12:00:00");let left=Math.max(1,Math.ceil(Number(j.days)||1));for(let g=0;g<400;g++){const w=d.getDay();if(w!==0&&(w!==6||j.sat)){left--;if(left<=0)break}d.setDate(d.getDate()+1)}return d.toLocaleDateString("sv-SE")};
   const projOf=(j:J)=>projects.find(p=>j.sid?p.sid===j.sid:n(p.client)===n(j.client||""));
   const today:WorkerView["today"]=[];
-  for(const j of jobs)if(String(j.start)<=tISO&&endOf(j)>=tISO){const p=projOf(j);today.push({sid:p?.sid||"",client:String(j.client||p?.client||""),title:String(j.title||p?.project||""),address:p?.address||"",phone:p?.phone||"",time:j.time||undefined})}
+  for(const j of jobs)if(String(j.start)<=tISO&&endOf(j)>=tISO){const p=projOf(j);today.push({sid:p?.sid||"",client:String(j.client||p?.client||""),title:String(j.title||p?.project||""),address:p?.address||"",phone:p?.phone||"",access:p?.access,time:j.time||undefined})}
   // нема в графіку — показуємо об'єкти, де він записував години за останні 3 дні
   const from3=shift(tISO,-3);
-  for(const p of projects)if(!today.some(x=>x.sid===p.sid)&&p.days.some(d=>d.date>=from3&&d.date<=tISO))today.push({sid:p.sid,client:p.client,title:p.project,address:p.address,phone:p.phone});
+  for(const p of projects)if(!today.some(x=>x.sid===p.sid)&&p.days.some(d=>d.date>=from3&&d.date<=tISO))today.push({sid:p.sid,client:p.client,title:p.project,address:p.address,phone:p.phone,access:p.access});
   const soon=jobs.filter(j=>String(j.start)>tISO&&String(j.start)<=shift(tISO,14)).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,4).map(j=>({client:String(j.client||""),title:String(j.title||""),start:String(j.start),time:j.time||undefined}));
   return {shift:shiftRow?{id:shiftRow.id,sid:shiftRow.sid,start:shiftRow.start_at,dist:shiftRow.start_dist_m??null}:null,weekFrom,week:{hours:r2(wkH),earned:r2(wkE)},today,soon,lastPaid,company:String((set as any)?.company?.name||""),worker:link.worker,rate:link.rate,projects,hours:r2(hours),earned:r2(earned),paid:r2(paid),reimb:r2(reimbAll),owed:r2(earned+reimbAll-paid)};
 }

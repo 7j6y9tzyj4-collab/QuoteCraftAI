@@ -991,6 +991,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      </div>})()}
    {show("over")&&<section className="panel grid">
      <ClientPicker value={cur.client} onChange={v=>update({client:v})} clients={clientBook} onAdd={c=>onAddClient?.(c)}/>
+     {!cur.own&&<label className="noPrint" style={{display:"block",margin:"8px 0"}}><small className="muted">🔑 Як зайти на об’єкт (код гаража, де ключ) — бачиш ти й помічник, клієнт не бачить</small><input value={cur.access||""} onChange={e=>update({access:e.target.value.slice(0,300)||undefined})} placeholder="Напр.: гараж — код 1234" autoComplete="off"/></label>}
      {!cur.own&&<StoreLinks address={findClient(clientBook,cur.client)?.address}/>}
      <label>Project<input value={cur.project} onChange={e=>update({project:e.target.value})}/></label>
     <label>Статус проєкту<select value={cur.status||"auto"} onChange={e=>update({status:e.target.value==="auto"?undefined:e.target.value as StatusKey})}>

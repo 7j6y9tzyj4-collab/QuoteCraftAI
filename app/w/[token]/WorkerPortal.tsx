@@ -109,6 +109,7 @@ function Project({token,p,lang,worker,shift}:{token:string;p:WorkerProject;lang:
         {p.address&&<a href={`https://maps.apple.com/?q=${encodeURIComponent(p.address)}`} target="_blank" rel="noreferrer" style={{...big,background:"#eef2f7",color:"#101828",textDecoration:"none",flex:1,textAlign:"center"}}>📍 {p.address}</a>}
         {p.phone&&<a href={`tel:${p.phone.replace(/[^\d+]/g,"")}`} style={{...big,background:"#eef2f7",color:"#101828",textDecoration:"none",flex:"none"}}>{L.call}</a>}
       </div>
+      {p.access&&<div data-notr style={{fontSize:15,margin:"8px 0",padding:"8px 10px",borderRadius:10,background:"#fffaeb",border:"1px solid #fedf89",color:"#101828"}}>🔑 <b>{lang==="en"?"How to get in":"Як зайти"}:</b> {p.access}</div>}
       <StoreLinks address={p.address} title={lang==="en"?"🛒 Nearest stores":"🛒 Найближчі магазини"} compact/>
     </div>
 
@@ -313,6 +314,7 @@ export default function WorkerPortal({token,v}:{token:string;v:WorkerView}){
         <b style={{fontSize:17}}>{j.client}{j.time?` · ${j.time}`:""}</b>
         {j.title&&<div style={{fontSize:14,color:"#667085"}}>{j.title}</div>}
         {j.address&&<div style={{fontSize:14,color:"#667085",marginTop:2}}>📍 {j.address}</div>}
+        {j.access&&<div data-notr style={{fontSize:15,marginTop:6,padding:"8px 10px",borderRadius:10,background:"#fffaeb",border:"1px solid #fedf89",color:"#101828"}}>🔑 <b>{en?"How to get in":"Як зайти"}:</b> {j.access}</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
           {j.address&&<a style={act} href={`https://maps.apple.com/?daddr=${encodeURIComponent(j.address)}`} target="_blank" rel="noreferrer">🧭 {en?"Route":"Маршрут"}</a>}
           {j.sid&&<button style={act} onClick={()=>open(j.sid,"w-clock")}>📍 {v.shift?.sid===j.sid?(en?"Finish work":"Закінчити роботу"):(en?"Start work":"Почав роботу")}</button>}
