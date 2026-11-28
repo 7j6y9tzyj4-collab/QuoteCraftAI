@@ -471,7 +471,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
    const latest=list.find(s=>s.id===target.id)||target;
    // робоча копія чеків проєкту: сюди додаємо нові і в неї ж «вклеюємо» фото до чеків, вписаних вручну
    let receipts:Receipt[]=[...latest.receipts];
-   let addedN=0,mergedN=0;const skipped:string[]=[];const failed:string[]=[];let lastDate="";
+   let addedN=0,mergedN=0;const skipped:string[]=[];const attached:string[]=[];const failed:string[]=[];let lastDate="";
    for(const f of Array.from(files)){
      try{
        const p=await prepareReceiptFile(f);
@@ -482,6 +482,33 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        const hash=await imageHash(p.dataUrl).catch(()=>"");
        const card=String(d.card_last4||"").replace(/\D/g,"").slice(-4);
        const info={date:d.date||today(),store:d.store||"",items:d.items||"",amount:Number(d.total)||0,receiptNo:String(d.receipt_no||""),hash,card:card||undefined,codes:String(d.codes||"").slice(0,900)||undefined,full:String(d.all_items||"").slice(0,600)||undefined,paidBy:target.own?undefined:payerFor(card,undefined,cardList())};
+       // обрізаємо по межах чека і зберігаємо фото (у папку проєкту pid)
+       const savePhoto=async(pid:string,rid:string)=>{
+       let photo:{photoPath?:string;photoData?:string}={};
+       try{
+         // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
+         // обрізаємо з оригінального фото (повна роздільність), а не зі зменшеної копії для AI
+         const orig=URL.createObjectURL(f);
+         let scan=p.dataUrl;
+         if(!clean){try{scan=await scanReceipt(orig,d.box||null)}catch{scan=await scanReceipt(p.dataUrl,d.box||null)}finally{URL.revokeObjectURL(orig)}}
+         let saved=false;
+         if(user){
+           const path=`${user.id}/${pid}/${rid}.jpg`;
+           const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
+           if(!error){photo={photoPath:path};saved=true}
+         }
+         if(!saved)photo={photoData:clean?p.dataUrl:await shrinkImage(scan)};
+       }catch{/* без фото, але з сумою */}
+       return photo;
+       };
+       // 0а) такий чек уже є в іншому проєкті, але БЕЗ фото (внесений з пошти/акаунта магазину) → просто прикріплюємо фото до нього
+       const otherNoPhoto=listRef.current.filter(x=>x.id!==target.id).map(x=>({x,r:findDuplicate(info,x.receipts||[])})).find(o=>o.r&&!hasPhoto(o.r));
+       if(otherNoPhoto){
+         const ph=await savePhoto(otherNoPhoto.x.id,otherNoPhoto.r!.id);
+         const fresh=listRef.current.find(x=>x.id===otherNoPhoto.x.id)||otherNoPhoto.x;
+         patchStatement(fresh.id,{receipts:(fresh.receipts||[]).map(r=>r.id===otherNoPhoto.r!.id?{...r,hash:info.hash||r.hash,receiptNo:r.receiptNo||info.receiptNo,codes:r.codes||info.codes,full:r.full||info.full,...ph}:r)});
+         attached.push(`${otherNoPhoto.r!.store||"чек"} ${money(Number(otherNoPhoto.r!.amount)||0)} → «${otherNoPhoto.x.own?"Мої витрати":otherNoPhoto.x.client||"Без імені"}»`);continue;
+       }
        // 0) такий самий чек уже є в ІНШОМУ проєкті (будь-якого клієнта) → питаємо, щоб не задвоїти витрати
        const other=listRef.current.filter(x=>x.id!==target.id).map(x=>({x,r:findDuplicate(info,x.receipts||[])})).find(o=>o.r);
        if(other&&!confirm(`Цей чек уже є в іншому проєкті:\n${other.r!.date} · ${other.r!.store||"чек"} · ${money(Number(other.r!.amount)||0)}\nу «${other.x.client||"Без імені"}${other.x.project?` — ${other.x.project}`:""}».\n\nДодати його ще й сюди? (Скасувати — не додавати)`)){
@@ -493,22 +520,7 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
        // 2) є такий самий чек, вписаний вручну без фото → прикріплюємо фото до нього
        const manual=dup||findManualMatch(info,receipts);
        const rid=manual?manual.id:uid();
-       let photo:{photoPath?:string;photoData?:string}={};
-       // обрізаємо по межах чека і зберігаємо фото
-       try{
-         // скріншот з програми магазину — вже «чистий», не обрізаємо і не робимо сірим
-         // обрізаємо з оригінального фото (повна роздільність), а не зі зменшеної копії для AI
-         const orig=URL.createObjectURL(f);
-         let scan=p.dataUrl;
-         if(!clean){try{scan=await scanReceipt(orig,d.box||null)}catch{scan=await scanReceipt(p.dataUrl,d.box||null)}finally{URL.revokeObjectURL(orig)}}
-         let saved=false;
-         if(user){
-           const path=`${user.id}/${target.id}/${rid}.jpg`;
-           const {error}=await supabase.storage.from(BUCKET).upload(path,dataUrlToBlob(scan),{contentType:"image/jpeg",upsert:true});
-           if(!error){photo={photoPath:path};saved=true}
-         }
-         if(!saved)photo={photoData:clean?p.dataUrl:await shrinkImage(scan)};
-       }catch{/* без фото, але з сумою */}
+       const photo=await savePhoto(target.id,rid);
        if(manual){
          // дані з чека точніші за вписані вручну; категорію («Мої витрати») лишаємо
          receipts=receipts.map(r=>r.id===manual.id?{...r,...info,items:info.items||r.items,store:info.store||r.store,...photo}:r);
@@ -526,7 +538,8 @@ export default function PaymentsScreen({user,calcs=[],clients:clientBook=[],onAd
      persist(list.map(s=>s.id===now.id?{...now,receipts,updatedAt:new Date().toISOString()}:s));
    }
    setBusy(false);
-   const parts=addedN||!skipped.length?[`Додано чеків: ${addedN}.`]:[];
+   const parts=addedN||(!skipped.length&&!attached.length)?[`Додано чеків: ${addedN}.`]:[];
+   if(attached.length)parts.push(`📎 Чек уже був внесений — прикріпив до нього фото: ${attached.join("; ")}.`);
    if(mergedN)parts.push(`Фото прикріплено до чеків, вписаних вручну: ${mergedN}.`);
    if(skipped.length)parts.push(`⚠ Цей чек уже є — вдруге не додаю: ${skipped.join("; ")}.`);
    // «Мої витрати» показують один місяць: чек з іншого місяця — перемикаємо на його місяць, щоб його було видно
